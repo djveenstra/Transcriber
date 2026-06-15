@@ -6,7 +6,18 @@ struct SharedAudioItem: Identifiable, Hashable {
     let url: URL
 
     var id: URL { url }
-    var name: String { url.deletingPathExtension().lastPathComponent }
+
+    /// The share extension writes files as `<uuid>__<title>.<ext>` so that every
+    /// import gets a unique destination filename without colliding with an existing
+    /// recording's title. Recover the readable title for display here.
+    var name: String {
+        let base = url.deletingPathExtension().lastPathComponent
+        guard let separatorRange = base.range(of: "__"),
+              UUID(uuidString: String(base[base.startIndex..<separatorRange.lowerBound])) != nil
+        else { return base }
+        return String(base[separatorRange.upperBound...])
+    }
+
     var receivedAt: Date {
         (try? url.resourceValues(forKeys: [.creationDateKey]).creationDate) ?? .distantPast
     }
@@ -50,7 +61,8 @@ final class SharedAudioInbox: ObservableObject {
     }
 }
 
-private extension URL {
+// Not private: exposed so unit tests can verify the audio-file filter.
+extension URL {
     var isAudioFile: Bool {
         let audioExtensions = ["m4a", "mp3", "wav", "caf", "aiff", "aif", "aac", "flac"]
         return audioExtensions.contains(pathExtension.lowercased())

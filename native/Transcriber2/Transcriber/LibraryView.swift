@@ -7,6 +7,7 @@ struct LibraryView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \Recording.createdAt, order: .reverse) private var recordings: [Recording]
     @StateObject private var sharedInbox = SharedAudioInbox.shared
+    @State private var deletionErrorMessage: String?
 
     var body: some View {
         NavigationStack {
@@ -66,12 +67,34 @@ struct LibraryView: View {
             }
             .onAppear { sharedInbox.refresh() }
         }
+        .alert(
+            "Couldn’t Delete Recording",
+            isPresented: Binding(
+                get: { deletionErrorMessage != nil },
+                set: { isPresented in if !isPresented { deletionErrorMessage = nil } }
+            ),
+            actions: {
+                Button("OK", role: .cancel) { deletionErrorMessage = nil }
+            },
+            message: {
+                Text(deletionErrorMessage ?? "")
+            }
+        )
     }
 
     private func delete(at offsets: IndexSet) {
         for offset in offsets {
             let recording = recordings[offset]
-            try? FileManager.default.removeItem(at: recording.audioURL)
+            // Keep the SwiftData record if the audio file can't be removed, so the
+            // recording (and its transcript) remain accessible rather than orphaned.
+            if FileManager.default.fileExists(atPath: recording.audioURL.path) {
+                do {
+                    try FileManager.default.removeItem(at: recording.audioURL)
+                } catch {
+                    deletionErrorMessage = "This recording's audio file could not be deleted, so the recording was kept. \(error.localizedDescription)"
+                    continue
+                }
+            }
             modelContext.delete(recording)
         }
     }
@@ -174,6 +197,7 @@ struct SharedAudioDetailView: View {
         .padding()
         .background(Theme.background)
         .navigationTitle("Shared Recording")
+        .storageErrorAlert(session)
         .onDisappear { playback.stop() }
     }
 
@@ -290,7 +314,6 @@ struct RecordingDetailView: View {
                 Button {
                     Task {
                         await retrySession.retryTranscription(for: recording, in: modelContext)
-                        try? modelContext.save()
                     }
                 } label: {
                     Label("Create Transcript", systemImage: "text.quote")
@@ -303,8 +326,7 @@ struct RecordingDetailView: View {
                     .foregroundStyle(Theme.muted)
                 Button {
                     Task {
-                        await retrySession.retrySpeakerLabels(for: recording)
-                        try? modelContext.save()
+                        await retrySession.retrySpeakerLabels(for: recording, in: modelContext)
                     }
                 } label: {
                     Label("Retry Speaker Labels", systemImage: "arrow.clockwise")
@@ -315,6 +337,7 @@ struct RecordingDetailView: View {
         .padding()
         .background(Theme.background)
         .navigationTitle(recording.title)
+        .storageErrorAlert(retrySession)
         .sheet(isPresented: $showingNames) {
             SpeakerRenameView(recording: recording)
         }

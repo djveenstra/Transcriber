@@ -1,62 +1,16 @@
-import AVFoundation
 import FluidAudio
 import Foundation
 
 protocol DiarizationEngine: Actor {
-    func prepareLive() async throws
-    func resetLive()
-    func appendLive(_ buffer: AVAudioPCMBuffer) throws -> [DiarizationSegment]
-    func finishLive() throws -> [DiarizationSegment]
     func diarizeFile(_ url: URL, progress: @escaping @Sendable (Double) -> Void) async throws -> [DiarizationSegment]
 }
 
 actor FluidDiarizationEngine: DiarizationEngine {
-    private var liveDiarizer: SortformerDiarizer?
-    private var finalDiarizer: SortformerDiarizer?
-    private var pendingLiveSamples: [Float] = []
-    private var pendingLiveSampleRate: Double?
+    private let config: SortformerConfig
+    private var diarizer: SortformerDiarizer?
 
-    func prepareLive() async throws {
-        guard liveDiarizer == nil else { return }
-        let config = SortformerConfig.fastV2
-        let diarizer = SortformerDiarizer(config: config)
-        let models = try await SortformerModels.loadFromHuggingFace(config: config)
-        diarizer.initialize(models: models)
-        liveDiarizer = diarizer
-        if !pendingLiveSamples.isEmpty {
-            _ = try diarizer.process(
-                samples: pendingLiveSamples,
-                sourceSampleRate: pendingLiveSampleRate ?? Double(config.sampleRate)
-            )
-            pendingLiveSamples = []
-            pendingLiveSampleRate = nil
-        }
-    }
-
-    func resetLive() {
-        liveDiarizer?.reset()
-        pendingLiveSamples = []
-        pendingLiveSampleRate = nil
-    }
-
-    func appendLive(_ buffer: AVAudioPCMBuffer) throws -> [DiarizationSegment] {
-        guard let channel = buffer.floatChannelData?[0] else { return [] }
-        let samples = Array(UnsafeBufferPointer(start: channel, count: Int(buffer.frameLength)))
-        guard let liveDiarizer else {
-            pendingLiveSamples.append(contentsOf: samples)
-            pendingLiveSampleRate = buffer.format.sampleRate
-            return []
-        }
-        _ = try liveDiarizer.process(samples: samples, sourceSampleRate: buffer.format.sampleRate)
-        return Self.convert(
-            liveDiarizer.timeline.speakers.values.flatMap { $0.finalizedSegments + $0.tentativeSegments }
-        )
-    }
-
-    func finishLive() throws -> [DiarizationSegment] {
-        guard let liveDiarizer else { return [] }
-        _ = try liveDiarizer.finalizeSession()
-        return Self.convert(liveDiarizer.timeline.speakers.values.flatMap(\.finalizedSegments))
+    init(config: SortformerConfig = .balancedV2) {
+        self.config = config
     }
 
     func diarizeFile(
@@ -64,16 +18,15 @@ actor FluidDiarizationEngine: DiarizationEngine {
         progress: @escaping @Sendable (Double) -> Void
     ) async throws -> [DiarizationSegment] {
         let diarizer: SortformerDiarizer
-        if let finalDiarizer {
-            diarizer = finalDiarizer
+        if let existing = self.diarizer {
+            diarizer = existing
         } else {
-            let config = SortformerConfig.balancedV2
             let created = SortformerDiarizer(config: config)
             let models = try await SortformerModels.loadFromHuggingFace(config: config) { download in
                 progress(download.fractionCompleted * 0.15)
             }
             created.initialize(models: models)
-            finalDiarizer = created
+            self.diarizer = created
             diarizer = created
         }
 
