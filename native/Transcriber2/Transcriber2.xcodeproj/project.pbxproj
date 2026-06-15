@@ -1,0 +1,831 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		A10000012FD9C579007EC9E3 /* ShareToTranscriber.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = A10000032FD9C579007EC9E3 /* ShareToTranscriber.appex */; platformFilter = ios; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		F20000012FD9C579007EC9E3 /* FluidAudio in Frameworks */ = {isa = PBXBuildFile; productRef = F20000032FD9C579007EC9E3 /* FluidAudio */; };
+		F30000012FD9C579007EC9E3 /* WhisperKit in Frameworks */ = {isa = PBXBuildFile; productRef = F30000032FD9C579007EC9E3 /* WhisperKit */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		A10000022FD9C579007EC9E3 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 6586E6DB2FD9C579007EC9E3 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = A100000A2FD9C579007EC9E3;
+			remoteInfo = ShareToTranscriber;
+		};
+		6586E6F32FD9C57B007EC9E3 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 6586E6DB2FD9C579007EC9E3 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 6586E6E22FD9C579007EC9E3;
+			remoteInfo = Transcriber;
+		};
+		6586E6FD2FD9C57B007EC9E3 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 6586E6DB2FD9C579007EC9E3 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 6586E6E22FD9C579007EC9E3;
+			remoteInfo = Transcriber;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		A10000082FD9C579007EC9E3 /* Embed App Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				A10000012FD9C579007EC9E3 /* ShareToTranscriber.appex in Embed App Extensions */,
+			);
+			name = "Embed App Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFileReference section */
+		A10000032FD9C579007EC9E3 /* ShareToTranscriber.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = ShareToTranscriber.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		6586E6E32FD9C579007EC9E3 /* Transcriber.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Transcriber.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		6586E6F22FD9C57B007EC9E3 /* TranscriberTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TranscriberTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		6586E6FC2FD9C57B007EC9E3 /* TranscriberUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TranscriberUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		A10000042FD9C579007EC9E3 /* ShareToTranscriber */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = ShareToTranscriber;
+			sourceTree = "<group>";
+		};
+		6586E6E52FD9C579007EC9E3 /* Transcriber */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Transcriber;
+			sourceTree = "<group>";
+		};
+		6586E6F52FD9C57B007EC9E3 /* TranscriberTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = TranscriberTests;
+			sourceTree = "<group>";
+		};
+		6586E6FF2FD9C57B007EC9E3 /* TranscriberUITests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = TranscriberUITests;
+			sourceTree = "<group>";
+		};
+/* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		A10000052FD9C579007EC9E3 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		6586E6E02FD9C579007EC9E3 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				F20000012FD9C579007EC9E3 /* FluidAudio in Frameworks */,
+				F30000012FD9C579007EC9E3 /* WhisperKit in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		6586E6EF2FD9C57B007EC9E3 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		6586E6F92FD9C57B007EC9E3 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		6586E6DA2FD9C579007EC9E3 = {
+			isa = PBXGroup;
+			children = (
+				6586E6E52FD9C579007EC9E3 /* Transcriber */,
+				A10000042FD9C579007EC9E3 /* ShareToTranscriber */,
+				6586E6F52FD9C57B007EC9E3 /* TranscriberTests */,
+				6586E6FF2FD9C57B007EC9E3 /* TranscriberUITests */,
+				6586E6E42FD9C579007EC9E3 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		6586E6E42FD9C579007EC9E3 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				6586E6E32FD9C579007EC9E3 /* Transcriber.app */,
+				A10000032FD9C579007EC9E3 /* ShareToTranscriber.appex */,
+				6586E6F22FD9C57B007EC9E3 /* TranscriberTests.xctest */,
+				6586E6FC2FD9C57B007EC9E3 /* TranscriberUITests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		6586E6E22FD9C579007EC9E3 /* Transcriber */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 6586E7062FD9C57B007EC9E3 /* Build configuration list for PBXNativeTarget "Transcriber" */;
+			buildPhases = (
+				6586E6DF2FD9C579007EC9E3 /* Sources */,
+				6586E6E02FD9C579007EC9E3 /* Frameworks */,
+				6586E6E12FD9C579007EC9E3 /* Resources */,
+				A10000082FD9C579007EC9E3 /* Embed App Extensions */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				A10000092FD9C579007EC9E3 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				6586E6E52FD9C579007EC9E3 /* Transcriber */,
+			);
+			name = Transcriber;
+			packageProductDependencies = (
+				F20000032FD9C579007EC9E3 /* FluidAudio */,
+				F30000032FD9C579007EC9E3 /* WhisperKit */,
+			);
+			productName = Transcriber;
+			productReference = 6586E6E32FD9C579007EC9E3 /* Transcriber.app */;
+			productType = "com.apple.product-type.application";
+		};
+		A100000A2FD9C579007EC9E3 /* ShareToTranscriber */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A100000D2FD9C579007EC9E3 /* Build configuration list for PBXNativeTarget "ShareToTranscriber" */;
+			buildPhases = (
+				A10000072FD9C579007EC9E3 /* Sources */,
+				A10000052FD9C579007EC9E3 /* Frameworks */,
+				A10000062FD9C579007EC9E3 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				A10000042FD9C579007EC9E3 /* ShareToTranscriber */,
+			);
+			name = ShareToTranscriber;
+			packageProductDependencies = (
+			);
+			productName = ShareToTranscriber;
+			productReference = A10000032FD9C579007EC9E3 /* ShareToTranscriber.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+		6586E6F12FD9C57B007EC9E3 /* TranscriberTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 6586E7092FD9C57B007EC9E3 /* Build configuration list for PBXNativeTarget "TranscriberTests" */;
+			buildPhases = (
+				6586E6EE2FD9C57B007EC9E3 /* Sources */,
+				6586E6EF2FD9C57B007EC9E3 /* Frameworks */,
+				6586E6F02FD9C57B007EC9E3 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				6586E6F42FD9C57B007EC9E3 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				6586E6F52FD9C57B007EC9E3 /* TranscriberTests */,
+			);
+			name = TranscriberTests;
+			packageProductDependencies = (
+			);
+			productName = TranscriberTests;
+			productReference = 6586E6F22FD9C57B007EC9E3 /* TranscriberTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		6586E6FB2FD9C57B007EC9E3 /* TranscriberUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 6586E70C2FD9C57B007EC9E3 /* Build configuration list for PBXNativeTarget "TranscriberUITests" */;
+			buildPhases = (
+				6586E6F82FD9C57B007EC9E3 /* Sources */,
+				6586E6F92FD9C57B007EC9E3 /* Frameworks */,
+				6586E6FA2FD9C57B007EC9E3 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				6586E6FE2FD9C57B007EC9E3 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				6586E6FF2FD9C57B007EC9E3 /* TranscriberUITests */,
+			);
+			name = TranscriberUITests;
+			packageProductDependencies = (
+			);
+			productName = TranscriberUITests;
+			productReference = 6586E6FC2FD9C57B007EC9E3 /* TranscriberUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		6586E6DB2FD9C579007EC9E3 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 2650;
+				LastUpgradeCheck = 2650;
+				TargetAttributes = {
+					A100000A2FD9C579007EC9E3 = {
+						CreatedOnToolsVersion = 26.5;
+					};
+					6586E6E22FD9C579007EC9E3 = {
+						CreatedOnToolsVersion = 26.5;
+					};
+					6586E6F12FD9C57B007EC9E3 = {
+						CreatedOnToolsVersion = 26.5;
+						TestTargetID = 6586E6E22FD9C579007EC9E3;
+					};
+					6586E6FB2FD9C57B007EC9E3 = {
+						CreatedOnToolsVersion = 26.5;
+						TestTargetID = 6586E6E22FD9C579007EC9E3;
+					};
+				};
+			};
+			buildConfigurationList = 6586E6DE2FD9C579007EC9E3 /* Build configuration list for PBXProject "Transcriber" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = 6586E6DA2FD9C579007EC9E3;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				F20000022FD9C579007EC9E3 /* XCRemoteSwiftPackageReference "FluidAudio" */,
+				F30000022FD9C579007EC9E3 /* XCRemoteSwiftPackageReference "WhisperKit" */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 6586E6E42FD9C579007EC9E3 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				6586E6E22FD9C579007EC9E3 /* Transcriber */,
+				A100000A2FD9C579007EC9E3 /* ShareToTranscriber */,
+				6586E6F12FD9C57B007EC9E3 /* TranscriberTests */,
+				6586E6FB2FD9C57B007EC9E3 /* TranscriberUITests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		A10000062FD9C579007EC9E3 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		6586E6E12FD9C579007EC9E3 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		6586E6F02FD9C57B007EC9E3 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		6586E6FA2FD9C57B007EC9E3 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		A10000072FD9C579007EC9E3 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		6586E6DF2FD9C579007EC9E3 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		6586E6EE2FD9C57B007EC9E3 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		6586E6F82FD9C57B007EC9E3 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		A10000092FD9C579007EC9E3 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			platformFilter = ios;
+			target = A100000A2FD9C579007EC9E3 /* ShareToTranscriber */;
+			targetProxy = A10000022FD9C579007EC9E3 /* PBXContainerItemProxy */;
+		};
+		6586E6F42FD9C57B007EC9E3 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 6586E6E22FD9C579007EC9E3 /* Transcriber */;
+			targetProxy = 6586E6F32FD9C57B007EC9E3 /* PBXContainerItemProxy */;
+		};
+		6586E6FE2FD9C57B007EC9E3 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 6586E6E22FD9C579007EC9E3 /* Transcriber */;
+			targetProxy = 6586E6FD2FD9C57B007EC9E3 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		A100000B2FD9C579007EC9E3 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = ShareToTranscriber/ShareToTranscriber.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = BRL2227FUC;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = "ShareToTranscriber-Info.plist";
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.daniel.transcriber2.beta.share;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				REGISTER_APP_GROUPS = YES;
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		A100000C2FD9C579007EC9E3 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = ShareToTranscriber/ShareToTranscriber.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = BRL2227FUC;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = "ShareToTranscriber-Info.plist";
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.daniel.transcriber2.beta.share;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				REGISTER_APP_GROUPS = YES;
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		6586E7042FD9C57B007EC9E3 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = BRL2227FUC;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		6586E7052FD9C57B007EC9E3 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = BRL2227FUC;
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SWIFT_COMPILATION_MODE = wholemodule;
+			};
+			name = Release;
+		};
+		6586E7072FD9C57B007EC9E3 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CODE_SIGN_ENTITLEMENTS = Transcriber/Transcriber.entitlements;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = BRL2227FUC;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_PREVIEWS = YES;
+				ENABLE_USER_SELECTED_FILES = readonly;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "Transcriber 2.0 Beta";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Transcriber records audio so it can create an on-device transcript.";
+				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Transcriber uses on-device speech recognition to create your transcript.";
+				INFOPLIST_KEY_UIBackgroundModes = audio;
+				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
+				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
+				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
+				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphonesimulator*]" = YES;
+				"INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphoneos*]" = YES;
+				"INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphonesimulator*]" = YES;
+				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphoneos*]" = UIStatusBarStyleDefault;
+				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphonesimulator*]" = UIStatusBarStyleDefault;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
+				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.daniel.transcriber2.beta;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				REGISTER_APP_GROUPS = YES;
+				SDKROOT = auto;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		6586E7082FD9C57B007EC9E3 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CODE_SIGN_ENTITLEMENTS = Transcriber/Transcriber.entitlements;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = BRL2227FUC;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_PREVIEWS = YES;
+				ENABLE_USER_SELECTED_FILES = readonly;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "Transcriber 2.0 Beta";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Transcriber records audio so it can create an on-device transcript.";
+				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Transcriber uses on-device speech recognition to create your transcript.";
+				INFOPLIST_KEY_UIBackgroundModes = audio;
+				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
+				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
+				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
+				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphonesimulator*]" = YES;
+				"INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphoneos*]" = YES;
+				"INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphonesimulator*]" = YES;
+				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphoneos*]" = UIStatusBarStyleDefault;
+				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphonesimulator*]" = UIStatusBarStyleDefault;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
+				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.daniel.transcriber2.beta;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				REGISTER_APP_GROUPS = YES;
+				SDKROOT = auto;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		6586E70A2FD9C57B007EC9E3 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = BRL2227FUC;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.daniel.transcriber2.beta.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = auto;
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx xros xrsimulator";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2,7";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Transcriber.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Transcriber";
+				XROS_DEPLOYMENT_TARGET = 26.5;
+			};
+			name = Debug;
+		};
+		6586E70B2FD9C57B007EC9E3 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = BRL2227FUC;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.daniel.transcriber2.beta.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = auto;
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx xros xrsimulator";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2,7";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Transcriber.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Transcriber";
+				XROS_DEPLOYMENT_TARGET = 26.5;
+			};
+			name = Release;
+		};
+		6586E70D2FD9C57B007EC9E3 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = BRL2227FUC;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.daniel.transcriber2.beta.uitests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = auto;
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx xros xrsimulator";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2,7";
+				TEST_TARGET_NAME = Transcriber;
+				XROS_DEPLOYMENT_TARGET = 26.5;
+			};
+			name = Debug;
+		};
+		6586E70E2FD9C57B007EC9E3 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = BRL2227FUC;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.daniel.transcriber2.beta.uitests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = auto;
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx xros xrsimulator";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2,7";
+				TEST_TARGET_NAME = Transcriber;
+				XROS_DEPLOYMENT_TARGET = 26.5;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		A100000D2FD9C579007EC9E3 /* Build configuration list for PBXNativeTarget "ShareToTranscriber" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A100000B2FD9C579007EC9E3 /* Debug */,
+				A100000C2FD9C579007EC9E3 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		6586E6DE2FD9C579007EC9E3 /* Build configuration list for PBXProject "Transcriber" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				6586E7042FD9C57B007EC9E3 /* Debug */,
+				6586E7052FD9C57B007EC9E3 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		6586E7062FD9C57B007EC9E3 /* Build configuration list for PBXNativeTarget "Transcriber" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				6586E7072FD9C57B007EC9E3 /* Debug */,
+				6586E7082FD9C57B007EC9E3 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		6586E7092FD9C57B007EC9E3 /* Build configuration list for PBXNativeTarget "TranscriberTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				6586E70A2FD9C57B007EC9E3 /* Debug */,
+				6586E70B2FD9C57B007EC9E3 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		6586E70C2FD9C57B007EC9E3 /* Build configuration list for PBXNativeTarget "TranscriberUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				6586E70D2FD9C57B007EC9E3 /* Debug */,
+				6586E70E2FD9C57B007EC9E3 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		F20000022FD9C579007EC9E3 /* XCRemoteSwiftPackageReference "FluidAudio" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/FluidInference/FluidAudio.git";
+			requirement = {
+				kind = revision;
+				revision = 17081252411e0cf69574ee85ec1cd4675765c458;
+			};
+		};
+		F30000022FD9C579007EC9E3 /* XCRemoteSwiftPackageReference "WhisperKit" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/argmaxinc/WhisperKit.git";
+			requirement = {
+				kind = revision;
+				revision = 94cf6b120cf9dde32d9dea01acc326e77371302c;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		F20000032FD9C579007EC9E3 /* FluidAudio */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = F20000022FD9C579007EC9E3 /* XCRemoteSwiftPackageReference "FluidAudio" */;
+			productName = FluidAudio;
+		};
+		F30000032FD9C579007EC9E3 /* WhisperKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = F30000022FD9C579007EC9E3 /* XCRemoteSwiftPackageReference "WhisperKit" */;
+			productName = WhisperKit;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = 6586E6DB2FD9C579007EC9E3 /* Project object */;
+}

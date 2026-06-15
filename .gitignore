@@ -1,0 +1,37 @@
+# macOS and editor files
+.DS_Store
+.claude/settings.local.json
+
+# Python caches and local environments
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+
+# Python and packaged application output
+build/
+dist/
+*.app/
+
+# Xcode-generated files and local build output
+DerivedData/
+*.xcuserstate
+xcuserdata/
+native/Builds/
+
+# Early Xcode template retained locally for reference
+XCode App Build/
+
+# Downloaded models and runtime data
+*.bin
+*.gguf
+*.mlmodelc/
+*.safetensors
+
+# Personal and imported recordings
+*.m4a
+*.mp3
+*.wav
+*.aiff
+*.caf

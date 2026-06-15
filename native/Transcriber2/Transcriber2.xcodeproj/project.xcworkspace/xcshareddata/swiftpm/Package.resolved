@@ -1,0 +1,31 @@
+{
+  "originHash" : "6448c4cff3a6be06bb8cfeab56abda72744a0395416a857478ac54fad7f8f558",
+  "pins" : [
+    {
+      "identity" : "fluidaudio",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/FluidInference/FluidAudio.git",
+      "state" : {
+        "revision" : "17081252411e0cf69574ee85ec1cd4675765c458"
+      }
+    },
+    {
+      "identity" : "swift-argument-parser",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/apple/swift-argument-parser.git",
+      "state" : {
+        "revision" : "6a52f3251125d74daf04fcbd5e6f08a75d074382",
+        "version" : "1.8.2"
+      }
+    },
+    {
+      "identity" : "whisperkit",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/argmaxinc/WhisperKit.git",
+      "state" : {
+        "revision" : "94cf6b120cf9dde32d9dea01acc326e77371302c"
+      }
+    }
+  ],
+  "version" : 3
+}
