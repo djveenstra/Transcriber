@@ -62,6 +62,8 @@ final class TranscriptionSession: ObservableObject {
     private weak var savedRecording: Recording?
     private var persistenceContext: ModelContext?
     private var livePreparationTask: Task<Void, Never>?
+    private var liveAudioContinuation: AsyncStream<CapturedAudioChunk>.Continuation?
+    private var liveConsumerTask: Task<Void, Never>?
 
     var liveSegments: [TranscriptSegment] {
         TranscriptMerger.merge(transcription: liveTranscription, diarization: liveDiarization)
@@ -132,23 +134,30 @@ final class TranscriptionSession: ObservableObject {
             let url = AppStoragePaths.recordingsDirectory
                 .appendingPathComponent("recording-\(UUID().uuidString).caf")
             audioURL = url
-            recorder.onBuffer = { [weak self] chunk in
-                guard let self else { return }
-                Task {
-                    do {
+
+            let (stream, continuation) = AsyncStream.makeStream(of: CapturedAudioChunk.self)
+            liveAudioContinuation = continuation
+            recorder.onBuffer = { chunk in
+                continuation.yield(chunk)
+            }
+            liveConsumerTask = Task { [weak self] in
+                do {
+                    for await chunk in stream {
+                        guard let self else { break }
 #if os(iOS)
                         try await self.liveParakeet.append(chunk)
 #else
                         try await self.transcriber.append(chunk)
 #endif
-                    } catch {
-                        await MainActor.run {
-                            self.livePreviewState = .unavailable
-                            self.livePreviewNote = "Live preview paused: \(error.localizedDescription)"
-                        }
+                    }
+                } catch {
+                    await MainActor.run { [weak self] in
+                        self?.livePreviewState = .unavailable
+                        self?.livePreviewNote = "Live preview paused: \(error.localizedDescription)"
                     }
                 }
             }
+
             try recorder.start(at: url)
             state = .recording
             livePreviewState = .loading
@@ -177,8 +186,24 @@ final class TranscriptionSession: ObservableObject {
 
     func stopRecording(in context: ModelContext) async {
         guard state == .recording, let audioURL else { return }
-        recorder.stop()
+        let writeError = recorder.stop()
+        liveAudioContinuation?.finish()
+        liveAudioContinuation = nil
+        liveConsumerTask?.cancel()
+        await liveConsumerTask?.value
+        liveConsumerTask = nil
         preserveRecording(in: context)
+
+        if let writeError {
+            savedRecording?.transcriptionNeedsRetry = true
+            persistChanges(
+                in: context,
+                failureMessage: "Your recording was saved, but the audio file may be incomplete."
+            )
+            state = .failed("Recording stopped with a write error: \(writeError.localizedDescription). The audio file may be incomplete.")
+            return
+        }
+
         state = .processing("Finalizing live transcript")
 #if os(iOS)
         livePreparationTask?.cancel()
@@ -302,6 +327,10 @@ final class TranscriptionSession: ObservableObject {
         savedRecording = nil
         persistenceContext = nil
         storageErrorMessage = nil
+        liveAudioContinuation?.finish()
+        liveAudioContinuation = nil
+        liveConsumerTask?.cancel()
+        liveConsumerTask = nil
         livePreparationTask?.cancel()
         livePreparationTask = nil
     }

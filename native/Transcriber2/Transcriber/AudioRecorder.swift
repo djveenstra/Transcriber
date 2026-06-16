@@ -61,18 +61,27 @@ final class AudioRecorder: ObservableObject {
         duration = 0
     }
 
-    func stop() {
+    /// Stops recording and returns the first write error encountered during the
+    /// session (if any). A non-nil error means the audio file may be incomplete.
+    @discardableResult
+    func stop() -> (any Error)? {
         if let startedAt {
             duration = Date.now.timeIntervalSince(startedAt)
         }
         engine?.inputNode.removeTap(onBus: 0)
         engine?.stop()
-        fileWriter?.close()
+        var writeError: (any Error)?
+        do {
+            try fileWriter?.close()
+        } catch {
+            writeError = error
+        }
         fileWriter = nil
         engine = nil
 #if os(iOS)
         try? AVAudioSession.sharedInstance().setActive(false)
 #endif
+        return writeError
     }
 
     private static func rms(_ buffer: AVAudioPCMBuffer) -> Float {

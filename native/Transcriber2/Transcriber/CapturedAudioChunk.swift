@@ -32,9 +32,12 @@ struct CapturedAudioChunk: @unchecked Sendable {
 /// callback fires) and the `@MainActor`-isolated `AudioRecorder`. `close()` drains any
 /// in-flight writes before releasing the underlying file, so no callback can write to a
 /// closed file.
+///
+/// The first write error is retained and reported when `close()` is called.
 final class AudioFileWriter: @unchecked Sendable {
     private let queue = DispatchQueue(label: "com.daniel.transcriber2.audio-file-writer")
     nonisolated(unsafe) private var file: AVAudioFile?
+    nonisolated(unsafe) private var firstError: (any Error)?
 
     nonisolated init(url: URL, settings: [String: Any]) throws {
         file = try AVAudioFile(forWriting: url, settings: settings)
@@ -42,15 +45,24 @@ final class AudioFileWriter: @unchecked Sendable {
 
     nonisolated func write(_ chunk: CapturedAudioChunk) {
         queue.async { [weak self] in
-            try? self?.file?.write(from: chunk.buffer)
+            guard let self, self.firstError == nil else { return }
+            do {
+                try self.file?.write(from: chunk.buffer)
+            } catch {
+                self.firstError = error
+            }
         }
     }
 
-    /// Waits for any writes already queued to finish, then releases the file. Safe to call
-    /// once recording has stopped; any write enqueued afterward becomes a no-op.
-    nonisolated func close() {
-        queue.sync {
+    /// Drains any queued writes, closes the file, and throws the first write error
+    /// encountered during the recording (if any).
+    nonisolated func close() throws {
+        try queue.sync {
             file = nil
+            if let error = firstError {
+                firstError = nil
+                throw error
+            }
         }
     }
 }
