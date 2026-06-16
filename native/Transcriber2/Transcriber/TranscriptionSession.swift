@@ -166,14 +166,17 @@ final class TranscriptionSession: ObservableObject {
                 do {
 #if os(iOS)
                     try await self.liveParakeet.prepare()
+                    guard !Task.isCancelled, self.state == .recording else { return }
                     self.livePreviewState = .ready
 #else
                     try await self.transcriber.prepareLive(audioFormat: microphoneFormat)
+                    guard !Task.isCancelled, self.state == .recording else { return }
                     self.livePreviewState = .ready
                     let loaded = await self.transcriber.currentLoadedModelID()
                     self.modelState = .ready(WhisperModelChoice.choice(for: loaded ?? "").name)
 #endif
                 } catch {
+                    guard !Task.isCancelled, self.state == .recording else { return }
                     self.livePreviewState = .unavailable
                     self.livePreviewNote = "Live preview unavailable: \(error.localizedDescription)"
                 }
@@ -187,11 +190,16 @@ final class TranscriptionSession: ObservableObject {
     func stopRecording(in context: ModelContext) async {
         guard state == .recording, let audioURL else { return }
         let writeError = recorder.stop()
+        livePreparationTask?.cancel()
         liveAudioContinuation?.finish()
         liveAudioContinuation = nil
         liveConsumerTask?.cancel()
         await liveConsumerTask?.value
         liveConsumerTask = nil
+        livePreparationTask = nil
+#if os(iOS)
+        await liveParakeet.finish()
+#endif
         preserveRecording(in: context)
 
         if let writeError {
@@ -205,15 +213,8 @@ final class TranscriptionSession: ObservableObject {
         }
 
         state = .processing("Finalizing live transcript")
-#if os(iOS)
-        livePreparationTask?.cancel()
-#else
-        await livePreparationTask?.value
-#endif
-        livePreparationTask = nil
         do {
 #if os(iOS)
-            await liveParakeet.finish()
 #else
             try await transcriber.finishLive()
             await transcriber.unload()
