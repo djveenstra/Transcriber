@@ -692,7 +692,7 @@ final class TranscriptionSession: ObservableObject {
 /// faster (less accurate) fallback config.
 /// Not private: exposed so unit tests can inspect outcomes returned by
 /// `runDiarizationWithFallback`.
-struct DiarizationAttemptOutcome {
+nonisolated struct DiarizationAttemptOutcome {
     let segments: [DiarizationSegment]
     let isApproximate: Bool
 }

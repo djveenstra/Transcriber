@@ -4,21 +4,21 @@ import SwiftData
 
 private nonisolated let modelsLogger = Logger(subsystem: "com.daniel.transcriber2", category: "Models")
 
-struct TranscriptionSegment: Identifiable, Codable, Equatable, Sendable {
+nonisolated struct TranscriptionSegment: Identifiable, Codable, Equatable, Sendable {
     var id = UUID()
     var startMs: Int
     var endMs: Int
     var text: String
 }
 
-struct DiarizationSegment: Identifiable, Codable, Equatable, Sendable {
+nonisolated struct DiarizationSegment: Identifiable, Codable, Equatable, Sendable {
     var id = UUID()
     var startMs: Int
     var endMs: Int
     var speaker: String
 }
 
-struct TranscriptSegment: Identifiable, Codable, Equatable, Sendable {
+nonisolated struct TranscriptSegment: Identifiable, Codable, Equatable, Sendable {
     var id = UUID()
     var startMs: Int
     var endMs: Int

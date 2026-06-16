@@ -1,13 +1,13 @@
 import Foundation
 
-enum TranscriptExportFormat: String, CaseIterable, Identifiable {
+nonisolated enum TranscriptExportFormat: String, CaseIterable, Identifiable, Sendable {
     case text = "txt"
     case subtitles = "srt"
     case json
     var id: Self { self }
 }
 
-enum TranscriptExporter {
+nonisolated enum TranscriptExporter {
     static func exportFile(
         _ segments: [TranscriptSegment],
         speakerNames: [String: String] = [:],

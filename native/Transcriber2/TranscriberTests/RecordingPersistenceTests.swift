@@ -2,6 +2,7 @@ import Foundation
 import Testing
 @testable import Transcriber
 
+@MainActor
 struct RecordingPersistenceTests {
     private func makeRecording() -> Recording {
         Recording(

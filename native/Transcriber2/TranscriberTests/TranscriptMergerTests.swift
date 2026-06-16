@@ -1,6 +1,7 @@
 import Testing
 @testable import Transcriber
 
+@MainActor
 struct TranscriptMergerTests {
     @Test func removesTinySpeakerFlipAndMergesConversation() {
         let transcription = [

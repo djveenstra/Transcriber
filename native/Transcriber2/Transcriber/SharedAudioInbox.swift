@@ -2,7 +2,7 @@ import AVFoundation
 import Combine
 import Foundation
 
-struct SharedAudioItem: Identifiable, Hashable {
+nonisolated struct SharedAudioItem: Identifiable, Hashable {
     let url: URL
 
     var id: URL { url }

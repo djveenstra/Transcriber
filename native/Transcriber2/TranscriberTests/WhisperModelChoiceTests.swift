@@ -2,6 +2,7 @@ import Foundation
 import Testing
 @testable import Transcriber
 
+@MainActor
 @Suite(.serialized)
 struct WhisperModelChoiceTests {
     private static let modelKey = "whisperModel"
