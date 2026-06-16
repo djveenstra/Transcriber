@@ -18,6 +18,7 @@ struct RecordingView: View {
             .padding()
             .background(Theme.background.ignoresSafeArea())
             .navigationTitle("Transcriber 2.0")
+            .storageErrorAlert(session)
             .task {
 #if os(macOS)
                 await session.prepareSelectedModel()
@@ -276,6 +277,12 @@ struct TranscriptShareMenu: View {
                 }
             }
         }
+        // Returning from the system share sheet (e.g. after AirDrop or Save to Files)
+        // re-activates the scene without ever calling `onDismiss`, leaving
+        // `showingShareSheet` stuck `true` and the sheet's dismiss gesture unusable.
+        // Detect the scene becoming active again while the sheet thinks it's still
+        // showing and dismiss it manually after a brief delay so SwiftUI has time to
+        // settle the scene transition first.
         .onChange(of: scenePhase) { _, phase in
             guard phase == .active, showingShareSheet else { return }
             Task { @MainActor in

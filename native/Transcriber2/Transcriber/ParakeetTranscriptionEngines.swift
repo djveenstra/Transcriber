@@ -1,5 +1,5 @@
 #if os(iOS)
-import AVFoundation
+@preconcurrency import AVFoundation
 import FluidAudio
 import Foundation
 
@@ -48,8 +48,9 @@ actor ParakeetEOULiveEngine {
         ready = true
     }
 
-    func append(_ buffer: AVAudioPCMBuffer) async throws {
+    func append(_ chunk: CapturedAudioChunk) async throws {
         guard !stopped else { return }
+        let buffer = chunk.buffer
         guard ready, let manager else {
             if queuedFrames < maximumQueuedFrames {
                 try queueWriter?.write(from: buffer)

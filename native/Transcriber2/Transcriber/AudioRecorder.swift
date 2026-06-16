@@ -7,10 +7,10 @@ final class AudioRecorder: ObservableObject {
     @Published private(set) var level: Float = 0
     @Published private(set) var duration: TimeInterval = 0
 
-    var onBuffer: (@Sendable (AVAudioPCMBuffer) -> Void)?
+    var onBuffer: (@Sendable (CapturedAudioChunk) -> Void)?
 
     private var engine: AVAudioEngine?
-    private var file: AVAudioFile?
+    private var fileWriter: AudioFileWriter?
     private var startedAt: Date?
 
     var elapsedDuration: TimeInterval {
@@ -42,12 +42,14 @@ final class AudioRecorder: ObservableObject {
         let engine = engine ?? AVAudioEngine()
         let input = engine.inputNode
         let format = input.outputFormat(forBus: 0)
-        file = try AVAudioFile(forWriting: url, settings: format.settings)
+        let writer = try AudioFileWriter(url: url, settings: format.settings)
+        fileWriter = writer
 
+        let onBuffer = onBuffer
         input.installTap(onBus: 0, bufferSize: 4_096, format: format) { [weak self] buffer, _ in
-            guard let copied = Self.copy(buffer) else { return }
-            try? self?.file?.write(from: buffer)
-            self?.onBuffer?(copied)
+            guard let chunk = CapturedAudioChunk(copying: buffer) else { return }
+            writer.write(chunk)
+            onBuffer?(chunk)
             let level = Self.rms(buffer)
             Task { @MainActor [weak self] in self?.level = level }
         }
@@ -59,31 +61,27 @@ final class AudioRecorder: ObservableObject {
         duration = 0
     }
 
-    func stop() {
+    /// Stops recording and returns the first write error encountered during the
+    /// session (if any). A non-nil error means the audio file may be incomplete.
+    @discardableResult
+    func stop() -> (any Error)? {
         if let startedAt {
             duration = Date.now.timeIntervalSince(startedAt)
         }
         engine?.inputNode.removeTap(onBus: 0)
         engine?.stop()
+        var writeError: (any Error)?
+        do {
+            try fileWriter?.close()
+        } catch {
+            writeError = error
+        }
+        fileWriter = nil
         engine = nil
-        file = nil
 #if os(iOS)
         try? AVAudioSession.sharedInstance().setActive(false)
 #endif
-    }
-
-    private static func copy(_ buffer: AVAudioPCMBuffer) -> AVAudioPCMBuffer? {
-        guard let copy = AVAudioPCMBuffer(pcmFormat: buffer.format, frameCapacity: buffer.frameCapacity) else {
-            return nil
-        }
-        copy.frameLength = buffer.frameLength
-        for channel in 0..<Int(buffer.format.channelCount) {
-            guard let source = buffer.floatChannelData?[channel], let destination = copy.floatChannelData?[channel] else {
-                continue
-            }
-            destination.update(from: source, count: Int(buffer.frameLength))
-        }
-        return copy
+        return writeError
     }
 
     private static func rms(_ buffer: AVAudioPCMBuffer) -> Float {

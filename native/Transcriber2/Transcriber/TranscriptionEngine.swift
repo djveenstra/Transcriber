@@ -1,4 +1,4 @@
-import AVFoundation
+@preconcurrency import AVFoundation
 import Foundation
 import WhisperKit
 
@@ -6,7 +6,7 @@ protocol TranscriptionEngine: Actor {
     func prepare() async throws
     func beginLive(onSegment: @escaping @Sendable (TranscriptionSegment) -> Void)
     func prepareLive(audioFormat: AVAudioFormat) async throws
-    func append(_ buffer: AVAudioPCMBuffer) async throws
+    func append(_ chunk: CapturedAudioChunk) async throws
     func finishLive() async throws
     func transcribeFile(
         _ url: URL,
@@ -17,14 +17,40 @@ protocol TranscriptionEngine: Actor {
 }
 
 actor WhisperKitTranscriptionEngine: TranscriptionEngine {
+    /// Rolling live-window bounds: grow up to `liveMaxSamples`, then discard
+    /// `liveDiscardSamples` from the front to fall back to `liveRetainSamples`.
+    /// Not private: exposed so unit tests can verify the window-trimming math.
+    static let liveRetainSamples = WhisperKit.sampleRate * 30
+    static let liveMaxSamples = WhisperKit.sampleRate * 45
+    static let liveDiscardSamples = WhisperKit.sampleRate * 15
+
     private var whisperKit: WhisperKit?
     private var loadedModelID: String?
     private var onSegment: (@Sendable (TranscriptionSegment) -> Void)?
     private var liveSamples: [Float] = []
+    private var totalAppendedSamples = 0
     private var nextLiveUpdateSample = WhisperKit.sampleRate * 2
+    /// Number of samples discarded from the front of `liveSamples` so far. Used to
+    /// convert window-relative Whisper timestamps back to recording-absolute ones.
+    private var discardedSampleCount = 0
     private var liveReady = false
     private var inferenceInProgress = false
     private var inferenceWaiters: [CheckedContinuation<Void, Never>] = []
+
+    /// If `sampleCount` exceeds `liveMaxSamples`, returns how many samples should be
+    /// discarded from the front of the rolling window to fall back toward
+    /// `liveRetainSamples`; otherwise returns 0.
+    static func discardCount(forSampleCount sampleCount: Int) -> Int {
+        guard sampleCount > liveMaxSamples else { return 0 }
+        return min(liveDiscardSamples, sampleCount)
+    }
+
+    /// Converts a count of samples discarded from the front of the rolling window
+    /// into a millisecond offset, used to translate window-relative Whisper
+    /// timestamps back to recording-absolute ones.
+    static func offsetMs(forDiscardedSampleCount discardedSampleCount: Int) -> Int {
+        Int((Double(discardedSampleCount) / Double(WhisperKit.sampleRate)) * 1_000)
+    }
 
     func prepare() async throws {
         _ = try await model()
@@ -33,7 +59,9 @@ actor WhisperKitTranscriptionEngine: TranscriptionEngine {
     func beginLive(onSegment: @escaping @Sendable (TranscriptionSegment) -> Void) {
         self.onSegment = onSegment
         liveSamples = []
+        totalAppendedSamples = 0
         nextLiveUpdateSample = WhisperKit.sampleRate * 2
+        discardedSampleCount = 0
         liveReady = false
     }
 
@@ -44,16 +72,24 @@ actor WhisperKitTranscriptionEngine: TranscriptionEngine {
         try await publishLiveSnapshot()
     }
 
-    func append(_ buffer: AVAudioPCMBuffer) async throws {
+    func append(_ chunk: CapturedAudioChunk) async throws {
         guard let resampled = AudioProcessor.resampleAudio(
-            fromBuffer: buffer,
+            fromBuffer: chunk.buffer,
             toSampleRate: Double(WhisperKit.sampleRate),
             channelCount: 1
         ) else { return }
-        liveSamples.append(contentsOf: AudioProcessor.convertBufferToArray(buffer: resampled))
+        let newSamples = AudioProcessor.convertBufferToArray(buffer: resampled)
+        liveSamples.append(contentsOf: newSamples)
+        totalAppendedSamples += newSamples.count
 
-        guard liveReady, liveSamples.count >= nextLiveUpdateSample else { return }
-        nextLiveUpdateSample = liveSamples.count + WhisperKit.sampleRate * 3
+        let discardCount = Self.discardCount(forSampleCount: liveSamples.count)
+        if discardCount > 0 {
+            liveSamples.removeFirst(discardCount)
+            discardedSampleCount += discardCount
+        }
+
+        guard liveReady, totalAppendedSamples >= nextLiveUpdateSample else { return }
+        nextLiveUpdateSample = totalAppendedSamples + WhisperKit.sampleRate * 3
         try await publishLiveSnapshot()
     }
 
@@ -62,6 +98,8 @@ actor WhisperKitTranscriptionEngine: TranscriptionEngine {
         releaseInference()
         onSegment = nil
         liveSamples = []
+        totalAppendedSamples = 0
+        discardedSampleCount = 0
         liveReady = false
     }
 
@@ -102,19 +140,20 @@ actor WhisperKitTranscriptionEngine: TranscriptionEngine {
         await acquireInference()
         defer { releaseInference() }
         let snapshot = liveSamples
+        let offsetMs = Self.offsetMs(forDiscardedSampleCount: discardedSampleCount)
         let results = try await model().transcribe(
             audioArray: snapshot,
             decodeOptions: Self.liveDecodingOptions
         )
-        let segments = Self.convert(results)
-        guard let first = segments.first, let last = segments.last else { return }
-        onSegment(
-            TranscriptionSegment(
-                startMs: first.startMs,
-                endMs: last.endMs,
-                text: segments.map(\.text).joined(separator: " ")
+        for segment in Self.convert(results) {
+            onSegment(
+                TranscriptionSegment(
+                    startMs: segment.startMs + offsetMs,
+                    endMs: segment.endMs + offsetMs,
+                    text: segment.text
+                )
             )
-        )
+        }
     }
 
     private func model() async throws -> WhisperKit {

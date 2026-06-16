@@ -1,6 +1,6 @@
 import Foundation
 
-enum TranscriptMerger {
+nonisolated enum TranscriptMerger {
     static func merge(
         transcription: [TranscriptionSegment],
         diarization: [DiarizationSegment],

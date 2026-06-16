@@ -74,11 +74,11 @@ final class ShareViewController: UIViewController {
 
         let providedName = provider.suggestedName?.trimmingCharacters(in: .whitespacesAndNewlines)
         let providedURL = providedName.map { URL(fileURLWithPath: $0) }
-        let baseName = providedURL?.deletingPathExtension().lastPathComponent.nonEmpty ?? "Voice Memo"
+        let title = providedURL?.deletingPathExtension().lastPathComponent.nonEmpty ?? "Voice Memo"
         let fileExtension = providedURL?.pathExtension.nonEmpty
             ?? UTType(typeIdentifier)?.preferredFilenameExtension
             ?? "m4a"
-        let destination = uniqueDestination(in: inbox, baseName: baseName, extension: fileExtension)
+        let destination = uniqueDestination(in: inbox, title: title, extension: fileExtension)
 
         do {
             try await copyFileRepresentation(
@@ -135,17 +135,13 @@ final class ShareViewController: UIViewController {
         }
     }
 
-    private func uniqueDestination(in directory: URL, baseName: String, extension fileExtension: String) -> URL {
-        let sanitized = baseName.replacingOccurrences(of: "/", with: "-")
-        var destination = directory.appendingPathComponent(sanitized).appendingPathExtension(fileExtension)
-        var copyNumber = 2
-        while FileManager.default.fileExists(atPath: destination.path) {
-            destination = directory
-                .appendingPathComponent("\(sanitized) \(copyNumber)")
-                .appendingPathExtension(fileExtension)
-            copyNumber += 1
-        }
-        return destination
+    /// Builds a destination filename that is unique by construction (UUID-prefixed),
+    /// while keeping the original title readable for display in the shared inbox.
+    /// See `SharedAudioItem.name` for how the title is recovered.
+    private func uniqueDestination(in directory: URL, title: String, extension fileExtension: String) -> URL {
+        let sanitizedTitle = title.replacingOccurrences(of: "/", with: "-")
+        let filename = "\(UUID().uuidString)__\(sanitizedTitle)"
+        return directory.appendingPathComponent(filename).appendingPathExtension(fileExtension)
     }
 
     private func finish(message: String, error: Bool) {

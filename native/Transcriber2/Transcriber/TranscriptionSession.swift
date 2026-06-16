@@ -1,7 +1,12 @@
 import AVFoundation
 import Combine
+import FluidAudio
 import Foundation
+import os
 import SwiftData
+import SwiftUI
+
+private let persistenceLogger = Logger(subsystem: "com.daniel.transcriber2", category: "Persistence")
 
 @MainActor
 final class TranscriptionSession: ObservableObject {
@@ -41,6 +46,7 @@ final class TranscriptionSession: ObservableObject {
     @Published private(set) var isIdentifyingSpeakers = false
     @Published private(set) var livePreviewNote: String?
     @Published private(set) var diarizationFailureDetail: String?
+    @Published private(set) var storageErrorMessage: String?
 
     let recorder = AudioRecorder()
 
@@ -49,13 +55,15 @@ final class TranscriptionSession: ObservableObject {
     private let liveParakeet = ParakeetEOULiveEngine()
     private var finalParakeet: ParakeetFinalTranscriptionEngine?
 #endif
-    private var diarizer: any DiarizationEngine = FluidDiarizationEngine()
+    // Not private: exposed so unit tests can inject a fake `DiarizationEngine`.
+    var diarizer: any DiarizationEngine = FluidDiarizationEngine()
     private var audioURL: URL?
     private var saved = false
     private weak var savedRecording: Recording?
     private var persistenceContext: ModelContext?
     private var livePreparationTask: Task<Void, Never>?
-    private var diarizationPreparationTask: Task<Void, Never>?
+    private var liveAudioContinuation: AsyncStream<CapturedAudioChunk>.Continuation?
+    private var liveConsumerTask: Task<Void, Never>?
 
     var liveSegments: [TranscriptSegment] {
         TranscriptMerger.merge(transcription: liveTranscription, diarization: liveDiarization)
@@ -74,6 +82,7 @@ final class TranscriptionSession: ObservableObject {
         guard state == .idle, modelState != .loading else { return }
         modelState = .loading
         do {
+            try Task.checkCancellation()
             try await prepareSelectedFinalModel()
             modelState = .ready(selectedModelName)
         } catch {
@@ -125,23 +134,30 @@ final class TranscriptionSession: ObservableObject {
             let url = AppStoragePaths.recordingsDirectory
                 .appendingPathComponent("recording-\(UUID().uuidString).caf")
             audioURL = url
-            recorder.onBuffer = { [weak self] buffer in
-                guard let self else { return }
-                Task {
-                    do {
+
+            let (stream, continuation) = AsyncStream.makeStream(of: CapturedAudioChunk.self)
+            liveAudioContinuation = continuation
+            recorder.onBuffer = { chunk in
+                continuation.yield(chunk)
+            }
+            liveConsumerTask = Task { [weak self] in
+                do {
+                    for await chunk in stream {
+                        guard let self else { break }
 #if os(iOS)
-                        try await self.liveParakeet.append(buffer)
+                        try await self.liveParakeet.append(chunk)
 #else
-                        try await self.transcriber.append(buffer)
+                        try await self.transcriber.append(chunk)
 #endif
-                    } catch {
-                        await MainActor.run {
-                            self.livePreviewState = .unavailable
-                            self.livePreviewNote = "Live preview paused: \(error.localizedDescription)"
-                        }
+                    }
+                } catch {
+                    await MainActor.run { [weak self] in
+                        self?.livePreviewState = .unavailable
+                        self?.livePreviewNote = "Live preview paused: \(error.localizedDescription)"
                     }
                 }
             }
+
             try recorder.start(at: url)
             state = .recording
             livePreviewState = .loading
@@ -150,14 +166,17 @@ final class TranscriptionSession: ObservableObject {
                 do {
 #if os(iOS)
                     try await self.liveParakeet.prepare()
+                    guard !Task.isCancelled, self.state == .recording else { return }
                     self.livePreviewState = .ready
 #else
                     try await self.transcriber.prepareLive(audioFormat: microphoneFormat)
+                    guard !Task.isCancelled, self.state == .recording else { return }
                     self.livePreviewState = .ready
                     let loaded = await self.transcriber.currentLoadedModelID()
                     self.modelState = .ready(WhisperModelChoice.choice(for: loaded ?? "").name)
 #endif
                 } catch {
+                    guard !Task.isCancelled, self.state == .recording else { return }
                     self.livePreviewState = .unavailable
                     self.livePreviewNote = "Live preview unavailable: \(error.localizedDescription)"
                 }
@@ -170,29 +189,50 @@ final class TranscriptionSession: ObservableObject {
 
     func stopRecording(in context: ModelContext) async {
         guard state == .recording, let audioURL else { return }
-        recorder.stop()
-        preserveRecording(in: context)
-        state = .processing("Finalizing live transcript")
-#if os(iOS)
+        let writeError = recorder.stop()
         livePreparationTask?.cancel()
-#else
-        await livePreparationTask?.value
-#endif
+        liveAudioContinuation?.finish()
+        liveAudioContinuation = nil
+        liveConsumerTask?.cancel()
+        await liveConsumerTask?.value
+        liveConsumerTask = nil
         livePreparationTask = nil
+#if os(iOS)
+        await liveParakeet.finish()
+#endif
+        preserveRecording(in: context)
+
+        if let writeError {
+            savedRecording?.transcriptionNeedsRetry = true
+            persistChanges(
+                in: context,
+                failureMessage: "Your recording was saved, but the audio file may be incomplete."
+            )
+            state = .failed("Recording stopped with a write error: \(writeError.localizedDescription). The audio file may be incomplete.")
+            return
+        }
+
+        state = .processing("Finalizing live transcript")
         do {
 #if os(iOS)
-            await liveParakeet.finish()
 #else
             try await transcriber.finishLive()
             await transcriber.unload()
             modelState = .loading
+            // Give Core ML a moment to fully release the live model before the final
+            // transcription pass loads its own model. Without this pause the two
+            // back-to-back loads can contend for the same GPU/ANE resources. Do not
+            // remove this delay or parallelize model loading.
             try? await Task.sleep(for: .seconds(1))
 #endif
             try await processFile(audioURL)
             updateSavedRecording()
         } catch {
             savedRecording?.transcriptionNeedsRetry = true
-            try? context.save()
+            persistChanges(
+                in: context,
+                failureMessage: "Your recording is safe, but we couldn't save its status. You can retry the transcript from the library."
+            )
             state = .failed(error.localizedDescription)
         }
     }
@@ -225,9 +265,9 @@ final class TranscriptionSession: ObservableObject {
 
     func saveCompletedRecording(in context: ModelContext) {
         guard let audioURL, state == .completed else { return }
+        persistenceContext = context
         if saved {
             updateSavedRecording()
-            try? context.save()
             return
         }
         let title = Date.now.formatted(date: .abbreviated, time: .shortened)
@@ -242,9 +282,12 @@ final class TranscriptionSession: ObservableObject {
                 finalTranscriptionModelID: selectedFinalModelID
         )
         context.insert(recording)
-        try? context.save()
         savedRecording = recording
         saved = true
+        persistChanges(
+            in: context,
+            failureMessage: "Your transcript could not be saved. It remains visible here, but it will be lost if you leave this screen."
+        )
     }
 
     func retryTranscription(for recording: Recording, in context: ModelContext) async {
@@ -259,7 +302,10 @@ final class TranscriptionSession: ObservableObject {
             updateSavedRecording()
         } catch {
             recording.transcriptionNeedsRetry = true
-            try? context.save()
+            persistChanges(
+                in: context,
+                failureMessage: "Your recording is safe, but we couldn't save its status. You can retry the transcript again."
+            )
             state = .failed(error.localizedDescription)
         }
     }
@@ -281,52 +327,59 @@ final class TranscriptionSession: ObservableObject {
         saved = false
         savedRecording = nil
         persistenceContext = nil
+        storageErrorMessage = nil
+        liveAudioContinuation?.finish()
+        liveAudioContinuation = nil
+        liveConsumerTask?.cancel()
+        liveConsumerTask = nil
         livePreparationTask?.cancel()
         livePreparationTask = nil
-        diarizationPreparationTask?.cancel()
-        diarizationPreparationTask = nil
     }
 
-    func retrySpeakerLabels(for recording: Recording) async {
+    func retrySpeakerLabels(for recording: Recording, in context: ModelContext) async {
         guard !recording.rawTranscription.isEmpty else {
             state = .failed("This older transcript does not contain the timing data needed to retry speaker labels.")
             return
         }
+        guard !Task.isCancelled else { return }
+        persistenceContext = context
         audioURL = recording.audioURL
         rawTranscription = recording.rawTranscription
         finalSegments = recording.segments
         state = .processing("Identifying speakers")
         progress = 0.65
-        if let diarization = await diarizationWithTimeout(recording.audioURL) {
-            let merged = TranscriptMerger.merge(transcription: recording.rawTranscription, diarization: diarization)
+        if let outcome = await runDiarizationWithFallback(recording.audioURL) {
+            let merged = TranscriptMerger.merge(transcription: recording.rawTranscription, diarization: outcome.segments)
             recording.segments = merged
             recording.diarizationNeedsRetry = false
             finalSegments = merged
-            completionNote = nil
+            completionNote = outcome.isApproximate ? approximateSpeakerLabelNote() : nil
             diarizationNeedsRetry = false
             progress = 1
             state = .completed
+            persistChanges(
+                in: context,
+                failureMessage: "The updated speaker labels could not be saved. They remain visible here, but it will be lost if you leave this screen."
+            )
         } else {
             completionNote = speakerLabelFailureMessage(saved: true)
             progress = 1
             state = .completed
         }
-        diarizer = FluidDiarizationEngine()
     }
 
     func retryCurrentSpeakerLabels() async {
-        guard let audioURL, !rawTranscription.isEmpty else { return }
+        guard let audioURL, !rawTranscription.isEmpty, !Task.isCancelled else { return }
         state = .processing("Identifying speakers")
         progress = 0.6
-        if let diarization = await diarizationWithTimeout(audioURL) {
-            finalSegments = TranscriptMerger.merge(transcription: rawTranscription, diarization: diarization)
-            completionNote = nil
+        if let outcome = await runDiarizationWithFallback(audioURL) {
+            finalSegments = TranscriptMerger.merge(transcription: rawTranscription, diarization: outcome.segments)
+            completionNote = outcome.isApproximate ? approximateSpeakerLabelNote() : nil
             diarizationNeedsRetry = false
         } else {
             completionNote = speakerLabelFailureMessage(saved: false)
             diarizationNeedsRetry = true
         }
-        diarizer = FluidDiarizationEngine()
         savedRecording?.segments = finalSegments
         savedRecording?.diarizationNeedsRetry = diarizationNeedsRetry
         progress = 1
@@ -334,6 +387,7 @@ final class TranscriptionSession: ObservableObject {
     }
 
     private func processFile(_ url: URL) async throws {
+        try Task.checkCancellation()
         state = .processing("Preparing transcription")
         progress = 0.02
         modelState = .loading
@@ -349,10 +403,17 @@ final class TranscriptionSession: ObservableObject {
         savedRecording?.transcriptionNeedsRetry = false
         savedRecording?.finalTranscriptionModelID = selectedFinalModelID
 
+        try Task.checkCancellation()
+
         // Preserve the finished text before speaker labeling begins.
         finalSegments = TranscriptMerger.merge(transcription: transcription, diarization: [])
         savedRecording?.segments = finalSegments
-        try? persistenceContext?.save()
+        if let persistenceContext {
+            persistChanges(
+                in: persistenceContext,
+                failureMessage: "Your transcript finished but could not be saved yet. It remains visible here, but it will be lost if you leave this screen."
+            )
+        }
         progress = 0.6
 #if os(iOS)
         isIdentifyingSpeakers = true
@@ -363,19 +424,24 @@ final class TranscriptionSession: ObservableObject {
 #if os(macOS)
         await transcriber.unload()
         modelState = .notLoaded
+        // Give Core ML a moment to fully release the transcription model before the
+        // diarization model loads. Without this pause the two back-to-back loads can
+        // contend for the same GPU/ANE resources. Do not remove this delay or
+        // parallelize model loading.
         try? await Task.sleep(for: .seconds(1))
 #else
         await unloadSelectedFinalModel()
 #endif
 
-        let diarization = await diarizationWithTimeout(url)
-        diarizer = FluidDiarizationEngine()
-        if let diarization {
+        try Task.checkCancellation()
+        let outcome = await runDiarizationWithFallback(url)
+        if let outcome {
             finalSegments = TranscriptMerger.merge(
                 transcription: transcription,
-                diarization: diarization
+                diarization: outcome.segments
             )
             diarizationNeedsRetry = false
+            completionNote = outcome.isApproximate ? approximateSpeakerLabelNote() : nil
         } else {
             completionNote = speakerLabelFailureMessage(saved: false)
             diarizationNeedsRetry = true
@@ -402,9 +468,31 @@ final class TranscriptionSession: ObservableObject {
             finalTranscriptionModelID: selectedFinalModelID
         )
         context.insert(recording)
-        try? context.save()
         savedRecording = recording
         saved = true
+        // If this fails, processing continues and later saves (in
+        // updateSavedRecording/processFile) retry persisting this same recording.
+        persistChanges(
+            in: context,
+            failureMessage: "Your recording could not be saved yet. Transcription will continue and we'll try saving it again once it finishes."
+        )
+    }
+
+    func dismissStorageError() {
+        storageErrorMessage = nil
+    }
+
+    /// Saves the context, surfacing failures via `storageErrorMessage` instead of
+    /// silently discarding them. `failureMessage` should tell the user what remains
+    /// safe (e.g. "still visible here") so they know whether to wait or take action.
+    private func persistChanges(in context: ModelContext, failureMessage: String) {
+        do {
+            try context.save()
+            storageErrorMessage = nil
+        } catch {
+            persistenceLogger.error("Failed to save model context: \(error.localizedDescription, privacy: .public)")
+            storageErrorMessage = failureMessage
+        }
     }
 
     private func updateSavedRecording() {
@@ -413,7 +501,11 @@ final class TranscriptionSession: ObservableObject {
         savedRecording?.transcriptionNeedsRetry = state != .completed
         savedRecording?.diarizationNeedsRetry = diarizationNeedsRetry
         savedRecording?.finalTranscriptionModelID = selectedFinalModelID
-        try? persistenceContext?.save()
+        guard let persistenceContext else { return }
+        persistChanges(
+            in: persistenceContext,
+            failureMessage: "Your transcript could not be saved. It remains visible here, but it will be lost if you leave this screen."
+        )
     }
 
     private var selectedFinalModelID: String {
@@ -471,40 +563,100 @@ final class TranscriptionSession: ObservableObject {
 #endif
     }
 
-    private func diarizationWithTimeout(_ url: URL) async -> [DiarizationSegment]? {
-        await withCheckedContinuation { continuation in
-            let gate = DiarizationResultGate(continuation: continuation)
-            let activeDiarizer = diarizer
+    /// Runs diarization with Balanced V2, automatically retrying once with the faster
+    /// (less accurate) Fast V2 config if Balanced V2 fails or times out. Returns `nil`
+    /// only if both attempts fail.
+    ///
+    /// The timeout/poll parameters and `fallbackEngine` default to production values
+    /// and are only overridden by tests to keep the watchdog race fast and deterministic.
+    func runDiarizationWithFallback(
+        _ url: URL,
+        initialTimeout: TimeInterval = 120,
+        progressTimeout: TimeInterval = 30,
+        pollInterval: Duration = .seconds(5),
+        fallbackEngine: any DiarizationEngine = FluidDiarizationEngine(config: .fastV2)
+    ) async -> DiarizationAttemptOutcome? {
+        diarizationFailureDetail = nil
+        if let segments = await diarizeWithWatchdog(
+            using: diarizer,
+            url: url,
+            initialTimeout: initialTimeout,
+            progressTimeout: progressTimeout,
+            pollInterval: pollInterval
+        ) {
+            diarizer = FluidDiarizationEngine(config: .balancedV2)
+            return DiarizationAttemptOutcome(segments: segments, isApproximate: false)
+        }
 
-            Task {
+        diarizationFailureDetail = nil
+        if let segments = await diarizeWithWatchdog(
+            using: fallbackEngine,
+            url: url,
+            initialTimeout: initialTimeout,
+            progressTimeout: progressTimeout,
+            pollInterval: pollInterval
+        ) {
+            diarizer = FluidDiarizationEngine(config: .balancedV2)
+            return DiarizationAttemptOutcome(segments: segments, isApproximate: true)
+        }
+
+        diarizer = FluidDiarizationEngine(config: .balancedV2)
+        return nil
+    }
+
+    /// Races a diarization attempt against a watchdog that allows up to
+    /// `initialTimeout` seconds before the first progress update, then
+    /// `progressTimeout` seconds without further progress. Cancels whichever task
+    /// doesn't finish first.
+    func diarizeWithWatchdog(
+        using diarizer: any DiarizationEngine,
+        url: URL,
+        initialTimeout: TimeInterval = 120,
+        progressTimeout: TimeInterval = 30,
+        pollInterval: Duration = .seconds(5)
+    ) async -> [DiarizationSegment]? {
+        let progressGate = DiarizationProgressGate(initialTimeout: initialTimeout, progressTimeout: progressTimeout)
+        let outcome = await withTaskGroup(of: DiarizationRaceOutcome.self) { group -> DiarizationRaceOutcome in
+            group.addTask {
                 do {
-                    let result = try await activeDiarizer.diarizeFile(url) { [weak self] value in
-                        Task { await gate.reportProgress() }
+                    let result = try await diarizer.diarizeFile(url) { [weak self] value in
+                        Task { await progressGate.reportProgress() }
                         Task { @MainActor in
                             self?.progress = 0.6 + min(max(value, 0), 1) * 0.35
                         }
                     }
-                    await gate.finish(with: result)
+                    return .finished(result)
                 } catch {
-                    await MainActor.run {
-                        self.diarizationFailureDetail = error.localizedDescription
+                    return .failed(error.localizedDescription)
+                }
+            }
+            group.addTask {
+                while !Task.isCancelled {
+                    try? await Task.sleep(for: pollInterval)
+                    if await progressGate.hasTimedOut() {
+                        return .timedOut
                     }
-                    await gate.finish(with: nil)
                 }
+                return .timedOut
             }
-
-            Task {
-                while true {
-                    try? await Task.sleep(for: .seconds(5))
-                    if await gate.isFinished() { return }
-                    if await gate.hasTimedOut() { break }
-                }
-                await MainActor.run {
-                    self.diarizationFailureDetail = "Speaker labeling timed out while processing this recording."
-                }
-                await gate.finish(with: nil)
-            }
+            defer { group.cancelAll() }
+            return await group.next() ?? .timedOut
         }
+
+        switch outcome {
+        case .finished(let segments):
+            return segments
+        case .failed(let description):
+            diarizationFailureDetail = description
+            return nil
+        case .timedOut:
+            diarizationFailureDetail = "Speaker labeling timed out while processing this recording."
+            return nil
+        }
+    }
+
+    private func approximateSpeakerLabelNote() -> String {
+        "Speaker labels are approximate because the detailed pass took too long; a faster pass was used instead."
     }
 
     private func speakerLabelFailureMessage(saved: Bool) -> String {
@@ -517,42 +669,83 @@ final class TranscriptionSession: ObservableObject {
 
     private func replaceOverlappingLiveSegment(_ newSegment: TranscriptionSegment) {
         livePreviewState = .ready
-        liveTranscription.removeAll { existing in
-            existing.startMs >= newSegment.startMs && existing.endMs <= newSegment.endMs
+        liveTranscription = Self.mergingLiveSegment(newSegment, into: liveTranscription)
+    }
+
+    /// Drops any segment in `existing` whose time range overlaps `newSegment` at all,
+    /// appends `newSegment`, and returns the result sorted by start time. This lets
+    /// re-transcribed portions of the rolling window replace stale text while
+    /// finalized segments before the window (which never overlap) are preserved.
+    static func mergingLiveSegment(
+        _ newSegment: TranscriptionSegment,
+        into existing: [TranscriptionSegment]
+    ) -> [TranscriptionSegment] {
+        var result = existing.filter { current in
+            !(current.startMs < newSegment.endMs && current.endMs > newSegment.startMs)
         }
-        liveTranscription.append(newSegment)
-        liveTranscription.sort { $0.startMs < $1.startMs }
+        result.append(newSegment)
+        result.sort { $0.startMs < $1.startMs }
+        return result
     }
 }
 
-private actor DiarizationResultGate {
-    private var continuation: CheckedContinuation<[DiarizationSegment]?, Never>?
+/// The result of a single diarization attempt, including whether it used the
+/// faster (less accurate) fallback config.
+/// Not private: exposed so unit tests can inspect outcomes returned by
+/// `runDiarizationWithFallback`.
+nonisolated struct DiarizationAttemptOutcome {
+    let segments: [DiarizationSegment]
+    let isApproximate: Bool
+}
+
+/// The outcome of racing a diarization attempt against its watchdog.
+private enum DiarizationRaceOutcome: Sendable {
+    case finished([DiarizationSegment])
+    case failed(String)
+    case timedOut
+}
+
+/// Tracks elapsed time for the diarization watchdog: allows up to
+/// `initialTimeout` seconds before the first progress update, then
+/// `progressTimeout` seconds without further progress.
+private actor DiarizationProgressGate {
     private let startedAt = Date.now
     private var lastProgressAt: Date?
+    private let initialTimeout: TimeInterval
+    private let progressTimeout: TimeInterval
 
-    init(continuation: CheckedContinuation<[DiarizationSegment]?, Never>) {
-        self.continuation = continuation
-    }
-
-    func finish(with result: [DiarizationSegment]?) {
-        guard let continuation else { return }
-        self.continuation = nil
-        continuation.resume(returning: result)
+    init(initialTimeout: TimeInterval, progressTimeout: TimeInterval) {
+        self.initialTimeout = initialTimeout
+        self.progressTimeout = progressTimeout
     }
 
     func reportProgress() {
         lastProgressAt = .now
     }
 
-    func isFinished() -> Bool {
-        continuation == nil
-    }
-
     func hasTimedOut() -> Bool {
-        guard continuation != nil else { return false }
         if let lastProgressAt {
-            return Date.now.timeIntervalSince(lastProgressAt) >= 30
+            return Date.now.timeIntervalSince(lastProgressAt) >= progressTimeout
         }
-        return Date.now.timeIntervalSince(startedAt) >= 120
+        return Date.now.timeIntervalSince(startedAt) >= initialTimeout
+    }
+}
+
+extension View {
+    /// Presents `session.storageErrorMessage` as an alert and clears it on dismissal.
+    func storageErrorAlert(_ session: TranscriptionSession) -> some View {
+        alert(
+            "Storage Issue",
+            isPresented: Binding(
+                get: { session.storageErrorMessage != nil },
+                set: { isPresented in if !isPresented { session.dismissStorageError() } }
+            ),
+            actions: {
+                Button("OK", role: .cancel) { session.dismissStorageError() }
+            },
+            message: {
+                Text(session.storageErrorMessage ?? "")
+            }
+        )
     }
 }
