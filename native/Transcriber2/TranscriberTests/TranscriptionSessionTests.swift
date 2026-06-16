@@ -41,6 +41,31 @@ private actor FakeDiarizationEngine: DiarizationEngine {
     }
 }
 
+/// Simulates a diarization engine that does blocking work in chunks and only
+/// checks for cancellation between chunks — mirroring the real chunked
+/// Sortformer loop. Each chunk takes `chunkDuration` wall time.
+private actor ChunkedFakeDiarizationEngine: DiarizationEngine {
+    private let chunkCount: Int
+    private let chunkDuration: Duration
+
+    init(chunkCount: Int, chunkDuration: Duration) {
+        self.chunkCount = chunkCount
+        self.chunkDuration = chunkDuration
+    }
+
+    func diarizeFile(
+        _ url: URL,
+        progress: @escaping @Sendable (Double) -> Void
+    ) async throws -> [DiarizationSegment] {
+        for i in 0..<chunkCount {
+            try Task.checkCancellation()
+            try await Task.sleep(for: chunkDuration)
+            progress(Double(i + 1) / Double(chunkCount))
+        }
+        return [DiarizationSegment(startMs: 0, endMs: 1_000, speaker: "SPEAKER_00")]
+    }
+}
+
 @MainActor
 struct DiarizationFallbackTests {
     private let url = URL(fileURLWithPath: "/tmp/test.caf")
@@ -118,6 +143,97 @@ struct DiarizationFallbackTests {
 
         #expect(outcome == nil)
         #expect(session.diarizationFailureDetail == "Speaker labeling timed out while processing this recording.")
+    }
+
+    @Test func chunkedPrimaryTimesOutAndFallbackSucceeds() async throws {
+        let session = TranscriptionSession()
+        // Primary: 100 chunks of 200ms each — won't report progress quickly enough
+        // for the 50ms timeout, so the watchdog cancels it between chunks.
+        session.diarizer = ChunkedFakeDiarizationEngine(
+            chunkCount: 100,
+            chunkDuration: .milliseconds(200)
+        )
+
+        let outcome = try #require(await session.runDiarizationWithFallback(
+            url,
+            initialTimeout: 0.05,
+            progressTimeout: 0.05,
+            pollInterval: .milliseconds(10),
+            fallbackEngine: FakeDiarizationEngine(.succeed([
+                DiarizationSegment(startMs: 0, endMs: 1_000, speaker: "SPEAKER_00")
+            ]))
+        ))
+
+        #expect(outcome.isApproximate == true)
+        #expect(outcome.segments.count == 1)
+    }
+
+    @Test func chunkedBothTimeOutAndReturnsNil() async {
+        let session = TranscriptionSession()
+        session.diarizer = ChunkedFakeDiarizationEngine(
+            chunkCount: 100,
+            chunkDuration: .milliseconds(200)
+        )
+
+        let outcome = await session.runDiarizationWithFallback(
+            url,
+            initialTimeout: 0.05,
+            progressTimeout: 0.05,
+            pollInterval: .milliseconds(10),
+            fallbackEngine: ChunkedFakeDiarizationEngine(
+                chunkCount: 100,
+                chunkDuration: .milliseconds(200)
+            )
+        )
+
+        #expect(outcome == nil)
+    }
+}
+
+struct OrderedLiveAudioTests {
+    @Test func asyncStreamConsumerDeliversChunksInCaptureOrder() async {
+        let (stream, continuation) = AsyncStream.makeStream(of: Int.self)
+        let count = 50
+        for i in 0..<count {
+            continuation.yield(i)
+        }
+        continuation.finish()
+
+        var received: [Int] = []
+        for await value in stream {
+            received.append(value)
+        }
+
+        #expect(received == Array(0..<count))
+    }
+
+    @Test func finishingStreamTerminatesConsumer() async {
+        let (stream, continuation) = AsyncStream.makeStream(of: Int.self)
+        continuation.yield(1)
+        continuation.yield(2)
+        continuation.finish()
+
+        let task = Task {
+            var values: [Int] = []
+            for await v in stream { values.append(v) }
+            return values
+        }
+
+        let result = await task.value
+        #expect(result == [1, 2])
+    }
+
+    @Test func cancellingConsumerStopsIteration() async {
+        let (stream, _) = AsyncStream.makeStream(of: Int.self)
+
+        let task = Task {
+            var count = 0
+            for await _ in stream { count += 1 }
+            return count
+        }
+        task.cancel()
+        let result = await task.value
+        #expect(result == 0)
     }
 }
 
