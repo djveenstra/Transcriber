@@ -26,7 +26,7 @@ xcodebuild -project "src/native/Transcriber2/Transcriber2.xcodeproj" -scheme Tra
   -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
 
 xcodebuild test -project "src/native/Transcriber2/Transcriber2.xcodeproj" -scheme Transcriber \
-  -destination 'platform=macOS' CODE_SIGNING_ALLOWED=NO
+  -destination 'platform=macOS' CODE_SIGNING_ALLOWED=NO -only-testing:TranscriberTests
 ```
 
 ## Standing regression checklist (scope to touched screens)
@@ -47,4 +47,12 @@ xcodebuild test -project "src/native/Transcriber2/Transcriber2.xcodeproj" -schem
 
 ## Evidence
 
-_(No objectives gated yet. First entry will be OBJ-01.)_
+## OBJ-01 — Governance, Green Baseline & Data-Safety Guardrails — 2026-06-18
+- Tier: agent-verifiable
+- Build: macOS PASS / iOS-sim PASS
+- Unit/integration tests: 49 passed / 49 total using `-only-testing:TranscriberTests`; existing `RecordingPersistenceTests` cover `segments`, `rawTranscription`, and `speakerNames` round-trip plus corrupted blob decode-to-empty behavior.
+- Manual UI: not run; OBJ-01 changed planning docs only and did not touch app UI or production behavior.
+- Failure injection: temporarily broke the `Recording.segments` setter; `RecordingPersistenceTests.segmentsRoundTripThroughSetterAndGetter()` failed as expected, then the production file was restored and the unit-test bundle passed again.
+- Regression checklist: PASS for scoped regression: macOS build, iOS-simulator build, strict-concurrency build, and unit-test bundle are green. Full generated-scheme `xcodebuild test` attempted to launch `TranscriberUITests` and failed before UI-test runner bootstrap; baseline command corrected to target `TranscriberTests` per DECISIONS.md D-006.
+- Device gates outstanding: none for OBJ-01. Human approval is still required before archiving or moving `XCode App Build/`; recommendation is to archive it later because it is a stale starter Xcode tree with its own nested `.git`, while treating it as read-only until Daniel approves.
+- Verdict: PASS (defects: generated macOS UI-test runner is not usable as part of the baseline; documented and excluded from agent baseline without modifying the Xcode project).

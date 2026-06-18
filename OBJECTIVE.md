@@ -2,11 +2,11 @@
 
 _This file holds the **single active objective** the Worker is currently implementing. The Manager sets it from the roadmap and advances it only when the current objective is gated `PROCEED`. Full details for every objective live in [docs/planning/objectives/](docs/planning/objectives/)._
 
-## ▶ Active objective: **OBJ-01 — Governance, Green Baseline & Data-Safety Guardrails**
+## ▶ Active objective: **OBJ-02 — File-Based Model Readiness**
 
-Read the full spec: [docs/planning/objectives/OBJECTIVE-01.md](docs/planning/objectives/OBJECTIVE-01.md).
+Read the full spec: [docs/planning/objectives/OBJECTIVE-02.md](docs/planning/objectives/OBJECTIVE-02.md).
 
-**One-line mission:** Prove the project builds + tests green on macOS and iOS-simulator, lock in the active-path convention and SwiftData migration policy, and add `Recording` data-safety guardrail tests — no behavior change.
+**One-line mission:** Make transcription-model readiness reflect actual on-device files, replacing the in-memory/UserDefaults Whisper "downloaded" flag as the source of truth while preserving current behavior when files are present.
 
 **Before starting, read:** [PRD.md](PRD.md) → [PLAN.md](PLAN.md) → this file → [AGENTS.md](AGENTS.md).
 
@@ -16,8 +16,8 @@ Read the full spec: [docs/planning/objectives/OBJECTIVE-01.md](docs/planning/obj
 
 | # | Objective | Phase | Status |
 |---|---|---|---|
-| 01 | [Governance, green baseline & data-safety guardrails](docs/planning/objectives/OBJECTIVE-01.md) | 0 | ▶ Active |
-| 02 | [File-based model readiness](docs/planning/objectives/OBJECTIVE-02.md) | 1 | Pending |
+| 01 | [Governance, green baseline & data-safety guardrails](docs/planning/objectives/OBJECTIVE-01.md) | 0 | Done — PROCEED 2026-06-18 |
+| 02 | [File-based model readiness](docs/planning/objectives/OBJECTIVE-02.md) | 1 | ▶ Active |
 | 03 | [Model lifecycle states + Repair/Redownload](docs/planning/objectives/OBJECTIVE-03.md) | 1 | Pending |
 | 04 | [Default preload + status refresh + verify-before-process](docs/planning/objectives/OBJECTIVE-04.md) | 1 | Pending |
 | 05 | [Microphone abstraction & selection backend](docs/planning/objectives/OBJECTIVE-05.md) | 2 | Pending |

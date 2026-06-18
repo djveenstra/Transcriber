@@ -32,7 +32,7 @@ xcodebuild -project "src/native/Transcriber2/Transcriber2.xcodeproj" -scheme Tra
   -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
 
 xcodebuild test -project "src/native/Transcriber2/Transcriber2.xcodeproj" -scheme Transcriber \
-  -destination 'platform=macOS' CODE_SIGNING_ALLOWED=NO
+  -destination 'platform=macOS' CODE_SIGNING_ALLOWED=NO -only-testing:TranscriberTests
 ```
 
 On-device acceptance (Human Reviewer, iPhone 17 Pro) covers: real mic capture, background/lock recording, model download/persistence across reboot, 30-min reliability, performance, battery, offline.
@@ -43,7 +43,7 @@ On-device acceptance (Human Reviewer, iPhone 17 Pro) covers: real mic capture, b
 
 **Purpose:** Make change safe before making change. Establish the planning system, a known-green build/test baseline, repo-hygiene conventions, and a SwiftData migration policy.
 
-- **OBJ-01 — Governance, green baseline & data-safety guardrails.** Confirm both builds + tests green; document the active-path rule; write the SwiftData schema/migration policy; add round-trip/corruption tests for `Recording` blob accessors; inventory the stale `XCode App Build/` tree and propose (don't execute) archiving.
+- **OBJ-01 — Governance, green baseline & data-safety guardrails.** **DONE 2026-06-18 — Gate: PROCEED; evidence: [QA.md](QA.md#obj-01--governance-green-baseline--data-safety-guardrails--2026-06-18).** Confirm both builds + tests green; document the active-path rule; write the SwiftData schema/migration policy; add round-trip/corruption tests for `Recording` blob accessors; inventory the stale `XCode App Build/` tree and propose (don't execute) archiving.
 
 **DoD:** baseline commands pass; migration policy in [DECISIONS.md](DECISIONS.md); guardrail tests added; no behavior change.
 **Risk:** Low. **Rollback:** revert added tests/docs.

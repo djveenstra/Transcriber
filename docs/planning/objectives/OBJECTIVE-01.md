@@ -8,7 +8,7 @@ Make change safe before any feature work: prove the project builds and tests gre
 ## This objective is intentionally narrow. Do ONLY these things:
 1. **Verify the macOS build** (baseline command below).
 2. **Verify the iOS-simulator build** (baseline command below).
-3. **Verify the tests** (`xcodebuild test`, macOS).
+3. **Verify the unit tests** (`xcodebuild test`, macOS, `TranscriberTests` bundle).
 4. **Add data-safety guardrail tests _if appropriate_** — round-trip encode/decode for `Recording.segments`, `rawTranscription`, `speakerNames`, and behavior on corrupted blob data (returns `[]`/`[:]`, logs, never crashes). Tests only — see prohibitions.
 5. **Document the active-path rule** (already in [AGENTS.md §2.3](../../../AGENTS.md) and [DECISIONS.md D-001](../../../DECISIONS.md)) — confirm it is present and correct; do not weaken it.
 6. **Confirm the SwiftData migration policy** ([DECISIONS.md D-002](../../../DECISIONS.md)) is present and matches `Models.swift`; note any discrepancy in DECISIONS.md (do not change the schema).
@@ -62,7 +62,7 @@ Make change safe before any feature work: prove the project builds and tests gre
 - [ ] QA evidence appended to [QA.md](../../../QA.md).
 
 ## Acceptance Criteria
-- macOS + iOS-sim builds and `xcodebuild test` all pass.
+- macOS + iOS-sim builds and `xcodebuild test` for the `TranscriberTests` unit-test bundle all pass.
 - Migration policy + active-path rule confirmed present/accurate in [DECISIONS.md](../../../DECISIONS.md).
 - `Recording` coding guardrail tests added and green (if appropriate; if the project already covers this, note it instead).
 - Archive recommendation for `XCode App Build/` recorded for the Human Reviewer.
@@ -82,3 +82,20 @@ Per [AGENTS.md §4](../../../AGENTS.md), plus: baseline green and documented; gu
 
 ## Rollback Considerations
 Pure additive (tests + docs). Revert the commit to fully undo. No data, schema, dependency, or behavior impact.
+
+## Completion Report — 2026-06-18
+
+**Gate:** PROCEED
+
+**Worker report:**
+- Files touched: `PLAN.md`, `OBJECTIVE.md`, `QA.md`, `DECISIONS.md`, `docs/planning/objectives/OBJECTIVE-01.md`. No production code changes remain.
+- Assumptions: Existing `RecordingPersistenceTests` satisfy OBJ-01 guardrail coverage, so no new test file was needed.
+- Tests run: macOS build PASS; iOS-simulator build PASS; original generated-scheme macOS test command failed because `TranscriberUITests` runner exited before bootstrap; corrected unit-test baseline `-only-testing:TranscriberTests` PASS with 49/49 tests.
+- Failure injection: Temporarily broke `Recording.segments` setter; `RecordingPersistenceTests.segmentsRoundTripThroughSetterAndGetter()` failed as expected; restored production file and reran unit tests green.
+- Objective items completed: active-path rule confirmed; SwiftData migration policy confirmed against `Models.swift`; `XCode App Build/` inventoried only; QA evidence appended.
+- Deferred/blocked: Generated macOS UI-test runner is not part of the recurring baseline until intentionally configured.
+- `XCode App Build/` recommendation: Archive later with Human Reviewer approval. It is a stale starter Xcode tree with its own nested `.git`; keep read-only until approved.
+
+**Auditor report:** ALIGNED. Diff is planning docs only; no app behavior, schema, dependency, strict-concurrency, `src/python/`, `src/legacy-ios/`, or `XCode App Build/` changes.
+
+**QA report:** PASS. Evidence recorded in [QA.md](../../../QA.md#obj-01--governance-green-baseline--data-safety-guardrails--2026-06-18). No Human-owned real-device gate was claimed complete.

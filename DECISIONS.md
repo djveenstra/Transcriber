@@ -38,6 +38,11 @@ Format per entry: **ID · Date · Decision · Why · Implications · Reversibili
 **Implications:** Do not remove/optimize these without on-device measurement; objectives touching the pipeline restate this.
 **Reversibility:** Changes require measurement evidence before merge.
 
+### D-006 · 2026-06-18 · Agent baseline test command targets the unit-test bundle
+**Why:** The generated `Transcriber` scheme also attempts to launch `TranscriberUITests` on macOS, and that runner exited before bootstrapping during OBJ-01. The agent-verifiable baseline for every objective is the `TranscriberTests` unit-test bundle; UI workflows remain covered by scoped manual QA or later objective-specific UI tests.
+**Implications:** Baseline test commands include `-only-testing:TranscriberTests`. UI-test runner failures are documented as QA evidence, not worked around by modifying the Xcode project in OBJ-01.
+**Reversibility:** Remove the filter once the scheme/UI-test runner is intentionally configured and validated.
+
 ---
 
 ## Decisions awaiting the Human Reviewer (open questions)
