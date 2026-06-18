@@ -3,10 +3,9 @@ import SwiftUI
 struct SettingsView: View {
     @AppStorage("keepAudioFiles") private var keepAudioFiles = true
     @AppStorage("whisperModel") private var whisperModel = WhisperModelChoice.defaultID
-    @StateObject private var downloader = WhisperModelDownloader.shared
+    @StateObject private var finalDownloader = FinalModelDownloader.shared
 #if os(iOS)
     @AppStorage("finalTranscriptionModel") private var finalModel = FinalTranscriptionModelChoice.defaultID
-    @StateObject private var finalDownloader = FinalModelDownloader.shared
 #endif
 
     var body: some View {
@@ -29,7 +28,6 @@ struct SettingsView: View {
                     Text(selectedFinalModel.detail)
                         .font(.footnote)
                         .foregroundStyle(Theme.muted)
-                    finalDownloadControl
                     LabeledContent("Live transcription", value: "Parakeet EOU 120M · 320 ms")
                     LabeledContent("Final transcription", value: selectedFinalModel.name)
                     LabeledContent("Live speakers", value: "Added after recording")
@@ -44,7 +42,6 @@ struct SettingsView: View {
                         .font(.footnote)
                         .foregroundStyle(Theme.muted)
                     modelDetail
-                    downloadControl
                     LabeledContent("Live transcription", value: "WhisperKit")
                     LabeledContent("Final transcription", value: "WhisperKit")
                     LabeledContent("Live speakers", value: liveSpeakerDescription)
@@ -63,6 +60,11 @@ struct SettingsView: View {
                         .foregroundStyle(Theme.muted)
                 }
 #endif
+                Section("Model Storage") {
+                    ForEach(registryModels) { descriptor in
+                        modelStorageRow(descriptor)
+                    }
+                }
                 Section("Speakers") {
                     LabeledContent("Detection", value: "Automatic")
 #if os(iOS)
@@ -91,9 +93,6 @@ struct SettingsView: View {
                 finalModel = FinalTranscriptionModelChoice.selectedID()
 #endif
             }
-            .onChange(of: whisperModel) { _, value in
-                downloader.selectionChanged(to: value)
-            }
 #if os(iOS)
             .onChange(of: finalModel) { _, value in
                 FinalTranscriptionModelChoice.setSelectedID(value)
@@ -109,35 +108,6 @@ struct SettingsView: View {
 #if os(iOS)
     private var selectedFinalModel: FinalTranscriptionModelChoice {
         FinalTranscriptionModelChoice.choice(for: finalModel)
-    }
-
-    @ViewBuilder private var finalDownloadControl: some View {
-        switch finalDownloader.state {
-        case let .downloading(id, progress, status) where id == finalModel:
-            VStack(alignment: .leading, spacing: 4) {
-                ProgressView(value: progress)
-                Text("Downloading \(selectedFinalModel.name): \(progress.formatted(.percent.precision(.fractionLength(0))))")
-                    .font(.caption)
-                    .foregroundStyle(Theme.muted)
-                Text(status)
-                    .font(.caption2)
-                    .foregroundStyle(Theme.muted)
-            }
-        case let .ready(id) where id == finalModel:
-            Label("Selected model downloaded", systemImage: "checkmark.circle.fill")
-                .foregroundStyle(Theme.accent)
-        case let .failed(id, message) where id == finalModel:
-            VStack(alignment: .leading) {
-                Text(message).font(.caption).foregroundStyle(.red)
-                Button("Try Download Again") {
-                    Task { await finalDownloader.download(selectedFinalModel) }
-                }
-            }
-        default:
-            Button("Download Selected Model") {
-                Task { await finalDownloader.download(selectedFinalModel) }
-            }
-        }
     }
 #endif
 
@@ -161,33 +131,130 @@ struct SettingsView: View {
         .foregroundStyle(Theme.muted)
     }
 
-    @ViewBuilder private var downloadControl: some View {
-        switch downloader.state {
-        case .idle where downloader.modelID == whisperModel, .idle:
-            Button("Download Selected Model") {
-                Task { await downloader.download(whisperModel) }
+    private var registryModels: [ModelDescriptor] {
+#if os(iOS)
+        ModelRegistry.models
+#else
+        FinalTranscriptionModelChoice.whisper.map(ModelRegistry.descriptor(for:))
+#endif
+    }
+
+    @ViewBuilder private func modelStorageRow(_ descriptor: ModelDescriptor) -> some View {
+        let file = ModelRegistry.fileSnapshot(for: descriptor)
+        let status = ModelRegistry.status(
+            for: descriptor,
+            download: downloadSnapshot,
+            file: file,
+            verification: file.isPresent ? .ready : .notChecked
+        )
+
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(descriptor.displayName)
+                        .font(.headline)
+                    Text("\(providerLabel(descriptor.provider)) · \(descriptor.speedHint) · \(descriptor.accuracyHint)")
+                        .font(.caption)
+                        .foregroundStyle(Theme.muted)
+                }
+                Spacer()
+                if isSelected(descriptor) {
+                    Text("Selected")
+                        .font(.caption)
+                        .foregroundStyle(Theme.accent)
+                }
             }
-        case let .downloading(progress) where downloader.modelID == whisperModel:
-            VStack(alignment: .leading) {
+
+            Label(status.label, systemImage: statusIcon(for: status))
+                .font(.subheadline)
+                .foregroundStyle(statusColor(for: status))
+            if case let .downloading(progress, message) = status {
                 ProgressView(value: progress)
-                Text("Downloading \(selectedModel.name): \(progress.formatted(.percent.precision(.fractionLength(0))))")
+                Text(message)
+                    .font(.caption)
+                    .foregroundStyle(Theme.muted)
+            } else {
+                Text(status.detail)
                     .font(.caption)
                     .foregroundStyle(Theme.muted)
             }
-        case .ready where downloader.modelID == whisperModel:
-            Label("Selected model downloaded", systemImage: "checkmark.circle.fill")
-                .foregroundStyle(Theme.accent)
-        case let .failed(message) where downloader.modelID == whisperModel:
-            VStack(alignment: .leading) {
-                Text(message).font(.caption).foregroundStyle(.red)
-                Button("Try Download Again") {
-                    Task { await downloader.download(whisperModel) }
-                }
+            LabeledContent("Storage", value: ModelRegistry.formattedSize(file.sizeBytes))
+                .font(.caption)
+
+            actionControl(for: descriptor, status: status)
+        }
+        .padding(.vertical, 4)
+    }
+
+    @ViewBuilder private func actionControl(for descriptor: ModelDescriptor, status: ModelStatus) -> some View {
+        switch status {
+        case .notDownloaded:
+            Button("Download") {
+                Task { await finalDownloader.download(descriptor.choice) }
             }
-        default:
-            Button("Download Selected Model") {
-                Task { await downloader.download(whisperModel) }
+        case .missingOrCorrupt, .failed:
+            Button("Repair") {
+                Task { await finalDownloader.repair(descriptor.choice) }
             }
+        case .downloaded, .ready:
+            Button("Redownload") {
+                Task { await finalDownloader.redownload(descriptor.choice) }
+            }
+        case .downloading, .verifying:
+            EmptyView()
+        }
+    }
+
+    private var downloadSnapshot: ModelDownloadSnapshot {
+        switch finalDownloader.state {
+        case .idle:
+            return .idle
+        case let .downloading(id, progress, status):
+            return .downloading(modelID: id, progress: progress, message: status)
+        case let .ready(id):
+            return .ready(modelID: id)
+        case let .failed(id, message):
+            return .failed(modelID: id, message: message)
+        }
+    }
+
+    private func providerLabel(_ provider: FinalTranscriptionProvider) -> String {
+        switch provider {
+        case .whisper: "Whisper"
+        case .parakeet: "Parakeet"
+        }
+    }
+
+    private func isSelected(_ descriptor: ModelDescriptor) -> Bool {
+#if os(iOS)
+        descriptor.id == finalModel
+#else
+        descriptor.id == whisperModel
+#endif
+    }
+
+    private func statusIcon(for status: ModelStatus) -> String {
+        switch status {
+        case .notDownloaded: "arrow.down.circle"
+        case .downloading: "arrow.down.circle.fill"
+        case .downloaded: "tray.and.arrow.down.fill"
+        case .verifying: "checkmark.shield"
+        case .ready: "checkmark.circle.fill"
+        case .missingOrCorrupt: "exclamationmark.triangle.fill"
+        case .failed: "xmark.octagon.fill"
+        }
+    }
+
+    private func statusColor(for status: ModelStatus) -> Color {
+        switch status {
+        case .ready:
+            Theme.accent
+        case .missingOrCorrupt, .failed:
+            .red
+        case .downloading, .verifying:
+            .blue
+        case .notDownloaded, .downloaded:
+            Theme.muted
         }
     }
 }

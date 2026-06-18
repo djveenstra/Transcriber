@@ -53,7 +53,7 @@ On-device acceptance (Human Reviewer, iPhone 17 Pro) covers: real mic capture, b
 **Purpose:** Make model readiness honest and downloads recoverable — the highest-risk PRD §12 gap.
 
 - **OBJ-02 — File-based model readiness.** **DONE 2026-06-18 — Gate: PROCEED; evidence: [QA.md](QA.md#obj-02--file-based-model-readiness--2026-06-18).** Unified Whisper + Parakeet readiness on actual on-device files; replaced the in-memory Whisper flag as source of truth.
-- **OBJ-03 — Model lifecycle states + Repair/Redownload.** Introduce the full state set (Not downloaded/Downloading/Downloaded/Verifying/Ready/Missing-corrupt/Failed) backed by a model registry; expose Repair/Redownload and storage status in Settings.
+- **OBJ-03 — Model lifecycle states + Repair/Redownload.** **DONE 2026-06-18 — Gate: PROCEED; evidence: [QA.md](QA.md#obj-03--model-lifecycle-states--repairredownload--2026-06-18).** Introduced the full lifecycle state set backed by a model registry; exposed cache-only Repair/Redownload plus storage status in Settings.
 - **OBJ-04 — Default preload + status refresh + verify-before-process.** Lightweight default-model preload; refresh status on launch and when Settings opens; verify selected model before any processing, with safe-fallback + notice.
 
 **Affected systems:** model management, Settings, `TranscriptionSession` pre-flight. **Dependencies:** OBJ-01; model registry introduced in OBJ-03.

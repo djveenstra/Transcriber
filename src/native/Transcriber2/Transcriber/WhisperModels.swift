@@ -72,7 +72,7 @@ struct WhisperModelChoice: Identifiable, Hashable, Sendable {
 
 @MainActor
 final class WhisperModelDownloader: ObservableObject {
-    enum State: Equatable {
+    enum State: Equatable, Sendable {
         case idle
         case downloading(Double)
         case ready
@@ -104,8 +104,20 @@ final class WhisperModelDownloader: ObservableObject {
             downloadedModelIDs = TranscriptionModelReadiness.reconciledWhisperHintIDs(
                 modelIDs: WhisperModelChoice.all.map(\.id)
             )
+            ModelRegistry.rememberDownloaded(modelID)
             state = .ready
         } catch {
+            state = .failed(error.localizedDescription)
+        }
+    }
+
+    func redownload(_ modelID: String) async {
+        let model = FinalTranscriptionModelChoice.choice(for: modelID)
+        do {
+            try TranscriptionModelReadiness.removeCache(for: model)
+            await download(modelID)
+        } catch {
+            self.modelID = modelID
             state = .failed(error.localizedDescription)
         }
     }

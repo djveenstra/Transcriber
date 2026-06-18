@@ -7,7 +7,7 @@ enum FinalTranscriptionProvider: String, Codable, Sendable {
     case parakeet
 }
 
-struct FinalTranscriptionModelChoice: Identifiable, Sendable {
+struct FinalTranscriptionModelChoice: Identifiable, Equatable, Sendable {
     let id: String
     let name: String
     let detail: String
@@ -83,7 +83,7 @@ struct FinalTranscriptionModelChoice: Identifiable, Sendable {
 
 @MainActor
 final class FinalModelDownloader: ObservableObject {
-    enum State: Equatable {
+    enum State: Equatable, Sendable {
         case idle
         case downloading(String, Double, String)
         case ready(String)
@@ -112,10 +112,25 @@ final class FinalModelDownloader: ObservableObject {
                     }
                 }
             }
+            ModelRegistry.rememberDownloaded(model.id)
             state = .ready(model.id)
         } catch {
             state = .failed(model.id, error.localizedDescription)
         }
+    }
+
+    func repair(_ model: FinalTranscriptionModelChoice) async {
+        state = .downloading(model.id, 0, "Repairing model files.")
+        do {
+            try TranscriptionModelReadiness.removeCache(for: model)
+            await download(model)
+        } catch {
+            state = .failed(model.id, error.localizedDescription)
+        }
+    }
+
+    func redownload(_ model: FinalTranscriptionModelChoice) async {
+        await repair(model)
     }
 
     nonisolated private static func initialStatus(for model: FinalTranscriptionModelChoice) -> String {

@@ -53,3 +53,10 @@ Per [AGENTS.md §4](../../../AGENTS.md). Device persistence/corruption realism i
 
 ## Rollback Considerations
 Registry is additive; Settings rows revertible. No `Recording` schema change. Revert removes states/Repair UI without affecting downloads already on disk.
+
+## Completion Report — 2026-06-18
+- Gate: PROCEED
+- Evidence: [QA.md](../../../QA.md#obj-03--model-lifecycle-states--repairredownload--2026-06-18)
+- Summary: Added `ModelRegistry` / `ModelStatus`, Settings model-storage rows, measured cache size display when available, and cache-only Repair/Redownload through existing model choices/downloaders.
+- Validation: macOS build PASS; iOS-simulator build PASS; `TranscriberTests` PASS.
+- Device gates: real download/relaunch/reboot/offline model persistence remains Human-owned for OBJ-04/OBJ-20.

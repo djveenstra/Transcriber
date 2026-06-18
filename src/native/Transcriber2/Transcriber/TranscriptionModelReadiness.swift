@@ -20,6 +20,48 @@ enum TranscriptionModelReadiness {
         }
     }
 
+    static func cacheDirectory(for model: FinalTranscriptionModelChoice) -> URL? {
+        switch model.provider {
+        case .whisper:
+            return whisperCacheDirectory(for: model.id)
+        case .parakeet:
+            guard let version = model.parakeetVersion else { return nil }
+            return AsrModels.defaultCacheDirectory(for: version)
+        }
+    }
+
+    static func hasCacheFootprint(
+        for model: FinalTranscriptionModelChoice,
+        fileManager: FileManager = .default
+    ) -> Bool {
+        guard let directory = cacheDirectory(for: model) else { return false }
+        var isDirectory: ObjCBool = false
+        return fileManager.fileExists(atPath: directory.path, isDirectory: &isDirectory) && isDirectory.boolValue
+    }
+
+    static func cacheSizeBytes(
+        for model: FinalTranscriptionModelChoice,
+        fileManager: FileManager = .default
+    ) -> Int64? {
+        guard let directory = cacheDirectory(for: model) else { return nil }
+        return directorySizeBytes(at: directory, fileManager: fileManager)
+    }
+
+    static func removeCache(
+        for model: FinalTranscriptionModelChoice,
+        fileManager: FileManager = .default
+    ) throws {
+        switch model.provider {
+        case .whisper:
+            try removeWhisperCache(modelID: model.id, fileManager: fileManager)
+        case .parakeet:
+            guard let directory = cacheDirectory(for: model) else { return }
+            if fileManager.fileExists(atPath: directory.path) {
+                try fileManager.removeItem(at: directory)
+            }
+        }
+    }
+
     static func isWhisperModelPresent(
         _ modelID: String,
         cacheRoot: URL = defaultWhisperCacheRoot(),
@@ -78,6 +120,26 @@ enum TranscriptionModelReadiness {
             .appendingPathComponent("whisperkit-coreml", isDirectory: true)
     }
 
+    static func whisperCacheDirectory(
+        for modelID: String,
+        cacheRoot: URL = defaultWhisperCacheRoot()
+    ) -> URL {
+        cacheRoot.appendingPathComponent(modelID, isDirectory: true)
+    }
+
+    static func removeWhisperCache(
+        modelID: String,
+        cacheRoot: URL = defaultWhisperCacheRoot(),
+        fileManager: FileManager = .default,
+        defaults: UserDefaults = .standard
+    ) throws {
+        let directory = whisperCacheDirectory(for: modelID, cacheRoot: cacheRoot)
+        if fileManager.fileExists(atPath: directory.path) {
+            try fileManager.removeItem(at: directory)
+        }
+        reconcileWhisperHint(modelID: modelID, isPresent: false, defaults: defaults)
+    }
+
     private static func whisperModelFileExists(
         named modelName: String,
         in modelDirectory: URL,
@@ -108,5 +170,26 @@ enum TranscriptionModelReadiness {
             hintedIDs.remove(modelID)
         }
         defaults.set(Array(hintedIDs).sorted(), forKey: whisperDownloadedModelsKey)
+    }
+
+    private static func directorySizeBytes(
+        at url: URL,
+        fileManager: FileManager
+    ) -> Int64? {
+        guard let enumerator = fileManager.enumerator(
+            at: url,
+            includingPropertiesForKeys: [.totalFileAllocatedSizeKey, .fileAllocatedSizeKey],
+            options: [.skipsHiddenFiles]
+        ) else {
+            return nil
+        }
+
+        var total: Int64 = 0
+        for case let fileURL as URL in enumerator {
+            let values = try? fileURL.resourceValues(forKeys: [.totalFileAllocatedSizeKey, .fileAllocatedSizeKey])
+            let size = values?.totalFileAllocatedSize ?? values?.fileAllocatedSize ?? 0
+            total += Int64(size)
+        }
+        return total
     }
 }
