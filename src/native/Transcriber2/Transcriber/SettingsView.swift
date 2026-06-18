@@ -3,6 +3,8 @@ import SwiftUI
 struct SettingsView: View {
     @AppStorage("keepAudioFiles") private var keepAudioFiles = true
     @AppStorage("whisperModel") private var whisperModel = WhisperModelChoice.defaultID
+    @AppStorage(MicrophoneSelectionStore.selectionKey) private var selectedMicrophoneID = MicrophoneSelectionStore.automaticID
+    @ObservedObject private var microphoneService = MicrophoneService.shared
     @StateObject private var finalDownloader = FinalModelDownloader.shared
     @State private var modelStatusRefreshID = UUID()
 #if os(iOS)
@@ -49,6 +51,16 @@ struct SettingsView: View {
                     LabeledContent("Final speakers", value: "Sortformer Balanced V2")
 #endif
                 }
+                Section("Microphone") {
+                    Picker("Input", selection: $selectedMicrophoneID) {
+                        ForEach(microphoneService.choices) { choice in
+                            Text(choice.name).tag(choice.id)
+                        }
+                    }
+                    Text(selectedMicrophoneDetail)
+                        .font(.footnote)
+                        .foregroundStyle(Theme.muted)
+                }
 #if os(iOS)
                 Section("Compare Models") {
                     NavigationLink {
@@ -91,6 +103,7 @@ struct SettingsView: View {
             .navigationTitle("Settings")
             .onAppear {
                 whisperModel = WhisperModelChoice.migrateToLightweightDefaultIfNeeded()
+                microphoneService.refreshInputs()
                 refreshModelStatus()
 #if os(iOS)
                 finalModel = FinalTranscriptionModelChoice.selectedID()
@@ -102,6 +115,14 @@ struct SettingsView: View {
             }
 #endif
         }
+    }
+
+    private var selectedMicrophoneDetail: String {
+        guard selectedMicrophoneID != MicrophoneSelectionStore.automaticID else {
+            return MicrophoneChoice.automatic.detail
+        }
+        return microphoneService.choices.first { $0.id == selectedMicrophoneID }?.detail
+            ?? "This saved input is not currently listed by the system."
     }
 
     private var selectedModel: WhisperModelChoice {

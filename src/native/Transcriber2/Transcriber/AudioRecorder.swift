@@ -33,6 +33,7 @@ final class AudioRecorder: ObservableObject {
         try session.setCategory(.record, mode: .measurement, options: [.allowBluetoothHFP])
         try session.setActive(true)
 #endif
+        MicrophoneService.shared.applyPreferredInputForRecording()
         let engine = AVAudioEngine()
         self.engine = engine
         return engine.inputNode.outputFormat(forBus: 0)

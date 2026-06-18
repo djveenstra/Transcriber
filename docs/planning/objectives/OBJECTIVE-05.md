@@ -48,5 +48,7 @@ Per [AGENTS.md §4](../../../AGENTS.md). Real Bluetooth/headset enumeration is a
 - **PROCEED** if enumeration + persistence + honoring land green.
 - **ASK USER** for guidance only if macOS input selection API requires a product decision.
 
+**Result 2026-06-18:** PROCEED. Agent-verifiable backend validation passed; Human Reviewer accepted OBJ-05 as complete with real iPhone microphone enumeration, Bluetooth/headset enumeration, and selected-microphone hardware routing deferred to Human-owned OBJ-05/OBJ-08/OBJ-20 device gates. Evidence: [QA.md](../../../QA.md#obj-05--microphone-abstraction--selection-backend--2026-06-18).
+
 ## Rollback Considerations
 Additive service + picker; recorder change is guarded by "selection present." Revert returns to default-input behavior. No data/schema change.
