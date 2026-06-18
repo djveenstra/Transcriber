@@ -2,11 +2,11 @@
 
 _This file holds the **single active objective** the Worker is currently implementing. The Manager sets it from the roadmap and advances it only when the current objective is gated `PROCEED`. Full details for every objective live in [docs/planning/objectives/](docs/planning/objectives/)._
 
-## ▶ Active objective: **OBJ-06 — Test Mic + Live Input Meter**
+## ▶ Active objective: **OBJ-07 — Mic Fallback, Active-Mic Display & Notice**
 
-Read the full spec: [docs/planning/objectives/OBJECTIVE-06.md](docs/planning/objectives/OBJECTIVE-06.md).
+Read the full spec: [docs/planning/objectives/OBJECTIVE-07.md](docs/planning/objectives/OBJECTIVE-07.md).
 
-**One-line mission:** Add a Test Mic action in Settings with a live input level meter so the selected microphone can be checked before recording.
+**One-line mission:** When the selected microphone is unavailable at record time, fall back automatically, show the active microphone during recording, and notify the user without blocking recording.
 
 **Before starting, read:** [PRD.md](PRD.md) → [PLAN.md](PLAN.md) → this file → [AGENTS.md](AGENTS.md).
 
@@ -21,8 +21,8 @@ Read the full spec: [docs/planning/objectives/OBJECTIVE-06.md](docs/planning/obj
 | 03 | [Model lifecycle states + Repair/Redownload](docs/planning/objectives/OBJECTIVE-03.md) | 1 | Done — PROCEED 2026-06-18 |
 | 04 | [Default preload + status refresh + verify-before-process](docs/planning/objectives/OBJECTIVE-04.md) | 1 | Done — PROCEED 2026-06-18 |
 | 05 | [Microphone abstraction & selection backend](docs/planning/objectives/OBJECTIVE-05.md) | 2 | Done — PROCEED 2026-06-18 |
-| 06 | [Test Mic + live input meter](docs/planning/objectives/OBJECTIVE-06.md) | 2 | ▶ Active |
-| 07 | [Mic fallback + active-mic display + notice](docs/planning/objectives/OBJECTIVE-07.md) | 2 | Pending |
+| 06 | [Test Mic + live input meter](docs/planning/objectives/OBJECTIVE-06.md) | 2 | Done — PROCEED 2026-06-18 |
+| 07 | [Mic fallback + active-mic display + notice](docs/planning/objectives/OBJECTIVE-07.md) | 2 | ▶ Active |
 | 08 | [Background/lock & 30-min reliability (device gate)](docs/planning/objectives/OBJECTIVE-08.md) | 2 | Pending |
 | 09 | [Library status badges + canonical `RecordingStatus`](docs/planning/objectives/OBJECTIVE-09.md) | 3 | Pending |
 | 10 | [Dashboard tab](docs/planning/objectives/OBJECTIVE-10.md) | 3 | Pending |

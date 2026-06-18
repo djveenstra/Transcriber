@@ -64,7 +64,7 @@ On-device acceptance (Human Reviewer, iPhone 17 Pro) covers: real mic capture, b
 **Purpose:** Close the entire PRD §8 microphone gap and harden long/background recording.
 
 - **OBJ-05 — Microphone abstraction & selection backend.** **DONE 2026-06-18 — Gate: PROCEED; evidence: [QA.md](QA.md#obj-05--microphone-abstraction--selection-backend--2026-06-18).** Added platform input discovery, automatic/built-in/Bluetooth/named microphone choices, UserDefaults selection persistence, guarded recorder routing through selected iOS inputs, and fallback-to-default backend behavior. Human-owned real-device microphone enumeration and hardware routing checks are deferred to OBJ-05/OBJ-08/OBJ-20 gates.
-- **OBJ-06 — Test Mic + live input meter (Settings).** Test screen with live level meter reusing existing RMS.
+- **OBJ-06 — Test Mic + live input meter (Settings).** **DONE 2026-06-18 — Gate: PROCEED; evidence: [QA.md](QA.md#obj-06--test-mic--live-input-meter--2026-06-18).** Added Settings Test Mic control with selected-input label, metering-only capture, live RMS meter, clean stop-on-exit/input-change behavior, and no recording persistence. Human-owned real iPhone mic-level validation is deferred to OBJ-06/OBJ-08/OBJ-20 gates.
 - **OBJ-07 — Mic fallback + active-mic display + notice.** Fall back to best input when selection unavailable; show active mic during recording; notify on fallback.
 - **OBJ-08 — Background/lock & 30-min reliability hardening (Human-owned gate).** Handle interruptions/route changes; document and run the 5/15/30-min and background/lock device scripts.
 

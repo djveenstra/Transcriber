@@ -43,7 +43,7 @@ Add a "Test Mic" action in Settings with a live input level meter, so the user c
 Per [AGENTS.md §4](../../../AGENTS.md). Real-mic responsiveness is a **device gate** (OBJ-08).
 
 ## Gate Decision (see [AGENTS.md §6](../../../AGENTS.md) for definitions)
-- **PROCEED** if meter works and teardown is clean.
+- **PROCEED — 2026-06-18.** Agent-verifiable Test Mic + live meter scope passed; evidence is recorded in [QA.md](../../../QA.md#obj-06--test-mic--live-input-meter--2026-06-18). Human Reviewer accepted OBJ-06 as complete with real iPhone mic-level validation deferred to the documented Human-owned device gates for OBJ-06/OBJ-08/OBJ-20.
 - **FIX FIRST** if the audio session can be left active or a file is written.
 
 ## Rollback Considerations

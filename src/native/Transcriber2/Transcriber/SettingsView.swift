@@ -6,6 +6,7 @@ struct SettingsView: View {
     @AppStorage(MicrophoneSelectionStore.selectionKey) private var selectedMicrophoneID = MicrophoneSelectionStore.automaticID
     @ObservedObject private var microphoneService = MicrophoneService.shared
     @StateObject private var finalDownloader = FinalModelDownloader.shared
+    @StateObject private var microphoneTest = MicrophoneTestSession()
     @State private var modelStatusRefreshID = UUID()
 #if os(iOS)
     @AppStorage("finalTranscriptionModel") private var finalModel = FinalTranscriptionModelChoice.defaultID
@@ -60,6 +61,26 @@ struct SettingsView: View {
                     Text(selectedMicrophoneDetail)
                         .font(.footnote)
                         .foregroundStyle(Theme.muted)
+                    LabeledContent("Testing", value: selectedMicrophoneName)
+                    InputLevelMeter(level: microphoneTest.level)
+                        .frame(height: 12)
+                        .accessibilityLabel("Input level")
+                        .accessibilityValue("\(Int(microphoneTest.level * 100)) percent")
+                    if let microphoneTestMessage {
+                        Text(microphoneTestMessage)
+                            .font(.footnote)
+                            .foregroundStyle(microphoneTestMessageColor)
+                    }
+                    Button {
+                        if microphoneTest.isTesting {
+                            microphoneTest.stop()
+                        } else {
+                            Task { await microphoneTest.start() }
+                        }
+                    } label: {
+                        Label(microphoneTestButtonTitle, systemImage: microphoneTestButtonIcon)
+                    }
+                    .disabled(microphoneTest.isBusy)
                 }
 #if os(iOS)
                 Section("Compare Models") {
@@ -109,6 +130,12 @@ struct SettingsView: View {
                 finalModel = FinalTranscriptionModelChoice.selectedID()
 #endif
             }
+            .onDisappear {
+                microphoneTest.stop()
+            }
+            .onChange(of: selectedMicrophoneID) { _, _ in
+                microphoneTest.stop()
+            }
 #if os(iOS)
             .onChange(of: finalModel) { _, value in
                 FinalTranscriptionModelChoice.setSelectedID(value)
@@ -123,6 +150,53 @@ struct SettingsView: View {
         }
         return microphoneService.choices.first { $0.id == selectedMicrophoneID }?.detail
             ?? "This saved input is not currently listed by the system."
+    }
+
+    private var selectedMicrophoneName: String {
+        microphoneService.choices.first { $0.id == selectedMicrophoneID }?.name
+            ?? "Saved input unavailable"
+    }
+
+    private var microphoneTestButtonTitle: String {
+        switch microphoneTest.state {
+        case .idle, .failed:
+            "Start Test Mic"
+        case .starting:
+            "Starting Test Mic"
+        case .testing:
+            "Stop Test Mic"
+        }
+    }
+
+    private var microphoneTestButtonIcon: String {
+        switch microphoneTest.state {
+        case .idle, .failed:
+            "waveform"
+        case .starting:
+            "hourglass"
+        case .testing:
+            "stop.circle.fill"
+        }
+    }
+
+    private var microphoneTestMessage: String? {
+        switch microphoneTest.state {
+        case .idle:
+            nil
+        case .starting:
+            "Opening microphone input..."
+        case .testing:
+            "Microphone test is running."
+        case let .failed(message):
+            message
+        }
+    }
+
+    private var microphoneTestMessageColor: Color {
+        if case .failed = microphoneTest.state {
+            return .red
+        }
+        return Theme.muted
     }
 
     private var selectedModel: WhisperModelChoice {
@@ -286,5 +360,22 @@ struct SettingsView: View {
         case .notDownloaded, .downloaded:
             Theme.muted
         }
+    }
+}
+
+private struct InputLevelMeter: View {
+    let level: Float
+
+    var body: some View {
+        GeometryReader { proxy in
+            ZStack(alignment: .leading) {
+                Capsule()
+                    .fill(Theme.muted.opacity(0.22))
+                Capsule()
+                    .fill(Theme.accent)
+                    .frame(width: proxy.size.width * CGFloat(AudioLevelMeter.normalizedLevel(level)))
+            }
+        }
+        .animation(.easeOut(duration: 0.12), value: level)
     }
 }

@@ -8,6 +8,7 @@ final class AudioRecorder: ObservableObject {
     @Published private(set) var duration: TimeInterval = 0
 
     var onBuffer: (@Sendable (CapturedAudioChunk) -> Void)?
+    var levelUpdates: AnyPublisher<Float, Never> { $level.eraseToAnyPublisher() }
 
     private var engine: AVAudioEngine?
     private var fileWriter: AudioFileWriter?
@@ -40,17 +41,27 @@ final class AudioRecorder: ObservableObject {
     }
 
     func start(at url: URL) throws {
+        try startEngine(writingTo: url)
+    }
+
+    func startMetering() throws {
+        _ = try prepareForRecording()
+        try startEngine(writingTo: nil)
+    }
+
+    private func startEngine(writingTo url: URL?) throws {
         let engine = engine ?? AVAudioEngine()
         let input = engine.inputNode
         let format = input.outputFormat(forBus: 0)
-        let writer = try AudioFileWriter(url: url, settings: format.settings)
+        let writer = try url.map { try AudioFileWriter(url: $0, settings: format.settings) }
         fileWriter = writer
 
         let onBuffer = onBuffer
         input.installTap(onBus: 0, bufferSize: 4_096, format: format) { [weak self] buffer, _ in
-            guard let chunk = CapturedAudioChunk(copying: buffer) else { return }
-            writer.write(chunk)
-            onBuffer?(chunk)
+            if writer != nil || onBuffer != nil, let chunk = CapturedAudioChunk(copying: buffer) {
+                writer?.write(chunk)
+                onBuffer?(chunk)
+            }
             let level = Self.rms(buffer)
             Task { @MainActor [weak self] in self?.level = level }
         }
@@ -79,6 +90,7 @@ final class AudioRecorder: ObservableObject {
         }
         fileWriter = nil
         engine = nil
+        level = 0
 #if os(iOS)
         try? AVAudioSession.sharedInstance().setActive(false)
 #endif
@@ -88,6 +100,24 @@ final class AudioRecorder: ObservableObject {
     private static func rms(_ buffer: AVAudioPCMBuffer) -> Float {
         guard let channel = buffer.floatChannelData?[0], buffer.frameLength > 0 else { return 0 }
         let values = UnsafeBufferPointer(start: channel, count: Int(buffer.frameLength))
-        return min(1, sqrt(values.reduce(0) { $0 + $1 * $1 } / Float(values.count)) * 8)
+        return AudioLevelMeter.normalizedRMS(values)
+    }
+}
+
+enum AudioLevelMeter {
+    static func normalizedRMS<S: Sequence>(_ samples: S) -> Float where S.Element == Float {
+        var total: Float = 0
+        var count = 0
+        for sample in samples {
+            total += sample * sample
+            count += 1
+        }
+        guard count > 0 else { return 0 }
+        return normalizedLevel(sqrt(total / Float(count)) * 8)
+    }
+
+    static func normalizedLevel(_ level: Float) -> Float {
+        guard level.isFinite else { return 0 }
+        return min(1, max(0, level))
     }
 }
