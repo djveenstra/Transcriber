@@ -1,0 +1,36 @@
+# Risk Register — Transcriber 2.0 Beta
+
+_Ranking: **Critical** (can lose user data / break the core promise), **High** (breaks a primary flow or beta acceptance), **Medium** (degrades quality/UX), **Low** (polish/maintainability). Each risk lists current mitigations already in code and the planned/remaining mitigation, with the owning objective(s) from the [roadmap](objectives/)._
+
+| ID | Risk | Rank | Current mitigation (in code) | Remaining mitigation & owner |
+|---|---|---|---|---|
+| R1 | **Data loss of recording audio** during stop/crash/cancel | Critical | Audio written incrementally to `.caf`; `stop()` returns write errors; recording preserved before transcription (`preserveRecording`); kept on diarization failure | Add write-failure E2E + crash/relaunch recovery checks; never delete audio on partial failure. **OBJ-01, OBJ-19** |
+| R2 | **Data loss of transcript** via swallowed save errors or blob corruption | Critical | `persistChanges` surfaces save failures via `storageErrorMessage`; encode/decode logged, degrades to empty; transcript persisted before diarization | Add SwiftData migration plan before model changes; add corruption-detection/round-trip tests. **OBJ-01, OBJ-12** |
+| R3 | **Model not actually persisted** across force-quit/relaunch/reboot (Whisper readiness is in-memory/UserDefaults, not file-based) | Critical | Parakeet readiness file-based; Whisper IDs cached in UserDefaults | Implement file-based readiness + loadability check + launch/Settings refresh + verify-before-process. **OBJ-02, OBJ-03, OBJ-04** |
+| R4 | **Recording stops/loses audio in background or on lock** | Critical | `UIBackgroundModes = audio`; `AVAudioSession .record` | Device validation of lock/app-switch; handle interruptions/route changes. **OBJ-08** (Human-owned gate) |
+| R5 | **30-minute recording fails** (memory/time/file size) | High | Sliding live window (retain 30s/max 45s); chunked diarization; bounded queue | 5/15/30-min E2E on device; memory profiling. **OBJ-08, OBJ-20** (Human-owned gate) |
+| R6 | **Cancellation leaves inconsistent state** (model loaded, partial save, stuck UI) | High | `processingWasCancelled` + `Task.checkCancellation`; `handleProcessingCancellation` preserves transcript/marks retry; unloads models | Exhaustive cancel matrix (transcription, labeling, retry-paths, import); verify model unload + UI recovery. **OBJ-19** |
+| R7 | **Race conditions** in concurrent live/final/diarization under strict concurrency | High | Actor engines; inference semaphore; sequenced loads w/ documented pauses; `@MainActor` session; ordered audio stream | Keep `SWIFT_STRICT_CONCURRENCY=complete` green; add stress/interleave tests for rapid record/stop/cancel/retry. **OBJ-01, OBJ-19** |
+| R8 | **Diarization failure/timeout** loses or blocks transcript | High | Balanced→Fast fallback; watchdog (120s/30s) + cancellation; transcript preserved; `diarizationNeedsRetry`; retry without re-transcribe | Consistent failed/approximate/canceled/retry surfacing everywhere; failure-injection tests. **OBJ-13, OBJ-19** |
+| R9 | **Memory pressure / OOM** from back-to-back model loads or large arrays | High | Unload between stages; 1s release pauses; bounded live buffer; one-at-a-time Model Lab | Device memory profiling at 30 min; verify unloads reclaim memory; avoid parallel loads unless measured. **OBJ-08, OBJ-15** |
+| R10 | **Model download fails / partial / corrupt** | High | Download progress + failure state + retry button; Parakeet file existence check | Detect partial/corrupt, expose Repair/Redownload, safer-model fallback + notice. **OBJ-03, OBJ-15** |
+| R11 | **Microphone unavailable / wrong input** with no fallback or notice | High | Recorder uses default input; permission requested | Add input discovery/selection, fallback-to-best + visible notice, active-mic display, Test Mic. **OBJ-05, OBJ-06, OBJ-07** |
+| R12 | **Storage corruption / orphaned files** (audio without row or row without audio) | Medium | Delete keeps row if file removal fails; UUID filenames avoid collisions | Add orphan detection/cleanup; reconcile DB vs files on launch. **OBJ-09** |
+| R13 | **UI regressions** from refactors (lost states, broken share sheet, navigation drift) | Medium | Per-screen `@StateObject`; documented share-sheet scene-phase workaround | Snapshot/manual UI scripts per screen; regression checklist each objective. **OBJ-09…18, QA** |
+| R14 | **Information-architecture drift** from PRD (Dashboard/Model Lab tab) confusing testers | Medium | — | Implement Dashboard + Model Lab tab against PRD §6 exactly. **OBJ-10, OBJ-11** |
+| R15 | **Speaker mislabeling** degrades core differentiator | Medium | Temporal merge + smoothing + unknown-fill; approximate marking | Optional embedding/confidence improvements (roadmap); segment reassignment for manual repair. **OBJ-12, OBJ-13** |
+| R16 | **Accessibility failures** (color-only status, no VoiceOver labels, contrast) | Medium | Semantic fonts; status text present | Dynamic Type + VoiceOver + contrast + non-color status pass. **OBJ-17** |
+| R17 | **Battery drain** during long recording + heavy inference | Medium | On-device only; live model lightweight (Parakeet EOU 320ms) | Measure on device; avoid needless wakeups (replace polling where cheap). **OBJ-08, OBJ-14** |
+| R18 | **Offline operation breaks** if any path needs network post-download | Medium | On-device inference; entitlement scoped | Verify airplane-mode E2E once models present. **OBJ-20** (Human-owned gate) |
+| R19 | **Import/export edge cases** (odd formats, huge files, missing speaker names, SRT timing) | Medium | Audio-extension filter; UUID dest names; `displayName` fallback | Format/round-trip tests; JSON via `Codable`; large-file import check. **OBJ-16** |
+| R20 | **Agent edits the wrong tree** (`legacy-ios`, stale `XCode App Build/`, or the Python app) | High | `.gitignore` excludes stale template; READMEs note separation | AGENTS.md "active path" rule; Auditor checks touched paths; archive stale template only with human confirmation. **OBJ-01, AGENTS.md** |
+| R21 | **`TranscriptionSession` complexity** breeds latent bugs as features land | Medium | Cohesive state enum; tests on key helpers | Incremental decomposition (persistence + model-selection coordinators) without behavior change. **OBJ-20** |
+| R22 | **Dependency drift** (WhisperKit/FluidAudio pinned by revision) breaks build or changes behavior | Medium | Pinned by revision in `project.pbxproj` | Don't bump deps inside feature objectives; isolate any bump to its own objective with full re-validation. **AGENTS.md** |
+
+## Cross-cutting mitigation principles
+
+1. **Audio is sacred.** No objective may delete or overwrite original audio on a failure path. Deletion is user-initiated only.
+2. **Persist-then-proceed.** Every state transition that produces user value (transcript, labels) must be saved (and save-failure surfaced) before the next stage.
+3. **Reversible by default.** Prefer additive, feature-flag-friendly changes; keep `git revert` of a single objective clean.
+4. **Human owns the hardware gates.** R4, R5, R9, R17, R18 cannot be closed by agents; objectives that touch them must end at `ASK USER` / Human-Reviewer device validation.
+5. **Strict concurrency stays on.** Never weaken `SWIFT_STRICT_CONCURRENCY=complete` to make a change compile.
