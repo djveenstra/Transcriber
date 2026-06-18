@@ -46,6 +46,7 @@ Make model readiness self-correcting and pre-flighted: lightweight preload of th
 Per [AGENTS.md §4](../../../AGENTS.md). **Device gate:** force-quit/relaunch/**reboot** model persistence is validated by the Human Reviewer here and again in OBJ-20.
 
 ## Gate Decision (see [AGENTS.md §6](../../../AGENTS.md) for definitions)
+- **Outcome 2026-06-18: PROCEED.** Agent-verifiable validation passed and evidence is recorded in [QA.md](../../../QA.md#obj-04--default-preload-status-refresh--verify-before-process--2026-06-18). Human Reviewer accepted OBJ-04 as complete and deferred real-device default preload/download behavior, force-quit/relaunch persistence, reboot persistence, offline transcription after download, and realistic corrupt/remove-model recovery to the documented Human-owned OBJ-04/OBJ-20 device gates.
 - **PROCEED** (agent-verifiable parts) then **ASK USER** to run the reboot-persistence device test (PRD §17 Models).
 - **FIX FIRST** if fallback can lose the transcript or block recording.
 

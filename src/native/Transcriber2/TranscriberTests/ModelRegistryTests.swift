@@ -123,6 +123,57 @@ struct ModelRegistryTests {
         defaults.removePersistentDomain(forName: suiteName)
     }
 
+    @Test func refreshedStatusesUseLatestFileSnapshots() {
+        let present = ModelFileSnapshot(
+            isPresent: true,
+            hasCacheFootprint: true,
+            wasPreviouslyDownloaded: true,
+            sizeBytes: nil
+        )
+        let missingKnownModel = ModelFileSnapshot(
+            isPresent: false,
+            hasCacheFootprint: false,
+            wasPreviouslyDownloaded: true,
+            sizeBytes: nil
+        )
+
+        var statuses = ModelRegistry.statuses(
+            for: [descriptor],
+            download: .idle,
+            fileSnapshots: [descriptor.id: present]
+        )
+        #expect(statuses[descriptor.id] == .ready)
+
+        statuses = ModelRegistry.statuses(
+            for: [descriptor],
+            download: .idle,
+            fileSnapshots: [descriptor.id: missingKnownModel]
+        )
+        #expect(statuses[descriptor.id] == .missingOrCorrupt)
+    }
+
+    @Test func defaultPreloadOnlyStartsWhenDefaultIsMissingAndIdle() {
+        let missing = ModelFileSnapshot(
+            isPresent: false,
+            hasCacheFootprint: false,
+            wasPreviouslyDownloaded: false,
+            sizeBytes: nil
+        )
+        let present = ModelFileSnapshot(
+            isPresent: true,
+            hasCacheFootprint: true,
+            wasPreviouslyDownloaded: true,
+            sizeBytes: nil
+        )
+
+        #expect(ModelRegistry.shouldPreloadDefaultModel(file: missing, download: .idle))
+        #expect(!ModelRegistry.shouldPreloadDefaultModel(file: present, download: .idle))
+        #expect(!ModelRegistry.shouldPreloadDefaultModel(
+            file: missing,
+            download: .downloading(modelID: descriptor.id, progress: 0.2, message: "Downloading.")
+        ))
+    }
+
     private func status(
         file: ModelFileSnapshot,
         download: ModelDownloadSnapshot = .idle,

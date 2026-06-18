@@ -65,6 +65,8 @@ final class TranscriptionSession: ObservableObject {
     private var liveAudioContinuation: AsyncStream<CapturedAudioChunk>.Continuation?
     private var liveConsumerTask: Task<Void, Never>?
     private var processingWasCancelled = false
+    private var processingFinalModelChoice: FinalTranscriptionModelChoice?
+    private var modelFallbackNote: String?
 
     var liveSegments: [TranscriptSegment] {
         TranscriptMerger.merge(transcription: liveTranscription, diarization: liveDiarization)
@@ -77,12 +79,7 @@ final class TranscriptionSession: ObservableObject {
     }
 
     var selectedModelName: String {
-#if os(iOS)
-        return FinalTranscriptionModelChoice.choice(for: FinalTranscriptionModelChoice.selectedID()).name
-#else
-        let id = WhisperModelChoice.allowedID(UserDefaults.standard.string(forKey: "whisperModel"))
-        return WhisperModelChoice.choice(for: id).name
-#endif
+        activeFinalModelChoice.name
     }
 
     func prepareSelectedModel() async {
@@ -113,6 +110,8 @@ final class TranscriptionSession: ObservableObject {
         diarizationFailureDetail = nil
         saved = false
         processingWasCancelled = false
+        processingFinalModelChoice = nil
+        modelFallbackNote = nil
 
         guard await recorder.requestPermission() else {
             state = .failed("Microphone permission was denied.")
@@ -263,6 +262,8 @@ final class TranscriptionSession: ObservableObject {
         diarizationFailureDetail = nil
         saved = false
         processingWasCancelled = false
+        processingFinalModelChoice = nil
+        modelFallbackNote = nil
 
         let destination = AppStoragePaths.recordingsDirectory
             .appendingPathComponent("import-\(UUID().uuidString).\(sourceURL.pathExtension)")
@@ -317,6 +318,8 @@ final class TranscriptionSession: ObservableObject {
         completionNote = nil
         diarizationFailureDetail = nil
         processingWasCancelled = false
+        processingFinalModelChoice = nil
+        modelFallbackNote = nil
         do {
             try await processFile(recording.audioURL)
             updateSavedRecording()
@@ -354,6 +357,8 @@ final class TranscriptionSession: ObservableObject {
         persistenceContext = nil
         storageErrorMessage = nil
         processingWasCancelled = false
+        processingFinalModelChoice = nil
+        modelFallbackNote = nil
         liveAudioContinuation?.finish()
         liveAudioContinuation = nil
         liveConsumerTask?.cancel()
@@ -457,13 +462,14 @@ final class TranscriptionSession: ObservableObject {
         state = .processing("Preparing transcription")
         progress = 0.02
         modelState = .loading
+        try await verifySelectedFinalModelBeforeProcessing()
         let transcription = try await transcribeSelectedFinalModel(url) { [weak self] value in
             Task { @MainActor in
                 self?.state = .processing("Transcribing")
                 self?.progress = 0.05 + min(max(value, 0), 1) * 0.55
             }
         }
-        modelState = .ready(selectedModelName)
+        modelState = .ready(activeFinalModelChoice.name)
         try Task.checkCancellation()
         guard !processingWasCancelled else { throw CancellationError() }
         rawTranscription = transcription
@@ -512,9 +518,9 @@ final class TranscriptionSession: ObservableObject {
                 diarization: outcome.segments
             )
             diarizationNeedsRetry = false
-            completionNote = outcome.isApproximate ? approximateSpeakerLabelNote() : nil
+            completionNote = combinedCompletionNote(outcome.isApproximate ? approximateSpeakerLabelNote() : nil)
         } else {
-            completionNote = speakerLabelFailureMessage(saved: false)
+            completionNote = combinedCompletionNote(speakerLabelFailureMessage(saved: false))
             diarizationNeedsRetry = true
         }
 #if os(iOS)
@@ -536,7 +542,9 @@ final class TranscriptionSession: ObservableObject {
                 finalSegments = TranscriptMerger.merge(transcription: rawTranscription, diarization: [])
             }
             diarizationNeedsRetry = true
-            completionNote = "Speaker labeling was canceled. Your transcript is available and speaker labels can be retried later."
+            completionNote = combinedCompletionNote(
+                "Speaker labeling was canceled. Your transcript is available and speaker labels can be retried later."
+            )
             savedRecording?.segments = finalSegments
             savedRecording?.rawTranscription = rawTranscription
             savedRecording?.transcriptionNeedsRetry = false
@@ -615,16 +623,25 @@ final class TranscriptionSession: ObservableObject {
     }
 
     private var selectedFinalModelID: String {
+        activeFinalModelChoice.id
+    }
+
+    private var activeFinalModelChoice: FinalTranscriptionModelChoice {
+        processingFinalModelChoice ?? userSelectedFinalModelChoice
+    }
+
+    private var userSelectedFinalModelChoice: FinalTranscriptionModelChoice {
 #if os(iOS)
-        FinalTranscriptionModelChoice.selectedID()
+        FinalTranscriptionModelChoice.choice(for: FinalTranscriptionModelChoice.selectedID())
 #else
-        WhisperModelChoice.allowedID(UserDefaults.standard.string(forKey: "whisperModel"))
+        let id = WhisperModelChoice.allowedID(UserDefaults.standard.string(forKey: "whisperModel"))
+        return FinalTranscriptionModelChoice.choice(for: id)
 #endif
     }
 
     private func prepareSelectedFinalModel() async throws {
 #if os(iOS)
-        let choice = FinalTranscriptionModelChoice.choice(for: selectedFinalModelID)
+        let choice = userSelectedFinalModelChoice
         switch choice.provider {
         case .whisper:
             UserDefaults.standard.set(choice.id, forKey: "whisperModel")
@@ -639,12 +656,85 @@ final class TranscriptionSession: ObservableObject {
 #endif
     }
 
+    private func verifySelectedFinalModelBeforeProcessing() async throws {
+        let selected = userSelectedFinalModelChoice
+        let fallback = FinalTranscriptionModelChoice.choice(for: FinalTranscriptionModelChoice.defaultID)
+        let result = try await FinalModelPreflight.resolveModel(
+            selected: selected,
+            fallback: fallback
+        ) { [weak self] model in
+            guard let self else { return .failed("The transcription session ended before the model could be checked.") }
+            return await self.verifyFinalModelLoadability(
+                model,
+                allowDownload: model.id == fallback.id
+            )
+        }
+        processingFinalModelChoice = result.choice
+        modelFallbackNote = result.notice
+        completionNote = result.notice
+        modelState = .ready(result.choice.name)
+    }
+
+    private func verifyFinalModelLoadability(
+        _ choice: FinalTranscriptionModelChoice,
+        allowDownload: Bool
+    ) async -> ModelVerificationSnapshot {
+        let descriptor = ModelRegistry.descriptor(for: choice)
+        let file = ModelRegistry.fileSnapshot(for: descriptor, includeSize: false)
+        if !file.isPresent {
+            guard allowDownload else { return .missingOrCorrupt }
+            await FinalModelDownloader.shared.download(choice)
+            let refreshed = ModelRegistry.fileSnapshot(for: descriptor, includeSize: false)
+            guard refreshed.isPresent else { return .missingOrCorrupt }
+        }
+
+        do {
+            try await loadFinalModel(choice)
+            ModelRegistry.rememberDownloaded(choice.id)
+            return .ready
+        } catch {
+            await unloadFinalModel(choice)
+            return .failed(error.localizedDescription)
+        }
+    }
+
+    private func loadFinalModel(_ choice: FinalTranscriptionModelChoice) async throws {
+#if os(iOS)
+        switch choice.provider {
+        case .whisper:
+            UserDefaults.standard.set(choice.id, forKey: "whisperModel")
+            try await transcriber.prepare()
+        case .parakeet:
+            let engine = ParakeetFinalTranscriptionEngine(model: choice)
+            try await engine.prepare()
+            finalParakeet = engine
+        }
+#else
+        UserDefaults.standard.set(choice.id, forKey: "whisperModel")
+        try await transcriber.prepare()
+#endif
+    }
+
+    private func unloadFinalModel(_ choice: FinalTranscriptionModelChoice) async {
+#if os(iOS)
+        switch choice.provider {
+        case .whisper:
+            await transcriber.unload()
+        case .parakeet:
+            await finalParakeet?.unload()
+            finalParakeet = nil
+        }
+#else
+        await transcriber.unload()
+#endif
+    }
+
     private func transcribeSelectedFinalModel(
         _ url: URL,
         progress: @escaping @Sendable (Double) -> Void
     ) async throws -> [TranscriptionSegment] {
 #if os(iOS)
-        let choice = FinalTranscriptionModelChoice.choice(for: selectedFinalModelID)
+        let choice = activeFinalModelChoice
         switch choice.provider {
         case .whisper:
             UserDefaults.standard.set(choice.id, forKey: "whisperModel")
@@ -655,6 +745,7 @@ final class TranscriptionSession: ObservableObject {
             return try await engine.transcribeFile(url, progress: progress)
         }
 #else
+        UserDefaults.standard.set(activeFinalModelChoice.id, forKey: "whisperModel")
         return try await transcriber.transcribeFile(url, progress: progress)
 #endif
     }
@@ -771,6 +862,15 @@ final class TranscriptionSession: ObservableObject {
             : "The transcript finished, but speaker labeling could not finish. You can retry speaker labels later."
         guard let diarizationFailureDetail, !diarizationFailureDetail.isEmpty else { return base }
         return "\(base) \(diarizationFailureDetail)"
+    }
+
+    private func combinedCompletionNote(_ note: String?) -> String? {
+        let parts = [modelFallbackNote, note].compactMap { value -> String? in
+            guard let value, !value.isEmpty else { return nil }
+            return value
+        }
+        guard !parts.isEmpty else { return nil }
+        return parts.joined(separator: " ")
     }
 
     private func replaceOverlappingLiveSegment(_ newSegment: TranscriptionSegment) {

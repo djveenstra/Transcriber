@@ -54,7 +54,7 @@ On-device acceptance (Human Reviewer, iPhone 17 Pro) covers: real mic capture, b
 
 - **OBJ-02 — File-based model readiness.** **DONE 2026-06-18 — Gate: PROCEED; evidence: [QA.md](QA.md#obj-02--file-based-model-readiness--2026-06-18).** Unified Whisper + Parakeet readiness on actual on-device files; replaced the in-memory Whisper flag as source of truth.
 - **OBJ-03 — Model lifecycle states + Repair/Redownload.** **DONE 2026-06-18 — Gate: PROCEED; evidence: [QA.md](QA.md#obj-03--model-lifecycle-states--repairredownload--2026-06-18).** Introduced the full lifecycle state set backed by a model registry; exposed cache-only Repair/Redownload plus storage status in Settings.
-- **OBJ-04 — Default preload + status refresh + verify-before-process.** Lightweight default-model preload; refresh status on launch and when Settings opens; verify selected model before any processing, with safe-fallback + notice.
+- **OBJ-04 — Default preload + status refresh + verify-before-process.** **DONE 2026-06-18 — Gate: PROCEED; evidence: [QA.md](QA.md#obj-04--default-preload-status-refresh--verify-before-process--2026-06-18).** Added non-blocking default preload scheduling, launch/Settings model-status refresh, and verify-before-process with safe fallback plus user-facing notice. Human-owned real-device preload/persistence/offline/corruption checks are deferred to OBJ-04/OBJ-20 gates.
 
 **Affected systems:** model management, Settings, `TranscriptionSession` pre-flight. **Dependencies:** OBJ-01; model registry introduced in OBJ-03.
 **Risk:** Medium (touches download/load paths). **Rollback:** registry/readiness are additive; revert restores prior behavior.

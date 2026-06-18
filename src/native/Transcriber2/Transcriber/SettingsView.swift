@@ -4,6 +4,7 @@ struct SettingsView: View {
     @AppStorage("keepAudioFiles") private var keepAudioFiles = true
     @AppStorage("whisperModel") private var whisperModel = WhisperModelChoice.defaultID
     @StateObject private var finalDownloader = FinalModelDownloader.shared
+    @State private var modelStatusRefreshID = UUID()
 #if os(iOS)
     @AppStorage("finalTranscriptionModel") private var finalModel = FinalTranscriptionModelChoice.defaultID
 #endif
@@ -65,6 +66,7 @@ struct SettingsView: View {
                         modelStorageRow(descriptor)
                     }
                 }
+                .id(modelStatusRefreshID)
                 Section("Speakers") {
                     LabeledContent("Detection", value: "Automatic")
 #if os(iOS)
@@ -89,6 +91,7 @@ struct SettingsView: View {
             .navigationTitle("Settings")
             .onAppear {
                 whisperModel = WhisperModelChoice.migrateToLightweightDefaultIfNeeded()
+                refreshModelStatus()
 #if os(iOS)
                 finalModel = FinalTranscriptionModelChoice.selectedID()
 #endif
@@ -216,6 +219,12 @@ struct SettingsView: View {
         case let .failed(id, message):
             return .failed(modelID: id, message: message)
         }
+    }
+
+    private func refreshModelStatus() {
+        finalDownloader.refreshFileStatus()
+        finalDownloader.scheduleDefaultPreloadIfNeeded()
+        modelStatusRefreshID = UUID()
     }
 
     private func providerLabel(_ provider: FinalTranscriptionProvider) -> String {

@@ -140,9 +140,51 @@ enum ModelRegistry {
         )
     }
 
+    static func statuses(
+        for descriptors: [ModelDescriptor] = models,
+        download: ModelDownloadSnapshot,
+        fileSnapshots: [String: ModelFileSnapshot],
+        verifications: [String: ModelVerificationSnapshot] = [:]
+    ) -> [String: ModelStatus] {
+        descriptors.reduce(into: [:]) { result, descriptor in
+            let file = fileSnapshots[descriptor.id] ?? fileSnapshot(for: descriptor)
+            result[descriptor.id] = status(
+                for: descriptor,
+                download: download,
+                file: file,
+                verification: verifications[descriptor.id] ?? (file.isPresent ? .ready : .notChecked)
+            )
+        }
+    }
+
+    @discardableResult
+    static func refreshFileStatusHints(
+        for descriptors: [ModelDescriptor] = models,
+        download: ModelDownloadSnapshot = .idle
+    ) -> [String: ModelStatus] {
+        let snapshots = descriptors.reduce(into: [String: ModelFileSnapshot]()) { result, descriptor in
+            let file = fileSnapshot(for: descriptor, includeSize: false)
+            if file.isPresent {
+                rememberDownloaded(descriptor.id)
+            }
+            result[descriptor.id] = file
+        }
+        return statuses(for: descriptors, download: download, fileSnapshots: snapshots)
+    }
+
+    static func shouldPreloadDefaultModel(
+        file: ModelFileSnapshot,
+        download: ModelDownloadSnapshot
+    ) -> Bool {
+        guard !file.isPresent else { return false }
+        if case .downloading = download { return false }
+        return true
+    }
+
     static func fileSnapshot(
         for descriptor: ModelDescriptor,
-        fileManager: FileManager = .default
+        fileManager: FileManager = .default,
+        includeSize: Bool = true
     ) -> ModelFileSnapshot {
         ModelFileSnapshot(
             isPresent: TranscriptionModelReadiness.isPresent(descriptor.choice),
@@ -151,10 +193,10 @@ enum ModelRegistry {
                 fileManager: fileManager
             ),
             wasPreviouslyDownloaded: wasPreviouslyDownloaded(descriptor.id),
-            sizeBytes: TranscriptionModelReadiness.cacheSizeBytes(
+            sizeBytes: includeSize ? TranscriptionModelReadiness.cacheSizeBytes(
                 for: descriptor.choice,
                 fileManager: fileManager
-            )
+            ) : nil
         )
     }
 

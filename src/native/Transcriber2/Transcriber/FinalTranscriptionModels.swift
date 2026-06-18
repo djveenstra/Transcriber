@@ -93,6 +93,7 @@ final class FinalModelDownloader: ObservableObject {
     static let shared = FinalModelDownloader()
 
     @Published private(set) var state: State = .idle
+    private var defaultPreloadTask: Task<Void, Never>?
 
     func download(_ model: FinalTranscriptionModelChoice) async {
         state = .downloading(model.id, 0, Self.initialStatus(for: model))
@@ -131,6 +132,37 @@ final class FinalModelDownloader: ObservableObject {
 
     func redownload(_ model: FinalTranscriptionModelChoice) async {
         await repair(model)
+    }
+
+    func scheduleDefaultPreloadIfNeeded() {
+        guard defaultPreloadTask == nil else { return }
+        let model = FinalTranscriptionModelChoice.choice(for: FinalTranscriptionModelChoice.defaultID)
+        let descriptor = ModelRegistry.descriptor(for: model)
+        let file = ModelRegistry.fileSnapshot(for: descriptor, includeSize: false)
+        guard ModelRegistry.shouldPreloadDefaultModel(file: file, download: downloadSnapshot) else { return }
+
+        defaultPreloadTask = Task { [weak self] in
+            guard let self else { return }
+            await self.download(model)
+            self.defaultPreloadTask = nil
+        }
+    }
+
+    func refreshFileStatus() {
+        _ = ModelRegistry.refreshFileStatusHints(download: downloadSnapshot)
+    }
+
+    private var downloadSnapshot: ModelDownloadSnapshot {
+        switch state {
+        case .idle:
+            return .idle
+        case let .downloading(id, progress, message):
+            return .downloading(modelID: id, progress: progress, message: message)
+        case let .ready(id):
+            return .ready(modelID: id)
+        case let .failed(id, message):
+            return .failed(modelID: id, message: message)
+        }
     }
 
     nonisolated private static func initialStatus(for model: FinalTranscriptionModelChoice) -> String {
