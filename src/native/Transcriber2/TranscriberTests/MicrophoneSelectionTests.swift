@@ -58,6 +58,42 @@ struct MicrophoneSelectionTests {
         #expect(MicrophoneSelectionStore.resolvedRoute(for: "bluetooth-airpods", inputs: sampleInputs) == .selected(sampleInputs[1]))
     }
 
+    @Test func recordingRouteUsesSelectedInputWhenPresent() {
+        let route = MicrophoneSelectionStore.recordingRoute(for: "bluetooth-airpods", inputs: sampleInputs)
+
+        #expect(route.selectedInput == sampleInputs[1])
+        #expect(route.activeInput == sampleInputs[1])
+        #expect(route.activeDisplayName == "Daniel's AirPods")
+        #expect(route.notice == nil)
+        #expect(route.usedFallback == false)
+    }
+
+    @Test func recordingRouteFallsBackToBestAvailableInputWhenSelectedIsMissing() {
+        let route = MicrophoneSelectionStore.recordingRoute(for: "missing", inputs: sampleInputs)
+
+        #expect(route.selectedInput == nil)
+        #expect(route.activeInput == sampleInputs[0])
+        #expect(route.activeDisplayName == "iPhone Microphone")
+        #expect(route.notice == "Recording with iPhone Microphone because the selected microphone was unavailable.")
+        #expect(route.usedFallback == true)
+    }
+
+    @Test func recordingRouteUsesSystemDefaultWhenAutomaticOrNoInputsAvailable() {
+        let automatic = MicrophoneSelectionStore.recordingRoute(
+            for: MicrophoneSelectionStore.automaticID,
+            inputs: sampleInputs
+        )
+        let noInputs = MicrophoneSelectionStore.recordingRoute(for: "missing", inputs: [])
+
+        #expect(automatic.selectedInput == nil)
+        #expect(automatic.activeDisplayName == MicrophoneRecordingRoute.systemDefaultInputName)
+        #expect(automatic.notice == nil)
+        #expect(noInputs.selectedInput == nil)
+        #expect(noInputs.activeInput == nil)
+        #expect(noInputs.activeDisplayName == MicrophoneRecordingRoute.systemDefaultInputName)
+        #expect(noInputs.notice == "Recording with the system default input because the selected microphone was unavailable.")
+    }
+
     private var sampleInputs: [MicrophoneInput] {
         [
             MicrophoneInput(id: "built-in", name: "iPhone Microphone", kind: .builtIn),

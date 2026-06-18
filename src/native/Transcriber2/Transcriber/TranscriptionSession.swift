@@ -47,6 +47,8 @@ final class TranscriptionSession: ObservableObject {
     @Published private(set) var livePreviewNote: String?
     @Published private(set) var diarizationFailureDetail: String?
     @Published private(set) var storageErrorMessage: String?
+    @Published private(set) var activeMicrophoneName: String?
+    @Published private(set) var microphoneFallbackNotice: String?
 
     let recorder = AudioRecorder()
 
@@ -108,6 +110,8 @@ final class TranscriptionSession: ObservableObject {
         diarizationNeedsRetry = false
         isIdentifyingSpeakers = false
         diarizationFailureDetail = nil
+        activeMicrophoneName = nil
+        microphoneFallbackNotice = nil
         saved = false
         processingWasCancelled = false
         processingFinalModelChoice = nil
@@ -120,6 +124,8 @@ final class TranscriptionSession: ObservableObject {
 
         do {
             let microphoneFormat = try recorder.prepareForRecording()
+            activeMicrophoneName = recorder.activeMicrophoneName
+            microphoneFallbackNotice = recorder.microphoneFallbackNotice
 #if os(iOS)
             let liveQueueURL = AppStoragePaths.rootDirectory
                 .appendingPathComponent("live-catchup-\(UUID().uuidString).caf")
@@ -260,6 +266,8 @@ final class TranscriptionSession: ObservableObject {
         diarizationNeedsRetry = false
         isIdentifyingSpeakers = false
         diarizationFailureDetail = nil
+        activeMicrophoneName = nil
+        microphoneFallbackNotice = nil
         saved = false
         processingWasCancelled = false
         processingFinalModelChoice = nil
@@ -352,6 +360,8 @@ final class TranscriptionSession: ObservableObject {
         isIdentifyingSpeakers = false
         diarizationFailureDetail = nil
         audioURL = nil
+        activeMicrophoneName = nil
+        microphoneFallbackNotice = nil
         saved = false
         savedRecording = nil
         persistenceContext = nil

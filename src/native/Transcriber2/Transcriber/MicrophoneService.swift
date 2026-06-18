@@ -62,6 +62,49 @@ enum MicrophoneRouteResolution: Equatable, Sendable {
     case platformRoutingUnavailable(MicrophoneInput)
 }
 
+struct MicrophoneRecordingRoute: Equatable, Sendable {
+    static let systemDefaultInputName = "System default input"
+    static let unavailableSelectionName = "the selected microphone"
+
+    let selectedInput: MicrophoneInput?
+    let activeInput: MicrophoneInput?
+    let activeDisplayName: String
+    let notice: String?
+
+    var usedFallback: Bool {
+        notice != nil
+    }
+
+    static func automatic() -> MicrophoneRecordingRoute {
+        MicrophoneRecordingRoute(
+            selectedInput: nil,
+            activeInput: nil,
+            activeDisplayName: systemDefaultInputName,
+            notice: nil
+        )
+    }
+
+    static func selected(_ input: MicrophoneInput) -> MicrophoneRecordingRoute {
+        MicrophoneRecordingRoute(
+            selectedInput: input,
+            activeInput: input,
+            activeDisplayName: input.name,
+            notice: nil
+        )
+    }
+
+    static func fallback(to input: MicrophoneInput?, missingName: String = unavailableSelectionName) -> MicrophoneRecordingRoute {
+        let activeName = input?.name ?? systemDefaultInputName
+        let noticeActiveName = input?.name ?? "the system default input"
+        return MicrophoneRecordingRoute(
+            selectedInput: nil,
+            activeInput: input,
+            activeDisplayName: activeName,
+            notice: "Recording with \(noticeActiveName) because \(missingName) was unavailable."
+        )
+    }
+}
+
 struct MicrophoneSelectionStore: Sendable {
     static let automaticID = "automatic"
     static let selectionKey = "selectedMicrophoneInputID"
@@ -107,6 +150,20 @@ struct MicrophoneSelectionStore: Sendable {
         }
         return .selected(input)
     }
+
+    static func recordingRoute(for selectedID: String?, inputs: [MicrophoneInput]) -> MicrophoneRecordingRoute {
+        guard let selectedID, selectedID != automaticID else {
+            return .automatic()
+        }
+        guard let selected = selectedInput(id: selectedID, in: inputs) else {
+            return .fallback(to: bestAvailableInput(in: inputs))
+        }
+        return .selected(selected)
+    }
+
+    static func bestAvailableInput(in inputs: [MicrophoneInput]) -> MicrophoneInput? {
+        inputs.first
+    }
 }
 
 @MainActor
@@ -140,33 +197,44 @@ final class MicrophoneService: ObservableObject {
     }
 
     @discardableResult
-    func applyPreferredInputForRecording() -> MicrophoneRouteResolution {
+    func applyPreferredInputForRecording() -> MicrophoneRecordingRoute {
         let inputs = refreshInputs()
         let selectedID = store.selectedID
+        let route = MicrophoneSelectionStore.recordingRoute(for: selectedID, inputs: inputs)
         guard selectedID != MicrophoneSelectionStore.automaticID else {
 #if os(iOS)
             try? AVAudioSession.sharedInstance().setPreferredInput(nil)
+            return route
+#else
+            return Self.systemDefaultRecordingRoute()
 #endif
-            return .automatic
-        }
-
-        guard let input = MicrophoneSelectionStore.selectedInput(id: selectedID, in: inputs) else {
-            return .fallbackToDefault(missingID: selectedID)
         }
 
 #if os(iOS)
+        var appliedRoute = route
         let session = AVAudioSession.sharedInstance()
+        guard let input = appliedRoute.activeInput else {
+            try? session.setPreferredInput(nil)
+            return appliedRoute
+        }
         guard let port = session.availableInputs?.first(where: { $0.uid == input.id }) else {
-            return .fallbackToDefault(missingID: selectedID)
+            appliedRoute = MicrophoneRecordingRoute.fallback(to: nil)
+            try? session.setPreferredInput(nil)
+            return appliedRoute
         }
         do {
             try session.setPreferredInput(port)
         } catch {
-            return .fallbackToDefault(missingID: selectedID)
+            appliedRoute = MicrophoneRecordingRoute.fallback(to: nil)
+            try? session.setPreferredInput(nil)
+            return appliedRoute
         }
-        return .selected(input)
+        return appliedRoute
 #else
-        return .platformRoutingUnavailable(input)
+        if route.usedFallback {
+            return .fallback(to: nil)
+        }
+        return Self.systemDefaultRecordingRoute()
 #endif
     }
 
@@ -182,6 +250,20 @@ final class MicrophoneService: ObservableObject {
             position: .unspecified
         )
         return discovery.devices.map(Self.input(from:))
+#endif
+    }
+
+    private static func systemDefaultRecordingRoute() -> MicrophoneRecordingRoute {
+#if os(iOS)
+        .automatic()
+#else
+        MicrophoneRecordingRoute(
+            selectedInput: nil,
+            activeInput: nil,
+            activeDisplayName: AVCaptureDevice.default(for: .audio)?.localizedName
+                ?? MicrophoneRecordingRoute.systemDefaultInputName,
+            notice: nil
+        )
 #endif
     }
 

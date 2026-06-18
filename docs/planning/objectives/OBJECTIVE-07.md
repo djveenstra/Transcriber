@@ -43,7 +43,7 @@ When the selected microphone is unavailable at record time, automatically fall b
 Per [AGENTS.md §4](../../../AGENTS.md). Real Bluetooth-drop fallback is a **device gate** (OBJ-08/20).
 
 ## Gate Decision (see [AGENTS.md §6](../../../AGENTS.md) for definitions)
-- **PROCEED** if fallback/notice/active-mic land green.
+- **PROCEED — 2026-06-18.** Agent-verifiable fallback/notice/active-mic scope passed; evidence is recorded in [QA.md](../../../QA.md#obj-07--mic-fallback-active-mic-display--notice--2026-06-18). Human Reviewer accepted OBJ-07 as complete with real iPhone selected-mic-unavailable fallback, active-label accuracy, and fallback-notice checks deferred to the documented Human-owned device gates for OBJ-07/OBJ-08/OBJ-20.
 - **FIX FIRST** if any path can block recording when a mic is missing.
 
 ## Rollback Considerations

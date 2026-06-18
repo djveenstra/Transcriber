@@ -6,6 +6,8 @@ import Foundation
 final class AudioRecorder: ObservableObject {
     @Published private(set) var level: Float = 0
     @Published private(set) var duration: TimeInterval = 0
+    @Published private(set) var activeMicrophoneName = MicrophoneRecordingRoute.systemDefaultInputName
+    @Published private(set) var microphoneFallbackNotice: String?
 
     var onBuffer: (@Sendable (CapturedAudioChunk) -> Void)?
     var levelUpdates: AnyPublisher<Float, Never> { $level.eraseToAnyPublisher() }
@@ -34,7 +36,9 @@ final class AudioRecorder: ObservableObject {
         try session.setCategory(.record, mode: .measurement, options: [.allowBluetoothHFP])
         try session.setActive(true)
 #endif
-        MicrophoneService.shared.applyPreferredInputForRecording()
+        let route = MicrophoneService.shared.applyPreferredInputForRecording()
+        activeMicrophoneName = route.activeDisplayName
+        microphoneFallbackNotice = route.notice
         let engine = AVAudioEngine()
         self.engine = engine
         return engine.inputNode.outputFormat(forBus: 0)
@@ -91,6 +95,8 @@ final class AudioRecorder: ObservableObject {
         fileWriter = nil
         engine = nil
         level = 0
+        activeMicrophoneName = MicrophoneRecordingRoute.systemDefaultInputName
+        microphoneFallbackNotice = nil
 #if os(iOS)
         try? AVAudioSession.sharedInstance().setActive(false)
 #endif

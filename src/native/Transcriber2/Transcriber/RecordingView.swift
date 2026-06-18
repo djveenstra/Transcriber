@@ -67,6 +67,15 @@ struct RecordingView: View {
             }
         case .recording:
             VStack(spacing: 12) {
+                if let notice = session.microphoneFallbackNotice {
+                    Label(notice, systemImage: "mic.fill")
+                        .font(.callout)
+                        .foregroundStyle(Theme.muted)
+                        .padding()
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Theme.surface)
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                }
                 if session.liveSegments.isEmpty {
                     ContentUnavailableView(
                         livePreviewTitle,
@@ -143,6 +152,10 @@ struct RecordingView: View {
             Text(statusText)
                 .font(.subheadline.weight(.semibold))
             Spacer()
+            if session.state == .recording {
+                Label(session.activeMicrophoneName ?? MicrophoneRecordingRoute.systemDefaultInputName, systemImage: "mic.fill")
+                    .font(.caption.weight(.semibold))
+            }
             modelStatus
             if session.state == .recording {
                 TimelineView(.periodic(from: .now, by: 1)) { _ in
