@@ -64,9 +64,16 @@ final class TranscriptionSession: ObservableObject {
     private var livePreparationTask: Task<Void, Never>?
     private var liveAudioContinuation: AsyncStream<CapturedAudioChunk>.Continuation?
     private var liveConsumerTask: Task<Void, Never>?
+    private var processingWasCancelled = false
 
     var liveSegments: [TranscriptSegment] {
         TranscriptMerger.merge(transcription: liveTranscription, diarization: liveDiarization)
+    }
+
+    var canCancelProcessing: Bool {
+        if isIdentifyingSpeakers { return true }
+        if case .processing = state { return true }
+        return false
     }
 
     var selectedModelName: String {
@@ -105,6 +112,7 @@ final class TranscriptionSession: ObservableObject {
         isIdentifyingSpeakers = false
         diarizationFailureDetail = nil
         saved = false
+        processingWasCancelled = false
 
         guard await recorder.requestPermission() else {
             state = .failed("Microphone permission was denied.")
@@ -227,6 +235,11 @@ final class TranscriptionSession: ObservableObject {
 #endif
             try await processFile(audioURL)
             updateSavedRecording()
+        } catch is CancellationError {
+            await handleProcessingCancellation(
+                savedMessage: "Transcription was canceled. Your recording is saved and can be retried from the library.",
+                unsavedMessage: "Transcription was canceled."
+            )
         } catch {
             savedRecording?.transcriptionNeedsRetry = true
             persistChanges(
@@ -249,6 +262,7 @@ final class TranscriptionSession: ObservableObject {
         isIdentifyingSpeakers = false
         diarizationFailureDetail = nil
         saved = false
+        processingWasCancelled = false
 
         let destination = AppStoragePaths.recordingsDirectory
             .appendingPathComponent("import-\(UUID().uuidString).\(sourceURL.pathExtension)")
@@ -258,6 +272,11 @@ final class TranscriptionSession: ObservableObject {
             try FileManager.default.copyItem(at: sourceURL, to: destination)
             audioURL = destination
             try await processFile(destination)
+        } catch is CancellationError {
+            await handleProcessingCancellation(
+                savedMessage: "Transcription was canceled. The imported audio remains available for retry.",
+                unsavedMessage: "Transcription was canceled. Import the file again when you are ready."
+            )
         } catch {
             state = .failed(error.localizedDescription)
         }
@@ -297,9 +316,15 @@ final class TranscriptionSession: ObservableObject {
         saved = true
         completionNote = nil
         diarizationFailureDetail = nil
+        processingWasCancelled = false
         do {
             try await processFile(recording.audioURL)
             updateSavedRecording()
+        } catch is CancellationError {
+            await handleProcessingCancellation(
+                savedMessage: "Transcription was canceled. Your recording is saved and can be retried from the library.",
+                unsavedMessage: "Transcription was canceled."
+            )
         } catch {
             recording.transcriptionNeedsRetry = true
             persistChanges(
@@ -328,6 +353,7 @@ final class TranscriptionSession: ObservableObject {
         savedRecording = nil
         persistenceContext = nil
         storageErrorMessage = nil
+        processingWasCancelled = false
         liveAudioContinuation?.finish()
         liveAudioContinuation = nil
         liveConsumerTask?.cancel()
@@ -343,12 +369,20 @@ final class TranscriptionSession: ObservableObject {
         }
         guard !Task.isCancelled else { return }
         persistenceContext = context
+        processingWasCancelled = false
         audioURL = recording.audioURL
         rawTranscription = recording.rawTranscription
         finalSegments = recording.segments
         state = .processing("Identifying speakers")
         progress = 0.65
         if let outcome = await runDiarizationWithFallback(recording.audioURL) {
+            guard !processingWasCancelled, !Task.isCancelled else {
+                await handleProcessingCancellation(
+                    savedMessage: "Speaker labeling was canceled. Your transcript remains saved.",
+                    unsavedMessage: "Speaker labeling was canceled."
+                )
+                return
+            }
             let merged = TranscriptMerger.merge(transcription: recording.rawTranscription, diarization: outcome.segments)
             recording.segments = merged
             recording.diarizationNeedsRetry = false
@@ -370,9 +404,17 @@ final class TranscriptionSession: ObservableObject {
 
     func retryCurrentSpeakerLabels() async {
         guard let audioURL, !rawTranscription.isEmpty, !Task.isCancelled else { return }
+        processingWasCancelled = false
         state = .processing("Identifying speakers")
         progress = 0.6
         if let outcome = await runDiarizationWithFallback(audioURL) {
+            guard !processingWasCancelled, !Task.isCancelled else {
+                await handleProcessingCancellation(
+                    savedMessage: "Speaker labeling was canceled. Your transcript remains saved.",
+                    unsavedMessage: "Speaker labeling was canceled. You can retry speaker labels later."
+                )
+                return
+            }
             finalSegments = TranscriptMerger.merge(transcription: rawTranscription, diarization: outcome.segments)
             completionNote = outcome.isApproximate ? approximateSpeakerLabelNote() : nil
             diarizationNeedsRetry = false
@@ -386,7 +428,31 @@ final class TranscriptionSession: ObservableObject {
         state = .completed
     }
 
+    func cancelProcessing() async {
+        guard canCancelProcessing else { return }
+        processingWasCancelled = true
+        livePreparationTask?.cancel()
+        liveAudioContinuation?.finish()
+        liveAudioContinuation = nil
+        liveConsumerTask?.cancel()
+        await liveConsumerTask?.value
+        liveConsumerTask = nil
+        livePreparationTask = nil
+#if os(iOS)
+        await liveParakeet.finish()
+        await unloadSelectedFinalModel()
+#else
+        await transcriber.unload()
+        modelState = .notLoaded
+#endif
+        await handleProcessingCancellation(
+            savedMessage: "Processing was canceled. Your recording is saved and can be retried from the library.",
+            unsavedMessage: "Processing was canceled."
+        )
+    }
+
     private func processFile(_ url: URL) async throws {
+        processingWasCancelled = false
         try Task.checkCancellation()
         state = .processing("Preparing transcription")
         progress = 0.02
@@ -398,6 +464,8 @@ final class TranscriptionSession: ObservableObject {
             }
         }
         modelState = .ready(selectedModelName)
+        try Task.checkCancellation()
+        guard !processingWasCancelled else { throw CancellationError() }
         rawTranscription = transcription
         savedRecording?.rawTranscription = transcription
         savedRecording?.transcriptionNeedsRetry = false
@@ -434,7 +502,10 @@ final class TranscriptionSession: ObservableObject {
 #endif
 
         try Task.checkCancellation()
+        guard !processingWasCancelled else { throw CancellationError() }
         let outcome = await runDiarizationWithFallback(url)
+        try Task.checkCancellation()
+        guard !processingWasCancelled else { throw CancellationError() }
         if let outcome {
             finalSegments = TranscriptMerger.merge(
                 transcription: transcription,
@@ -454,6 +525,41 @@ final class TranscriptionSession: ObservableObject {
         progress = 0.98
         progress = 1
         state = .completed
+    }
+
+    private func handleProcessingCancellation(savedMessage: String, unsavedMessage: String) async {
+        isIdentifyingSpeakers = false
+        progress = 0
+        livePreviewState = .inactive
+        if !rawTranscription.isEmpty {
+            if finalSegments.isEmpty {
+                finalSegments = TranscriptMerger.merge(transcription: rawTranscription, diarization: [])
+            }
+            diarizationNeedsRetry = true
+            completionNote = "Speaker labeling was canceled. Your transcript is available and speaker labels can be retried later."
+            savedRecording?.segments = finalSegments
+            savedRecording?.rawTranscription = rawTranscription
+            savedRecording?.transcriptionNeedsRetry = false
+            savedRecording?.diarizationNeedsRetry = true
+            state = .completed
+            if let persistenceContext {
+                persistChanges(
+                    in: persistenceContext,
+                    failureMessage: "Your transcript is visible here, but the cancellation status could not be saved."
+                )
+            }
+        } else if saved {
+            savedRecording?.transcriptionNeedsRetry = true
+            state = .failed(savedMessage)
+            if let persistenceContext {
+                persistChanges(
+                    in: persistenceContext,
+                    failureMessage: "Your recording is saved, but the retry status could not be updated."
+                )
+            }
+        } else {
+            state = .failed(unsavedMessage)
+        }
     }
 
     private func preserveRecording(in context: ModelContext) {

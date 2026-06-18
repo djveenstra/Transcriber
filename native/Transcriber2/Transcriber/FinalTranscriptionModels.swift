@@ -94,7 +94,7 @@ struct FinalTranscriptionModelChoice: Identifiable, Sendable {
 final class FinalModelDownloader: ObservableObject {
     enum State: Equatable {
         case idle
-        case downloading(String, Double)
+        case downloading(String, Double, String)
         case ready(String)
         case failed(String, String)
     }
@@ -104,7 +104,7 @@ final class FinalModelDownloader: ObservableObject {
     @Published private(set) var state: State = .idle
 
     func download(_ model: FinalTranscriptionModelChoice) async {
-        state = .downloading(model.id, 0)
+        state = .downloading(model.id, 0, Self.initialStatus(for: model))
         do {
             switch model.provider {
             case .whisper:
@@ -115,12 +115,52 @@ final class FinalModelDownloader: ObservableObject {
             case .parakeet:
                 guard let version = model.parakeetVersion else { throw FinalModelDownloadError.invalidModel }
                 _ = try await AsrModels.download(version: version) { [weak self] progress in
-                    Task { @MainActor in self?.state = .downloading(model.id, progress.fractionCompleted) }
+                    let status = Self.status(for: model, progress: progress)
+                    Task { @MainActor in
+                        self?.state = .downloading(model.id, progress.fractionCompleted, status)
+                    }
                 }
             }
             state = .ready(model.id)
         } catch {
             state = .failed(model.id, error.localizedDescription)
+        }
+    }
+
+    nonisolated private static func initialStatus(for model: FinalTranscriptionModelChoice) -> String {
+        switch model.provider {
+        case .whisper:
+            return "Starting download."
+        case .parakeet:
+            if model.parakeetVersion == .v3 {
+                return "Starting a large download, about 461 MB."
+            }
+            return "Starting Parakeet model download."
+        }
+    }
+
+    nonisolated private static func status(
+        for model: FinalTranscriptionModelChoice,
+        progress: DownloadUtils.DownloadProgress
+    ) -> String {
+        switch progress.phase {
+        case .listing:
+            return "Checking the model files to download."
+        case let .downloading(completedFiles, totalFiles):
+            let fileText = totalFiles > 0
+                ? "File \(min(completedFiles + 1, totalFiles)) of \(totalFiles)."
+                : "Downloading model files."
+            if model.parakeetVersion == .v3 {
+                let approximateDownloaded = Int((progress.fractionCompleted / 0.5 * 461).rounded())
+                let clamped = max(0, min(461, approximateDownloaded))
+                return "\(fileText) About \(clamped) of 461 MB downloaded."
+            }
+            return fileText
+        case let .compiling(modelName):
+            if modelName.isEmpty {
+                return "Finishing model setup."
+            }
+            return "Preparing \(modelName) for this device."
         }
     }
 }

@@ -113,11 +113,14 @@ struct SettingsView: View {
 
     @ViewBuilder private var finalDownloadControl: some View {
         switch finalDownloader.state {
-        case let .downloading(id, progress) where id == finalModel:
-            VStack(alignment: .leading) {
+        case let .downloading(id, progress, status) where id == finalModel:
+            VStack(alignment: .leading, spacing: 4) {
                 ProgressView(value: progress)
                 Text("Downloading \(selectedFinalModel.name): \(progress.formatted(.percent.precision(.fractionLength(0))))")
                     .font(.caption)
+                    .foregroundStyle(Theme.muted)
+                Text(status)
+                    .font(.caption2)
                     .foregroundStyle(Theme.muted)
             }
         case let .ready(id) where id == finalModel:

@@ -6,6 +6,7 @@ struct RecordingView: View {
     @Environment(\.modelContext) private var modelContext
     @StateObject private var session = TranscriptionSession()
     @State private var showingImporter = false
+    @State private var processingTask: Task<Void, Never>?
 
     var body: some View {
         NavigationStack {
@@ -30,9 +31,12 @@ struct RecordingView: View {
                 allowsMultipleSelection: false
             ) { result in
                 if case let .success(urls) = result, let url = urls.first {
-                    Task {
+                    processingTask = Task {
                         await session.importAudio(url)
-                        session.saveCompletedRecording(in: modelContext)
+                        if !Task.isCancelled {
+                            session.saveCompletedRecording(in: modelContext)
+                        }
+                        processingTask = nil
                     }
                 }
             }
@@ -83,6 +87,12 @@ struct RecordingView: View {
                     .font(.headline)
                 Text("The final pass is more accurate than the live preview.")
                     .foregroundStyle(Theme.muted)
+                Button {
+                    cancelProcessing()
+                } label: {
+                    Label("Cancel Processing", systemImage: "xmark.circle")
+                }
+                .buttonStyle(SecondaryButtonStyle())
                 Spacer()
             }
         case .completed:
@@ -107,9 +117,12 @@ struct RecordingView: View {
                 TranscriptList(segments: session.finalSegments)
                 if session.diarizationNeedsRetry {
                     Button {
-                        Task {
+                        processingTask = Task {
                             await session.retryCurrentSpeakerLabels()
-                            session.saveCompletedRecording(in: modelContext)
+                            if !Task.isCancelled {
+                                session.saveCompletedRecording(in: modelContext)
+                            }
+                            processingTask = nil
                         }
                     } label: {
                         Label("Retry Speaker Labels", systemImage: "arrow.clockwise")
@@ -145,20 +158,31 @@ struct RecordingView: View {
         HStack(spacing: 14) {
             if session.state == .recording {
                 Button {
-                    Task {
+                    processingTask = Task {
                         await session.stopRecording(in: modelContext)
-                        session.saveCompletedRecording(in: modelContext)
+                        if !Task.isCancelled {
+                            session.saveCompletedRecording(in: modelContext)
+                        }
+                        processingTask = nil
                     }
                 } label: {
                     Label("Stop", systemImage: "stop.fill")
                 }
                 .buttonStyle(PrimaryButtonStyle(color: .red))
             } else if session.state == .completed {
-                TranscriptShareMenu(segments: session.finalSegments)
-                .buttonStyle(PrimaryButtonStyle(color: Theme.accent))
-                Button("New") { session.reset() }
+                if session.isIdentifyingSpeakers {
+                    Button {
+                        cancelProcessing()
+                    } label: {
+                        Label("Cancel Speaker Labels", systemImage: "xmark.circle")
+                    }
                     .buttonStyle(SecondaryButtonStyle())
-                    .disabled(session.isIdentifyingSpeakers)
+                } else {
+                    TranscriptShareMenu(segments: session.finalSegments)
+                    .buttonStyle(PrimaryButtonStyle(color: Theme.accent))
+                    Button("New") { session.reset() }
+                        .buttonStyle(SecondaryButtonStyle())
+                }
             } else {
                 Button {
                     Task { await session.startRecording() }
@@ -243,6 +267,14 @@ struct RecordingView: View {
 
     private func formatDuration(_ duration: TimeInterval) -> String {
         String(format: "%02d:%02d", Int(duration) / 60, Int(duration) % 60)
+    }
+
+    private func cancelProcessing() {
+        processingTask?.cancel()
+        processingTask = nil
+        Task {
+            await session.cancelProcessing()
+        }
     }
 }
 
