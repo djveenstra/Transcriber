@@ -80,14 +80,15 @@ final class WhisperModelDownloader: ObservableObject {
     }
 
     static let shared = WhisperModelDownloader()
-    private static let downloadedModelsKey = "downloadedWhisperModelIDs"
 
     @Published private(set) var state: State = .idle
     @Published private(set) var modelID = ""
     @Published private(set) var downloadedModelIDs: Set<String>
 
     private init() {
-        downloadedModelIDs = Set(UserDefaults.standard.stringArray(forKey: Self.downloadedModelsKey) ?? [])
+        downloadedModelIDs = TranscriptionModelReadiness.reconciledWhisperHintIDs(
+            modelIDs: WhisperModelChoice.all.map(\.id)
+        )
     }
 
     func download(_ modelID: String) async {
@@ -100,8 +101,9 @@ final class WhisperModelDownloader: ObservableObject {
                     self?.state = .downloading(progress.fractionCompleted)
                 }
             }
-            downloadedModelIDs.insert(modelID)
-            UserDefaults.standard.set(Array(downloadedModelIDs), forKey: Self.downloadedModelsKey)
+            downloadedModelIDs = TranscriptionModelReadiness.reconciledWhisperHintIDs(
+                modelIDs: WhisperModelChoice.all.map(\.id)
+            )
             state = .ready
         } catch {
             state = .failed(error.localizedDescription)

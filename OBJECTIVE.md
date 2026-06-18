@@ -2,11 +2,11 @@
 
 _This file holds the **single active objective** the Worker is currently implementing. The Manager sets it from the roadmap and advances it only when the current objective is gated `PROCEED`. Full details for every objective live in [docs/planning/objectives/](docs/planning/objectives/)._
 
-## ▶ Active objective: **OBJ-02 — File-Based Model Readiness**
+## ▶ Active objective: **OBJ-03 — Model Lifecycle States + Repair/Redownload**
 
-Read the full spec: [docs/planning/objectives/OBJECTIVE-02.md](docs/planning/objectives/OBJECTIVE-02.md).
+Read the full spec: [docs/planning/objectives/OBJECTIVE-03.md](docs/planning/objectives/OBJECTIVE-03.md).
 
-**One-line mission:** Make transcription-model readiness reflect actual on-device files, replacing the in-memory/UserDefaults Whisper "downloaded" flag as the source of truth while preserving current behavior when files are present.
+**One-line mission:** Introduce the full PRD model-state set behind a small model registry, and expose Repair/Redownload plus model storage status in Settings so a missing/corrupt model is recoverable.
 
 **Before starting, read:** [PRD.md](PRD.md) → [PLAN.md](PLAN.md) → this file → [AGENTS.md](AGENTS.md).
 
@@ -17,8 +17,8 @@ Read the full spec: [docs/planning/objectives/OBJECTIVE-02.md](docs/planning/obj
 | # | Objective | Phase | Status |
 |---|---|---|---|
 | 01 | [Governance, green baseline & data-safety guardrails](docs/planning/objectives/OBJECTIVE-01.md) | 0 | Done — PROCEED 2026-06-18 |
-| 02 | [File-based model readiness](docs/planning/objectives/OBJECTIVE-02.md) | 1 | ▶ Active |
-| 03 | [Model lifecycle states + Repair/Redownload](docs/planning/objectives/OBJECTIVE-03.md) | 1 | Pending |
+| 02 | [File-based model readiness](docs/planning/objectives/OBJECTIVE-02.md) | 1 | Done — PROCEED 2026-06-18 |
+| 03 | [Model lifecycle states + Repair/Redownload](docs/planning/objectives/OBJECTIVE-03.md) | 1 | ▶ Active |
 | 04 | [Default preload + status refresh + verify-before-process](docs/planning/objectives/OBJECTIVE-04.md) | 1 | Pending |
 | 05 | [Microphone abstraction & selection backend](docs/planning/objectives/OBJECTIVE-05.md) | 2 | Pending |
 | 06 | [Test Mic + live input meter](docs/planning/objectives/OBJECTIVE-06.md) | 2 | Pending |

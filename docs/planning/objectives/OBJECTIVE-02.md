@@ -51,3 +51,21 @@ Per [AGENTS.md §4](../../../AGENTS.md). Real reboot persistence is a **device g
 
 ## Rollback Considerations
 Additive check + redirected source of truth. Revert restores the UserDefaults-based flag. No data/schema change.
+
+## Completion Report — 2026-06-18
+
+**Gate:** PROCEED
+
+**Worker report:**
+- Files touched: `src/native/Transcriber2/Transcriber/TranscriptionModelReadiness.swift`, `src/native/Transcriber2/Transcriber/FinalTranscriptionModels.swift`, `src/native/Transcriber2/Transcriber/WhisperModels.swift`, `src/native/Transcriber2/TranscriberTests/TranscriptionModelReadinessTests.swift`, `QA.md`, `PLAN.md`, `OBJECTIVE.md`, and this objective file.
+- Assumptions: WhisperKit's default on-disk cache path is reliable for this pinned revision because `HubApi` defaults to `Documents/huggingface`, `WhisperKit.download` uses `models/argmaxinc/whisperkit-coreml`, and the active allowed model IDs match unique remote model folder names. A full model loadability probe is deferred to OBJ-04/OBJ-20 device validation rather than performed during every readiness read.
+- Readiness logic before vs after: before, Whisper readiness used `WhisperModelDownloader.downloadedModelIDs` from in-memory/UserDefaults state while Parakeet checked files directly. After, `FinalTranscriptionModelChoice.isDownloaded` routes through `TranscriptionModelReadiness`; Whisper checks required Core ML model files on disk and reconciles stale hints, while Parakeet uses the existing `AsrModels.modelsExist(at:version:)` file check behind the same helper.
+- Tests added or updated: added `TranscriptionModelReadinessTests` for complete Whisper compiled-model fixtures, partial/missing fixtures, `.mlpackage` fixtures, and stale remembered downloaded-flag reconciliation.
+- Validation commands run: macOS build PASS; iOS-simulator build PASS; focused readiness tests PASS; full `TranscriberTests` bundle PASS per DECISIONS.md D-006.
+- Test output: 53/53 unit tests passed; focused readiness test run passed all 4 new tests.
+- Objective items completed: single readiness helper added; Whisper + Parakeet readiness routed through one check; UserDefaults hint reconciled against files; temp-directory readiness tests added; no download/inference behavior intentionally changed.
+- Deferred/blocked: real force-quit/relaunch/reboot persistence and offline behavior remain Human-owned device gates for later OBJ-04/OBJ-20 validation. No blocker.
+
+**Auditor report:** ALIGNED. Diff is inside `src/native/Transcriber2/` plus planning docs; no `src/python/`, `src/legacy-ios/`, `XCode App Build/`, schema, dependency, strict-concurrency, microphone, navigation, Dashboard, or Repair/Redownload changes. Readiness no longer depends solely on in-memory state.
+
+**QA report:** PASS. Evidence recorded in [QA.md](../../../QA.md#obj-02--file-based-model-readiness--2026-06-18). Device reboot/offline persistence was explicitly not claimed complete.

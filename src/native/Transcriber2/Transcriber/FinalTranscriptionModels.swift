@@ -77,16 +77,7 @@ struct FinalTranscriptionModelChoice: Identifiable, Sendable {
     }
 
     var isDownloaded: Bool {
-        switch provider {
-        case .whisper:
-            // WhisperKit does not expose a stable public cache check. The downloader tracks
-            // confirmed downloads during this app session and transcription can still load it.
-            return WhisperModelDownloader.shared.downloadedModelIDs.contains(id)
-        case .parakeet:
-            guard let parakeetVersion else { return false }
-            let directory = AsrModels.defaultCacheDirectory(for: parakeetVersion)
-            return AsrModels.modelsExist(at: directory, version: parakeetVersion)
-        }
+        TranscriptionModelReadiness.isPresent(self)
     }
 }
 
