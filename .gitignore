@@ -19,6 +19,8 @@ DerivedData/
 *.xcuserstate
 xcuserdata/
 native/Builds/
+src/native/Builds/
+src/native/Transcriber2/Builds/
 
 # Early Xcode template retained locally for reference
 XCode App Build/

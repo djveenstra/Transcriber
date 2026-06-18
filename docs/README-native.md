@@ -5,7 +5,7 @@ isolated from the working Python Transcriber 1.x application in the repository r
 
 ## Open in Xcode
 
-Open `Transcriber2/Transcriber2.xcodeproj`, select the `Transcriber` scheme, and choose
+Open `src/native/Transcriber2/Transcriber2.xcodeproj`, select the `Transcriber` scheme, and choose
 an iPhone running iOS 26 or a Mac running macOS 26.
 
 The first transcription and diarization sessions may download and compile speech-model
@@ -24,10 +24,10 @@ assets. Later sessions process locally on the device.
 ## Verification
 
 ```sh
-xcodebuild -project Transcriber2/Transcriber2.xcodeproj -scheme Transcriber \
+xcodebuild -project src/native/Transcriber2/Transcriber2.xcodeproj -scheme Transcriber \
   -destination 'platform=macOS' CODE_SIGNING_ALLOWED=NO build
 
-xcodebuild -project Transcriber2/Transcriber2.xcodeproj -scheme Transcriber \
+xcodebuild -project src/native/Transcriber2/Transcriber2.xcodeproj -scheme Transcriber \
   -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
 ```
 

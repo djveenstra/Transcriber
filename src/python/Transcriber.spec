@@ -1,9 +1,13 @@
 # -*- mode: python ; coding: utf-8 -*-
+from pathlib import Path
+
 from PyInstaller.utils.hooks import collect_data_files
 from PyInstaller.utils.hooks import collect_submodules
 from PyInstaller.utils.hooks import collect_all
 
-datas = [('app', 'app')]
+spec_dir = Path(SPECPATH)
+
+datas = [(str(spec_dir / 'app'), 'app')]
 binaries = []
 hiddenimports = ['pyannote.audio', 'pyannote.audio.pipelines', 'pyannote.core', 'pyannote.metrics', 'pyannote.pipeline', 'speechbrain', 'whisper', 'torch', 'torchaudio', 'sklearn', 'sklearn.cluster', 'mlx', 'mlx.core', 'mlx_whisper']
 datas += collect_data_files('speechbrain')
@@ -26,8 +30,8 @@ datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 
 
 a = Analysis(
-    ['app/main.py'],
-    pathex=[],
+    [str(spec_dir / 'app' / 'main.py')],
+    pathex=[str(spec_dir)],
     binaries=binaries,
     datas=datas,
     hiddenimports=hiddenimports,

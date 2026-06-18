@@ -1,7 +1,8 @@
 #!/bin/bash
 set -e
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-VENV="/Users/daniel/Documents/whisper-transcriber/.venv"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+VENV="${VENV:-$SCRIPT_DIR/.venv}"
 APP_DEST="/Applications/Transcriber.app"
 
 echo "Building Transcriber.app..."
@@ -61,8 +62,8 @@ task.waitUntilExit()
 SWIFT
 
 # Copy icon
-if [ -f "$SCRIPT_DIR/Transcriber.icns" ]; then
-    cp "$SCRIPT_DIR/Transcriber.icns" "$APP_DEST/Contents/Resources/Transcriber.icns"
+if [ -f "$PROJECT_ROOT/assets/Transcriber.icns" ]; then
+    cp "$PROJECT_ROOT/assets/Transcriber.icns" "$APP_DEST/Contents/Resources/Transcriber.icns"
 fi
 
 echo "Compiling launcher..."

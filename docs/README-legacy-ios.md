@@ -130,8 +130,7 @@ No HuggingFace token or account needed (unlike the Mac version).
 ## File Structure
 
 ```
-ios/
-├── README-iOS.md (this file)
+src/legacy-ios/
 └── TranscriberApp/
     ├── App/TranscriberApp.swift
     ├── Models/ModelManager.swift
