@@ -8,6 +8,39 @@ import SwiftUI
 
 private let persistenceLogger = Logger(subsystem: "com.daniel.transcriber2", category: "Persistence")
 
+enum RecordingInterruptionRecovery {
+    static func makeRetryableRecording(
+        title: String,
+        duration: TimeInterval,
+        audioURL: URL,
+        finalTranscriptionModelID: String
+    ) -> Recording {
+        Recording(
+            title: title,
+            durationSeconds: duration,
+            audioFileName: audioURL.lastPathComponent,
+            segments: [],
+            transcriptionNeedsRetry: true,
+            finalTranscriptionModelID: finalTranscriptionModelID
+        )
+    }
+
+    static func failureMessage(
+        reason: RecordingInterruptionReason,
+        writeErrorMessage: String?
+    ) -> String {
+        var message = "Recording stopped because \(reason.displayMessage). Your captured audio was saved and can be transcribed from the Library."
+        if let writeErrorMessage {
+            message += " The audio file may be incomplete: \(writeErrorMessage)"
+        }
+        return message
+    }
+
+    static func unavailableSaveContextMessage(reason: RecordingInterruptionReason) -> String {
+        "Recording stopped because \(reason.displayMessage). The captured audio file remains on disk, but it could not be added to the Library automatically."
+    }
+}
+
 @MainActor
 final class TranscriptionSession: ObservableObject {
     enum State: Equatable {
@@ -97,7 +130,7 @@ final class TranscriptionSession: ObservableObject {
         }
     }
 
-    func startRecording() async {
+    func startRecording(in context: ModelContext? = nil) async {
         guard state == .idle || state == .completed else { return }
         state = .preparing
         finalSegments = []
@@ -116,6 +149,7 @@ final class TranscriptionSession: ObservableObject {
         processingWasCancelled = false
         processingFinalModelChoice = nil
         modelFallbackNote = nil
+        persistenceContext = context
 
         guard await recorder.requestPermission() else {
             state = .failed("Microphone permission was denied.")
@@ -152,6 +186,11 @@ final class TranscriptionSession: ObservableObject {
             liveAudioContinuation = continuation
             recorder.onBuffer = { chunk in
                 continuation.yield(chunk)
+            }
+            recorder.onSystemEvent = { [weak self] event in
+                Task { @MainActor in
+                    await self?.handleRecorderSystemEvent(event)
+                }
             }
             liveConsumerTask = Task { [weak self] in
                 do {
@@ -196,6 +235,7 @@ final class TranscriptionSession: ObservableObject {
             }
         } catch {
             recorder.stop()
+            recorder.onSystemEvent = nil
             state = .failed(error.localizedDescription)
         }
     }
@@ -203,16 +243,8 @@ final class TranscriptionSession: ObservableObject {
     func stopRecording(in context: ModelContext) async {
         guard state == .recording, let audioURL else { return }
         let writeError = recorder.stop()
-        livePreparationTask?.cancel()
-        liveAudioContinuation?.finish()
-        liveAudioContinuation = nil
-        liveConsumerTask?.cancel()
-        await liveConsumerTask?.value
-        liveConsumerTask = nil
-        livePreparationTask = nil
-#if os(iOS)
-        await liveParakeet.finish()
-#endif
+        recorder.onSystemEvent = nil
+        await stopLiveCaptureTasks()
         preserveRecording(in: context)
 
         if let writeError {
@@ -375,6 +407,7 @@ final class TranscriptionSession: ObservableObject {
         liveConsumerTask = nil
         livePreparationTask?.cancel()
         livePreparationTask = nil
+        recorder.onSystemEvent = nil
     }
 
     func retrySpeakerLabels(for recording: Recording, in context: ModelContext) async {
@@ -580,15 +613,65 @@ final class TranscriptionSession: ObservableObject {
         }
     }
 
+    private func handleRecorderSystemEvent(_ event: AudioRecorderSystemEvent) async {
+        switch event {
+        case let .routeChanged(activeMicrophoneName, notice):
+            guard state == .recording else { return }
+            self.activeMicrophoneName = activeMicrophoneName
+            microphoneFallbackNotice = notice
+        case let .stoppedBySystem(reason, writeErrorMessage):
+            await handleSystemStoppedRecording(
+                reason: reason,
+                writeErrorMessage: writeErrorMessage
+            )
+        }
+    }
+
+    private func handleSystemStoppedRecording(
+        reason: RecordingInterruptionReason,
+        writeErrorMessage: String?
+    ) async {
+        guard state == .recording, audioURL != nil else { return }
+        recorder.onSystemEvent = nil
+        await stopLiveCaptureTasks()
+
+        guard let persistenceContext else {
+            state = .failed(RecordingInterruptionRecovery.unavailableSaveContextMessage(reason: reason))
+            return
+        }
+
+        preserveRecording(in: persistenceContext)
+        savedRecording?.transcriptionNeedsRetry = true
+        persistChanges(
+            in: persistenceContext,
+            failureMessage: "Your recording was captured, but the retry status could not be saved."
+        )
+        state = .failed(RecordingInterruptionRecovery.failureMessage(
+            reason: reason,
+            writeErrorMessage: writeErrorMessage
+        ))
+    }
+
+    private func stopLiveCaptureTasks() async {
+        livePreparationTask?.cancel()
+        liveAudioContinuation?.finish()
+        liveAudioContinuation = nil
+        liveConsumerTask?.cancel()
+        await liveConsumerTask?.value
+        liveConsumerTask = nil
+        livePreparationTask = nil
+#if os(iOS)
+        await liveParakeet.finish()
+#endif
+    }
+
     private func preserveRecording(in context: ModelContext) {
         guard !saved, let audioURL else { return }
         persistenceContext = context
-        let recording = Recording(
+        let recording = RecordingInterruptionRecovery.makeRetryableRecording(
             title: Date.now.formatted(date: .abbreviated, time: .shortened),
-            durationSeconds: recorder.duration,
-            audioFileName: audioURL.lastPathComponent,
-            segments: [],
-            transcriptionNeedsRetry: true,
+            duration: recorder.duration,
+            audioURL: audioURL,
             finalTranscriptionModelID: selectedFinalModelID
         )
         context.insert(recording)

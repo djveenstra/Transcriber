@@ -198,7 +198,7 @@ struct RecordingView: View {
                 }
             } else {
                 Button {
-                    Task { await session.startRecording() }
+                    Task { await session.startRecording(in: modelContext) }
                 } label: {
                     Label("Record", systemImage: "mic.fill")
                 }

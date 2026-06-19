@@ -41,7 +41,52 @@ xcodebuild test -project "src/native/Transcriber2/Transcriber2.xcodeproj" -schem
 
 ## Device test scripts (Human Reviewer — iPhone 17 Pro / Mac)
 
-> _Populated by OBJ-08 (background/lock + 5/15/30-min), OBJ-04/OBJ-20 (model reboot persistence), OBJ-18 (Mac), OBJ-20 (offline/airplane mode, battery, performance). Until then, see PRD §17._
+### OBJ-08 iPhone device validation checklist — OBJ-04 through OBJ-08 gates
+
+Use an iPhone 17 Pro or equivalent beta test device. Install the current OBJ-08 build, keep the device plugged in for long runs when practical, and record any app alert text exactly. Pass criteria for every recording item: original audio remains available in the app, the app does not crash, Stop works, final transcription can be started or retried from the Library, speaker labels complete or fail safely with retry, and sharing/export remains available after completion.
+
+#### OBJ-04 model preload, persistence, and offline checks
+
+- [ ] Launch fresh install with network available. Confirm the default transcription model begins preload/download without blocking Record startup.
+- [ ] When download finishes, confirm Settings shows the default model as downloaded/ready.
+- [ ] Force-quit the app, relaunch, and confirm the same model remains downloaded/ready without redownloading.
+- [ ] Reboot the iPhone, relaunch, and confirm the same model remains downloaded/ready without redownloading.
+- [ ] Enable Airplane Mode after the model is ready. Record a short sample, stop, and confirm transcription starts and completes offline.
+- [ ] Realistic corrupt/remove-model recovery where feasible: with a development build or debugger-supported method, remove or corrupt the downloaded model cache, relaunch/open Settings, and confirm the app shows missing/corrupt or failed state plus Repair/Redownload instead of silently claiming ready.
+
+#### OBJ-05 microphone enumeration and routing checks
+
+- [ ] Open Settings with no accessory attached. Confirm Automatic/default and built-in iPhone microphone options are available where the platform exposes them.
+- [ ] Attach a Bluetooth/headset microphone. Reopen or refresh Settings and confirm the Bluetooth/headset input appears with a recognizable name.
+- [ ] Select the built-in iPhone microphone, start a recording, speak near the phone, stop, and confirm captured audio matches the selected route.
+- [ ] Select the Bluetooth/headset microphone, start a recording, speak into that microphone away from the phone, stop, and confirm captured audio matches the selected route.
+
+#### OBJ-06 Test Mic checks
+
+- [ ] In Settings, select Automatic/default and tap Test Mic. Confirm any permission prompt appears if needed and the test starts.
+- [ ] While Test Mic is running, speak near the active microphone and confirm the meter responds.
+- [ ] Tap Stop and confirm the meter stops and the microphone is released.
+- [ ] Start Test Mic again, leave Settings, return to Settings, and confirm test capture stopped cleanly.
+- [ ] After leaving Settings, start a normal recording and confirm it starts normally.
+
+#### OBJ-07 fallback and active-mic display checks
+
+- [ ] Select a Bluetooth/headset microphone, disconnect or power off that device, then start recording. Confirm recording starts instead of blocking.
+- [ ] Confirm the active-mic label during recording names the actual microphone being used.
+- [ ] Confirm the fallback notice appears when the selected microphone is unavailable.
+- [ ] Stop the recording and confirm the audio is saved and retryable/transcribable.
+
+#### OBJ-08 background, lock-screen, interruption, route-change, and duration checks
+
+- [ ] Start recording, wait 30 seconds, lock the phone for at least 2 minutes, unlock, stop, and confirm audio was preserved.
+- [ ] Start recording, switch to another app for at least 2 minutes, return, stop, and confirm audio was preserved.
+- [ ] Start recording with a Bluetooth/headset microphone, disconnect it during recording, and confirm the app either keeps recording on a fallback route with an updated active-mic label/notice or stops gracefully with saved retryable audio.
+- [ ] Start recording, trigger an audio interruption where feasible (for example, begin another app's audio capture or receive a phone/FaceTime interruption), and confirm Transcriber either recovers recording state correctly or stops gracefully with saved retryable audio.
+- [ ] Record 5 minutes, stop, transcribe, speaker-label, and share TXT.
+- [ ] Record 15 minutes, stop, transcribe, speaker-label, and share TXT.
+- [ ] Record 30 minutes, stop, transcribe, speaker-label, and share TXT.
+- [ ] During the 30-minute run, note start battery %, end battery %, whether the device became hot, whether the app became sluggish, and whether memory warnings/crashes occurred.
+- [ ] For any graceful-stop case, confirm the Library contains the interrupted recording, original audio plays back, and retry transcription is available.
 
 ---
 
@@ -122,3 +167,14 @@ xcodebuild test -project "src/native/Transcriber2/Transcriber2.xcodeproj" -schem
 - Regression checklist: PASS for scoped regression: macOS build, iOS-simulator build, strict-concurrency build, and unit-test bundle are green. No schema, dependency, audio deletion, transcript deletion, Dashboard, navigation, `src/python/`, `src/legacy-ios/`, or `XCode App Build/` changes.
 - Device gates deferred: real iPhone validation remains Human-owned: selected physical mic becoming unavailable still starts recording, the fallback input is actually used, the active-mic label is accurate, and the fallback notice appears. Real Bluetooth/headset drop behavior remains deferred to OBJ-08/OBJ-20 per `OBJECTIVE-07.md`.
 - Verdict: PASS for agent-verifiable OBJ-07 scope (defects: none found in agent-verifiable scope). Human Reviewer accepted OBJ-07 as complete with the listed real iPhone checks deferred to the documented Human-owned device gates for OBJ-07/OBJ-08/OBJ-20.
+
+## OBJ-08 — Background/Lock & 30-Minute Reliability Hardening — 2026-06-18
+- Tier: agent-verifiable hardening passed; background/lock/long-duration proof remains a Human-owned iPhone device gate.
+- Build: macOS PASS / iOS-sim PASS.
+- Unit/integration tests: 79 passed / 79 total using `-only-testing:TranscriberTests`; new tests: `RecordingReliabilityTests.interruptedRecordingCreatesRetryableLibraryRecordWithoutTranscriptData()`, `interruptionFailureMessageExplainsSavedRetryableAudio()`, `interruptionFailureMessageIncludesIncompleteFileWarningOnWriteError()`, and `unavailableSaveContextMessageDoesNotClaimLibraryPersistence()`.
+- Manual UI: not run on a simulator/device. Code review verifies `UIBackgroundModes = audio` remains configured, Record startup now gives the session a save context for interruption recovery, route-change events refresh active microphone/fallback notice state, and interruption/media-service-reset events close capture through the recorder stop path.
+- Failure injection: unit tests exercise the retryable interrupted-recording policy, saved-audio messaging, write-error/incomplete-file messaging, and the no-save-context fallback message. Real AVAudioSession interruptions, Bluetooth route drops, lock-screen capture, app switching, and 5/15/30-minute runs require the Human-owned iPhone checklist now recorded above.
+- Auditor: ALIGNED. Auditor verified OBJ-08 scope against PRD.md, PLAN.md, OBJECTIVE.md, AGENTS.md, DECISIONS.md, and `docs/planning/objectives/OBJECTIVE-08.md`; no Dashboard/navigation/Library-status work, no unrelated Settings polish, no `Recording` schema change, no dependency bump, no strict-concurrency weakening, no edits to `src/python/`, `src/legacy-ios/`, or `XCode App Build/`, and no removal of deliberate pipeline pauses.
+- Regression checklist: PASS for scoped regression: macOS build, iOS-simulator build, strict-concurrency build, and unit-test bundle are green. No schema, dependency, audio deletion, transcript deletion, Dashboard, navigation, `src/python/`, `src/legacy-ios/`, or `XCode App Build/` changes.
+- Device gates deferred: Human Reviewer must run the OBJ-08 iPhone checklist above before this objective can be called complete: OBJ-04 model preload/persistence/offline/corrupt-model checks; OBJ-05 real microphone enumeration/routing checks; OBJ-06 Test Mic behavior; OBJ-07 unavailable selected-mic fallback/active-label/notice checks; OBJ-08 background, lock-screen, app-switch, interruption, Bluetooth route-change, and 5/15/30-minute reliability checks.
+- Verdict: PASS for agent-verifiable OBJ-08 hardening scope (defects: none found in agent-verifiable scope). Final gate remains ASK USER because real-device recording reliability is Human-owned per AGENTS.md and OBJECTIVE-08.md.

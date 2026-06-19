@@ -2,6 +2,25 @@ import AVFoundation
 import Combine
 import Foundation
 
+enum RecordingInterruptionReason: String, Equatable, Sendable {
+    case audioSessionInterrupted
+    case mediaServicesReset
+
+    var displayMessage: String {
+        switch self {
+        case .audioSessionInterrupted:
+            "iOS interrupted audio capture"
+        case .mediaServicesReset:
+            "iOS reset audio services"
+        }
+    }
+}
+
+enum AudioRecorderSystemEvent: Equatable, Sendable {
+    case routeChanged(activeMicrophoneName: String, notice: String?)
+    case stoppedBySystem(reason: RecordingInterruptionReason, writeErrorMessage: String?)
+}
+
 @MainActor
 final class AudioRecorder: ObservableObject {
     @Published private(set) var level: Float = 0
@@ -10,11 +29,15 @@ final class AudioRecorder: ObservableObject {
     @Published private(set) var microphoneFallbackNotice: String?
 
     var onBuffer: (@Sendable (CapturedAudioChunk) -> Void)?
+    var onSystemEvent: (@Sendable (AudioRecorderSystemEvent) -> Void)?
     var levelUpdates: AnyPublisher<Float, Never> { $level.eraseToAnyPublisher() }
 
     private var engine: AVAudioEngine?
     private var fileWriter: AudioFileWriter?
     private var startedAt: Date?
+#if os(iOS)
+    private var notificationObservers: [NSObjectProtocol] = []
+#endif
 
     var elapsedDuration: TimeInterval {
         startedAt.map { Date.now.timeIntervalSince($0) } ?? duration
@@ -75,6 +98,9 @@ final class AudioRecorder: ObservableObject {
         self.engine = engine
         startedAt = .now
         duration = 0
+#if os(iOS)
+        registerAudioSessionObservers()
+#endif
     }
 
     /// Stops recording and returns the first write error encountered during the
@@ -98,10 +124,88 @@ final class AudioRecorder: ObservableObject {
         activeMicrophoneName = MicrophoneRecordingRoute.systemDefaultInputName
         microphoneFallbackNotice = nil
 #if os(iOS)
+        removeAudioSessionObservers()
         try? AVAudioSession.sharedInstance().setActive(false)
 #endif
         return writeError
     }
+
+#if os(iOS)
+    private func registerAudioSessionObservers() {
+        removeAudioSessionObservers()
+        let center = NotificationCenter.default
+        notificationObservers = [
+            center.addObserver(
+                forName: AVAudioSession.interruptionNotification,
+                object: AVAudioSession.sharedInstance(),
+                queue: .main
+            ) { [weak self] notification in
+                Task { @MainActor in
+                    self?.handleInterruption(notification)
+                }
+            },
+            center.addObserver(
+                forName: AVAudioSession.routeChangeNotification,
+                object: AVAudioSession.sharedInstance(),
+                queue: .main
+            ) { [weak self] notification in
+                Task { @MainActor in
+                    self?.handleRouteChange(notification)
+                }
+            },
+            center.addObserver(
+                forName: AVAudioSession.mediaServicesWereResetNotification,
+                object: AVAudioSession.sharedInstance(),
+                queue: .main
+            ) { [weak self] _ in
+                Task { @MainActor in
+                    self?.stopAfterSystemEvent(.mediaServicesReset)
+                }
+            },
+        ]
+    }
+
+    private func removeAudioSessionObservers() {
+        let center = NotificationCenter.default
+        for observer in notificationObservers {
+            center.removeObserver(observer)
+        }
+        notificationObservers = []
+    }
+
+    private func handleInterruption(_ notification: Notification) {
+        guard let rawType = notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
+              let type = AVAudioSession.InterruptionType(rawValue: rawType) else {
+            return
+        }
+
+        switch type {
+        case .began:
+            stopAfterSystemEvent(.audioSessionInterrupted)
+        case .ended:
+            break
+        @unknown default:
+            stopAfterSystemEvent(.audioSessionInterrupted)
+        }
+    }
+
+    private func handleRouteChange(_ notification: Notification) {
+        guard engine != nil else { return }
+        let route = MicrophoneService.shared.applyPreferredInputForRecording()
+        activeMicrophoneName = route.activeDisplayName
+        microphoneFallbackNotice = route.notice
+        onSystemEvent?(.routeChanged(
+            activeMicrophoneName: route.activeDisplayName,
+            notice: route.notice
+        ))
+    }
+
+    private func stopAfterSystemEvent(_ reason: RecordingInterruptionReason) {
+        guard engine != nil else { return }
+        let writeErrorMessage = stop()?.localizedDescription
+        onSystemEvent?(.stoppedBySystem(reason: reason, writeErrorMessage: writeErrorMessage))
+    }
+#endif
 
     private static func rms(_ buffer: AVAudioPCMBuffer) -> Float {
         guard let channel = buffer.floatChannelData?[0], buffer.frameLength > 0 else { return 0 }
