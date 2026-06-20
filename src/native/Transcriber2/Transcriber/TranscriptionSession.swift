@@ -94,7 +94,7 @@ final class TranscriptionSession: ObservableObject {
     var diarizer: any DiarizationEngine = FluidDiarizationEngine()
     private var audioURL: URL?
     private var saved = false
-    private weak var savedRecording: Recording?
+    private var savedRecording: Recording?
     private var persistenceContext: ModelContext?
     private var livePreparationTask: Task<Void, Never>?
     private var liveAudioContinuation: AsyncStream<CapturedAudioChunk>.Continuation?
@@ -116,6 +116,19 @@ final class TranscriptionSession: ObservableObject {
 
     var selectedModelName: String {
         activeFinalModelChoice.name
+    }
+
+    var speakerLabelStatusPresentation: SpeakerLabelStatusPresentation {
+        SpeakerLabelStatusPresentation.makeForSession(
+            isIdentifyingSpeakers: isIdentifyingSpeakers,
+            diarizationNeedsRetry: diarizationNeedsRetry,
+            completionNote: completionNote,
+            speakerCount: Set(finalSegments.map(\.speaker)).count
+        )
+    }
+
+    var savedRecordingForEditing: Recording? {
+        savedRecording
     }
 
     func prepareSelectedModel() async {
@@ -324,12 +337,13 @@ final class TranscriptionSession: ObservableObject {
         }
     }
 
-    func saveCompletedRecording(in context: ModelContext) {
-        guard let audioURL, state == .completed else { return }
+    @discardableResult
+    func saveCompletedRecording(in context: ModelContext) -> Recording? {
+        guard let audioURL, state == .completed else { return nil }
         persistenceContext = context
         if saved {
             updateSavedRecording()
-            return
+            return savedRecording
         }
         let title = Date.now.formatted(date: .abbreviated, time: .shortened)
         let recording = Recording(
@@ -349,6 +363,7 @@ final class TranscriptionSession: ObservableObject {
             in: context,
             failureMessage: "Your transcript could not be saved. It remains visible here, but it will be lost if you leave this screen."
         )
+        return recording
     }
 
     func retryTranscription(for recording: Recording, in context: ModelContext) async {
@@ -448,8 +463,14 @@ final class TranscriptionSession: ObservableObject {
             )
         } else {
             completionNote = speakerLabelFailureMessage(saved: true)
+            recording.diarizationNeedsRetry = true
+            diarizationNeedsRetry = true
             progress = 1
             state = .completed
+            persistChanges(
+                in: context,
+                failureMessage: "Speaker labels still need retry, but that status could not be saved."
+            )
         }
     }
 

@@ -47,3 +47,15 @@ Per [AGENTS.md §4](../../../AGENTS.md).
 
 ## Rollback Considerations
 Refactor to a shared component + added entry points. Revert restores per-screen handling. No data/schema change.
+
+## Completion Report — 2026-06-20
+
+**Worker report:** Implemented `SpeakerLabelStatusPresentation` and `SpeakerLabelStatusView` as the shared speaker-label status source for approximate, failed, canceled, retryable, active/identifying, complete, and not-yet-available states. `RecordingView`, `RecordingDetailView`, `SharedAudioDetailView`, Library row metadata, and Dashboard speaker-label summaries now consume that shared presentation. Completed Recording and Shared Audio surfaces route to the saved Library detail record for speaker rename and OBJ-12 segment reassignment, so edits use the existing persisted SwiftData path instead of a duplicate temporary-session editor.
+
+**Retry behavior:** Speaker-label retry remains label-only. `retrySpeakerLabels(for:in:)` continues to use `recording.rawTranscription` and rerun diarization/merge without invoking final transcription, while preserving transcript text. Failed saved-recording retries now explicitly keep `diarizationNeedsRetry` set if the retry also fails.
+
+**Auditor report:** ALIGNED. Shared status logic is centralized rather than copied per screen; OBJ-12 reassignment/export behavior remains green; no diarization algorithm change, transcript text editing, speaker merge/split workflow, SwiftData schema change, dependency bump, strict-concurrency weakening, prohibited-path edit, OBJ-14 progress-timeline work, OBJ-15 diagnostics work, export hardening, accessibility, Mac parity, or cancellation hardening was introduced.
+
+**QA evidence:** Recorded in [QA.md](../../../QA.md#obj-13--consistent-speaker-label-states--renamereassign-parity--2026-06-20). macOS build PASS; iOS simulator build PASS; full `TranscriberTests` PASS (111/111); `git diff --check` PASS. Focused tests covered the shared status states, edit availability, retry-from-raw-transcription behavior, OBJ-12 reassignment regression, and export regression.
+
+**Manager gate recommendation:** PROCEED. No Human/product decision is required for OBJ-13. PLAN.md and OBJECTIVE.md advancement are deferred until Human Reviewer review so OBJ-14 is not started in this pass.

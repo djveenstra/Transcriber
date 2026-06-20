@@ -97,11 +97,12 @@ enum DashboardMicrophoneStatus {
 
 nonisolated enum DashboardSpeakerLabelStatus {
     static func summary(hasActiveSpeakerLabeling: Bool) -> DashboardStatusSummary {
-        DashboardStatusSummary(
+        let activePresentation = SpeakerLabelStatusPresentation.identifying
+        return DashboardStatusSummary(
             title: "Speaker labeling",
-            value: hasActiveSpeakerLabeling ? "Identifying speakers" : "Sortformer Balanced V2",
+            value: hasActiveSpeakerLabeling ? activePresentation.title : "Sortformer Balanced V2",
             detail: hasActiveSpeakerLabeling
-                ? "Speaker labels are being applied to a recent transcript."
+                ? activePresentation.detail
                 : "Loads when speaker labeling starts; separate model readiness is not available yet.",
             systemImage: "person.3.fill",
             needsAttention: false

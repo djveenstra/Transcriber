@@ -198,7 +198,6 @@ struct SharedAudioDetailView: View {
     @Environment(\.modelContext) private var modelContext
     @StateObject private var session = TranscriptionSession()
     @StateObject private var playback = AudioPlaybackController()
-    @State private var hasSavedTranscript = false
 
     var body: some View {
         VStack(spacing: 20) {
@@ -231,17 +230,7 @@ struct SharedAudioDetailView: View {
                     .multilineTextAlignment(.center)
                 Spacer()
             case .completed:
-                VStack(spacing: 12) {
-                    if let note = session.completionNote {
-                        Label(note, systemImage: "person.crop.circle.badge.questionmark")
-                            .font(.callout)
-                            .foregroundStyle(Theme.muted)
-                            .padding()
-                            .background(Theme.surface)
-                            .clipShape(RoundedRectangle(cornerRadius: 12))
-                    }
-                    TranscriptList(segments: session.finalSegments)
-                }
+                sharedCompletedTranscriptContent
             case let .failed(message):
                 ContentUnavailableView(
                     "Couldn’t Process Audio",
@@ -272,6 +261,18 @@ struct SharedAudioDetailView: View {
                     }
                     .buttonStyle(PrimaryButtonStyle(color: Theme.accent))
                 } else if session.state == .completed {
+                    if let recording = session.savedRecordingForEditing,
+                       TranscriptEditingAvailability.canRenameOrReassignSpeakers(
+                        segmentCount: recording.segments.count,
+                        isPersistedEditableRecording: true
+                       ) {
+                        NavigationLink {
+                            RecordingDetailView(recording: recording)
+                        } label: {
+                            Label("Edit Speakers", systemImage: "person.text.rectangle")
+                        }
+                        .buttonStyle(SecondaryButtonStyle())
+                    }
                     TranscriptShareMenu(segments: session.finalSegments)
                         .buttonStyle(PrimaryButtonStyle(color: Theme.accent))
                 }
@@ -299,6 +300,21 @@ struct SharedAudioDetailView: View {
         return "Preparing transcription"
     }
 
+    private var sharedCompletedTranscriptContent: some View {
+        VStack(spacing: 12) {
+            SpeakerLabelStatusView(
+                presentation: session.speakerLabelStatusPresentation,
+                retryAction: sharedSpeakerLabelRetryAction
+            )
+            TranscriptList(segments: session.finalSegments)
+        }
+    }
+
+    private var sharedSpeakerLabelRetryAction: (() -> Void)? {
+        guard session.speakerLabelStatusPresentation.showsRetry else { return nil }
+        return { retryCurrentSpeakerLabels() }
+    }
+
     private var allowsPlaybackAndTranscription: Bool {
         switch session.state {
         case .idle, .failed:
@@ -309,9 +325,16 @@ struct SharedAudioDetailView: View {
     }
 
     private func saveTranscriptIfCompleted() {
-        guard session.state == .completed, !hasSavedTranscript else { return }
+        guard session.state == .completed else { return }
         session.saveCompletedRecording(in: modelContext)
-        hasSavedTranscript = true
+    }
+
+    private func retryCurrentSpeakerLabels() {
+        saveTranscriptIfCompleted()
+        Task {
+            await session.retryCurrentSpeakerLabels()
+            saveTranscriptIfCompleted()
+        }
     }
 }
 
@@ -368,6 +391,7 @@ struct RecordingDetailView: View {
     @State private var storageErrorMessage: String?
     @StateObject private var retrySession = TranscriptionSession()
     @StateObject private var audioAvailability = RecordingAudioAvailabilityStore.shared
+    @StateObject private var statusActivityStore = RecordingStatusActivityStore.shared
 
     private var isAudioMissing: Bool {
         audioAvailability.isAudioMissing(for: recording)
@@ -399,6 +423,10 @@ struct RecordingDetailView: View {
                         description: Text("The audio is safe, but its final transcript still needs to be created.")
                     )
                 } else {
+                    SpeakerLabelStatusView(
+                        presentation: speakerLabelPresentation,
+                        retryAction: speakerLabelRetryAction
+                    )
                     TranscriptListWithNames(
                         segments: recording.segments,
                         names: recording.speakerNames,
@@ -432,20 +460,6 @@ struct RecordingDetailView: View {
                 .buttonStyle(PrimaryButtonStyle(color: Theme.accent))
                 .disabled(isAudioMissing)
             }
-            if recording.diarizationNeedsRetry {
-                Label("Speaker labels could not finish. The transcript and audio are safe.", systemImage: "person.crop.circle.badge.questionmark")
-                    .font(.callout)
-                    .foregroundStyle(Theme.muted)
-                Button {
-                    Task {
-                        await retrySession.retrySpeakerLabels(for: recording, in: modelContext)
-                    }
-                } label: {
-                    Label("Retry Speaker Labels", systemImage: "arrow.clockwise")
-                }
-                .buttonStyle(SecondaryButtonStyle())
-                .disabled(isAudioMissing)
-            }
         }
         .padding()
         .background(Theme.background)
@@ -475,6 +489,26 @@ struct RecordingDetailView: View {
         } else {
             if player == nil { player = try? AVAudioPlayer(contentsOf: recording.audioURL) }
             player?.play()
+        }
+    }
+
+    private var speakerLabelPresentation: SpeakerLabelStatusPresentation {
+        SpeakerLabelStatusPresentation.make(
+            status: recording.recordingStatus(activity: statusActivityStore.activity(for: recording)),
+            speakerCount: Set(recording.segments.map(\.speaker)).count,
+            diarizationNeedsRetry: recording.diarizationNeedsRetry
+        )
+    }
+
+    private var speakerLabelRetryAction: (() -> Void)? {
+        guard speakerLabelPresentation.showsRetry, !isAudioMissing else { return nil }
+        return { retrySpeakerLabels() }
+    }
+
+    private func retrySpeakerLabels() {
+        guard !isAudioMissing else { return }
+        Task {
+            await retrySession.retrySpeakerLabels(for: recording, in: modelContext)
         }
     }
 

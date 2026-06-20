@@ -287,19 +287,11 @@ enum RecordingLibraryMetadata {
     }
 
     static func speakerLabelText(for recording: Recording, status: RecordingStatus) -> String {
-        switch status {
-        case .recordingSaved, .needsTranscription, .transcribing:
-            return "Speaker labels not available yet"
-        case .speakerLabeling:
-            return "Identifying speakers"
-        case .speakerLabelsFailed:
-            return "Speaker labels need retry"
-        case .complete:
-            let count = Set(recording.segments.map(\.speaker)).count
-            if count <= 0 { return "Speaker labels not available" }
-            if count == 1 { return "1 speaker label" }
-            return "\(count) speaker labels"
-        }
+        SpeakerLabelStatusPresentation.make(
+            status: status,
+            speakerCount: Set(recording.segments.map(\.speaker)).count,
+            diarizationNeedsRetry: recording.diarizationNeedsRetry
+        ).compactText
     }
 }
 

@@ -120,40 +120,7 @@ struct RecordingView: View {
                 Spacer()
             }
         case .completed:
-            VStack(spacing: 12) {
-                if session.isIdentifyingSpeakers {
-                    VStack(spacing: 6) {
-                        ProgressView(value: session.progress)
-                            .tint(Theme.accent)
-                        Text("Transcript ready. Identifying speakers…")
-                            .font(.callout)
-                            .foregroundStyle(Theme.muted)
-                    }
-                }
-                if let note = session.completionNote {
-                    Label(note, systemImage: "person.crop.circle.badge.questionmark")
-                        .font(.callout)
-                        .foregroundStyle(Theme.muted)
-                        .padding()
-                        .background(Theme.surface)
-                        .clipShape(RoundedRectangle(cornerRadius: 12))
-                }
-                TranscriptList(segments: session.finalSegments)
-                if session.diarizationNeedsRetry {
-                    Button {
-                        processingTask = Task {
-                            await session.retryCurrentSpeakerLabels()
-                            if !Task.isCancelled {
-                                session.saveCompletedRecording(in: modelContext)
-                            }
-                            processingTask = nil
-                        }
-                    } label: {
-                        Label("Retry Speaker Labels", systemImage: "arrow.clockwise")
-                    }
-                    .buttonStyle(SecondaryButtonStyle())
-                }
-            }
+            completedTranscriptContent
         case let .failed(message):
             ContentUnavailableView("Couldn’t Process Audio", systemImage: "exclamationmark.triangle", description: Text(message))
         }
@@ -206,6 +173,18 @@ struct RecordingView: View {
                     }
                     .buttonStyle(SecondaryButtonStyle())
                 } else {
+                    if let recording = session.savedRecordingForEditing,
+                       TranscriptEditingAvailability.canRenameOrReassignSpeakers(
+                        segmentCount: recording.segments.count,
+                        isPersistedEditableRecording: true
+                       ) {
+                        NavigationLink {
+                            RecordingDetailView(recording: recording)
+                        } label: {
+                            Label("Edit Speakers", systemImage: "person.text.rectangle")
+                        }
+                        .buttonStyle(SecondaryButtonStyle())
+                    }
                     TranscriptShareMenu(segments: session.finalSegments)
                     .buttonStyle(PrimaryButtonStyle(color: Theme.accent))
                     Button("New") { session.reset() }
@@ -228,6 +207,30 @@ struct RecordingView: View {
             }
         }
         .padding(.bottom, 8)
+    }
+
+    private var completedTranscriptContent: some View {
+        VStack(spacing: 12) {
+            if session.isIdentifyingSpeakers {
+                VStack(spacing: 6) {
+                    ProgressView(value: session.progress)
+                        .tint(Theme.accent)
+                    Text("Transcript ready. Identifying speakers.")
+                        .font(.callout)
+                        .foregroundStyle(Theme.muted)
+                }
+            }
+            SpeakerLabelStatusView(
+                presentation: session.speakerLabelStatusPresentation,
+                retryAction: speakerLabelRetryAction
+            )
+            TranscriptList(segments: session.finalSegments)
+        }
+    }
+
+    private var speakerLabelRetryAction: (() -> Void)? {
+        guard session.speakerLabelStatusPresentation.showsRetry else { return nil }
+        return { retryCurrentSpeakerLabels() }
     }
 
     private var statusText: String {
@@ -302,6 +305,16 @@ struct RecordingView: View {
         processingTask = nil
         Task {
             await session.cancelProcessing()
+        }
+    }
+
+    private func retryCurrentSpeakerLabels() {
+        processingTask = Task {
+            await session.retryCurrentSpeakerLabels()
+            if !Task.isCancelled {
+                session.saveCompletedRecording(in: modelContext)
+            }
+            processingTask = nil
         }
     }
 

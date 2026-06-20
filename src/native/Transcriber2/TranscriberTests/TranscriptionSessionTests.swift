@@ -1,4 +1,5 @@
 import Foundation
+import SwiftData
 import Testing
 @testable import Transcriber
 
@@ -187,6 +188,41 @@ struct DiarizationFallbackTests {
         )
 
         #expect(outcome == nil)
+    }
+
+    @Test func retrySpeakerLabelsUsesStoredRawTranscriptionWithoutReplacingTranscriptText() async throws {
+        let container = try ModelContainer(
+            for: Recording.self,
+            configurations: ModelConfiguration(isStoredInMemoryOnly: true)
+        )
+        let context = ModelContext(container)
+        let rawTranscription = [
+            TranscriptionSegment(startMs: 0, endMs: 1_000, text: "Stored transcript")
+        ]
+        let recording = Recording(
+            title: "Needs Labels",
+            durationSeconds: 1,
+            audioFileName: "needs-labels.caf",
+            segments: [
+                TranscriptSegment(startMs: 0, endMs: 1_000, speaker: "SPEAKER_00", text: "Stored transcript")
+            ],
+            rawTranscription: rawTranscription,
+            diarizationNeedsRetry: true
+        )
+        context.insert(recording)
+        let session = TranscriptionSession()
+        session.diarizer = FakeDiarizationEngine(.succeed([
+            DiarizationSegment(startMs: 0, endMs: 1_000, speaker: "SPEAKER_02")
+        ]))
+
+        await session.retrySpeakerLabels(for: recording, in: context)
+
+        #expect(recording.rawTranscription == rawTranscription)
+        #expect(recording.segments.map(\.text) == ["Stored transcript"])
+        #expect(recording.segments.map(\.speaker) == ["SPEAKER_02"])
+        #expect(!recording.transcriptionNeedsRetry)
+        #expect(!recording.diarizationNeedsRetry)
+        #expect(session.speakerLabelStatusPresentation.kind == .complete)
     }
 }
 
