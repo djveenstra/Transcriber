@@ -74,7 +74,7 @@ On-device acceptance (Human Reviewer, iPhone 17 Pro) covers: real mic capture, b
 
 **Purpose:** Bring navigation in line with the PRD and surface the status model. The canonical status model is built **first** (OBJ-09), then the Dashboard consumes it (OBJ-10), then Model Lab is promoted (OBJ-11) on top of the model registry/status foundations.
 
-- **OBJ-09 — Library status badges + canonical `RecordingStatus`.** Replace scattered booleans with one status enum; show duration, status badge, final model used, speaker-label status; add orphan reconciliation. **Foundation for OBJ-10/OBJ-11.**
+- **OBJ-09 — Library status badges + canonical `RecordingStatus`.** **DONE 2026-06-19 — Gate: PROCEED; evidence: [QA.md](QA.md#obj-09--library-status-badges--canonical-recordingstatus--2026-06-19).** Replaced scattered booleans with a derived status enum; showed duration, status badge, final model used, and speaker-label status; added non-destructive missing-audio reconciliation. **Foundation for OBJ-10/OBJ-11.**
 - **OBJ-10 — Dashboard tab.** Home screen: mic status, model readiness, diarization status, recent-attention list, Record/Import/Model Lab actions, missing-model warnings. **Depends on OBJ-09's `RecordingStatus`.**
 - **OBJ-11 — Model Lab as top-level tab + diagnostics columns.** Promote Model Lab to a tab; add model load-time + size/status columns. **Depends on OBJ-03's model registry; runs after OBJ-10 so tab order is settled once.**
 

@@ -1,4 +1,5 @@
 import Foundation
+import Combine
 import os
 import SwiftData
 
@@ -33,6 +34,61 @@ nonisolated struct TranscriptSegment: Identifiable, Codable, Equatable, Sendable
         return hours > 0
             ? String(format: "%d:%02d:%02d", hours, minutes, seconds)
             : String(format: "%d:%02d", minutes, seconds)
+    }
+}
+
+nonisolated enum RecordingStatus: String, CaseIterable, Equatable, Sendable {
+    case recordingSaved
+    case needsTranscription
+    case transcribing
+    case speakerLabeling
+    case speakerLabelsFailed
+    case complete
+
+    var display: RecordingStatusDisplay {
+        switch self {
+        case .recordingSaved:
+            RecordingStatusDisplay(title: "Recording saved", systemImage: "waveform")
+        case .needsTranscription:
+            RecordingStatusDisplay(title: "Needs transcription", systemImage: "text.badge.exclamationmark")
+        case .transcribing:
+            RecordingStatusDisplay(title: "Transcribing", systemImage: "text.quote")
+        case .speakerLabeling:
+            RecordingStatusDisplay(title: "Speaker labeling", systemImage: "person.3.sequence.fill")
+        case .speakerLabelsFailed:
+            RecordingStatusDisplay(title: "Speaker labels need retry", systemImage: "person.crop.circle.badge.exclamationmark")
+        case .complete:
+            RecordingStatusDisplay(title: "Complete", systemImage: "checkmark.circle.fill")
+        }
+    }
+}
+
+nonisolated struct RecordingStatusDisplay: Equatable, Sendable {
+    let title: String
+    let systemImage: String
+}
+
+nonisolated enum RecordingStatusActivity: Equatable, Sendable {
+    case transcribing
+    case speakerLabeling
+}
+
+@MainActor
+final class RecordingStatusActivityStore: ObservableObject {
+    static let shared = RecordingStatusActivityStore()
+
+    @Published private var activitiesByAudioFileName: [String: RecordingStatusActivity] = [:]
+
+    func activity(for recording: Recording) -> RecordingStatusActivity? {
+        activitiesByAudioFileName[recording.audioFileName]
+    }
+
+    func set(_ activity: RecordingStatusActivity, forAudioFileName audioFileName: String) {
+        activitiesByAudioFileName[audioFileName] = activity
+    }
+
+    func clear(audioFileName: String) {
+        activitiesByAudioFileName.removeValue(forKey: audioFileName)
     }
 }
 
@@ -142,6 +198,29 @@ final class Recording {
     var audioURL: URL {
         AppStoragePaths.recordingsDirectory.appendingPathComponent(audioFileName)
     }
+
+    var recordingStatus: RecordingStatus {
+        recordingStatus(activity: nil)
+    }
+
+    func recordingStatus(activity: RecordingStatusActivity?) -> RecordingStatus {
+        if activity == .transcribing {
+            return .transcribing
+        }
+        if activity == .speakerLabeling {
+            return .speakerLabeling
+        }
+        if transcriptionNeedsRetry {
+            return .needsTranscription
+        }
+        if diarizationNeedsRetry {
+            return .speakerLabelsFailed
+        }
+        if segments.isEmpty {
+            return .recordingSaved
+        }
+        return .complete
+    }
 }
 
 enum AppStoragePaths {
@@ -157,4 +236,66 @@ enum AppStoragePaths {
         try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
         return url
     }()
+}
+
+enum RecordingLibraryMetadata {
+    static func durationText(seconds: Double) -> String {
+        let totalSeconds = max(0, Int(seconds.rounded()))
+        let hours = totalSeconds / 3_600
+        let minutes = (totalSeconds % 3_600) / 60
+        let seconds = totalSeconds % 60
+
+        if hours > 0 {
+            return String(format: "%d:%02d:%02d", hours, minutes, seconds)
+        }
+        return String(format: "%d:%02d", minutes, seconds)
+    }
+
+    static func modelName(for modelID: String) -> String {
+        guard !modelID.isEmpty else { return "Model not recorded" }
+        return FinalTranscriptionModelChoice.all.first { $0.id == modelID }?.name ?? "Unknown model"
+    }
+
+    static func speakerLabelText(for recording: Recording, status: RecordingStatus) -> String {
+        switch status {
+        case .recordingSaved, .needsTranscription, .transcribing:
+            return "Speaker labels not available yet"
+        case .speakerLabeling:
+            return "Identifying speakers"
+        case .speakerLabelsFailed:
+            return "Speaker labels need retry"
+        case .complete:
+            let count = Set(recording.segments.map(\.speaker)).count
+            if count <= 0 { return "Speaker labels not available" }
+            if count == 1 { return "1 speaker label" }
+            return "\(count) speaker labels"
+        }
+    }
+}
+
+enum RecordingAudioReconciliation {
+    static func missingAudioFileNames(
+        in recordings: [Recording],
+        fileExistsAtPath: (String) -> Bool = { FileManager.default.fileExists(atPath: $0) }
+    ) -> Set<String> {
+        Set(recordings.compactMap { recording in
+            fileExistsAtPath(recording.audioURL.path) ? nil : recording.audioFileName
+        })
+    }
+}
+
+@MainActor
+final class RecordingAudioAvailabilityStore: ObservableObject {
+    static let shared = RecordingAudioAvailabilityStore()
+
+    @Published private(set) var missingAudioFileNames: Set<String> = []
+
+    func reconcile(recordings: [Recording]) {
+        missingAudioFileNames = RecordingAudioReconciliation.missingAudioFileNames(in: recordings)
+    }
+
+    func isAudioMissing(for recording: Recording) -> Bool {
+        missingAudioFileNames.contains(recording.audioFileName)
+            || !FileManager.default.fileExists(atPath: recording.audioURL.path)
+    }
 }

@@ -102,6 +102,7 @@ final class TranscriptionSession: ObservableObject {
     private var processingWasCancelled = false
     private var processingFinalModelChoice: FinalTranscriptionModelChoice?
     private var modelFallbackNote: String?
+    private let statusActivityStore = RecordingStatusActivityStore.shared
 
     var liveSegments: [TranscriptSegment] {
         TranscriptMerger.merge(transcription: liveTranscription, diarization: liveDiarization)
@@ -415,6 +416,8 @@ final class TranscriptionSession: ObservableObject {
             state = .failed("This older transcript does not contain the timing data needed to retry speaker labels.")
             return
         }
+        statusActivityStore.set(.speakerLabeling, forAudioFileName: recording.audioFileName)
+        defer { statusActivityStore.clear(audioFileName: recording.audioFileName) }
         guard !Task.isCancelled else { return }
         persistenceContext = context
         processingWasCancelled = false
@@ -500,6 +503,8 @@ final class TranscriptionSession: ObservableObject {
     }
 
     private func processFile(_ url: URL) async throws {
+        statusActivityStore.set(.transcribing, forAudioFileName: url.lastPathComponent)
+        defer { statusActivityStore.clear(audioFileName: url.lastPathComponent) }
         processingWasCancelled = false
         try Task.checkCancellation()
         state = .processing("Preparing transcription")
@@ -538,6 +543,7 @@ final class TranscriptionSession: ObservableObject {
 #else
         state = .processing("Identifying speakers")
 #endif
+        statusActivityStore.set(.speakerLabeling, forAudioFileName: url.lastPathComponent)
 #if os(macOS)
         await transcriber.unload()
         modelState = .notLoaded

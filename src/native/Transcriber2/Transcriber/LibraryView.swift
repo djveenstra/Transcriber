@@ -7,6 +7,8 @@ struct LibraryView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \Recording.createdAt, order: .reverse) private var recordings: [Recording]
     @StateObject private var sharedInbox = SharedAudioInbox.shared
+    @StateObject private var statusActivityStore = RecordingStatusActivityStore.shared
+    @StateObject private var audioAvailability = RecordingAudioAvailabilityStore.shared
     @State private var deletionErrorMessage: String?
 
     var body: some View {
@@ -38,22 +40,16 @@ struct LibraryView: View {
                         }
                         if !recordings.isEmpty {
                             Section("Transcripts") {
-                        ForEach(recordings) { recording in
-                            NavigationLink(value: recording) {
-                                VStack(alignment: .leading, spacing: 5) {
-                                    Text(recording.title).font(.headline)
-                                    if recording.transcriptionNeedsRetry {
-                                        Label("Needs transcription", systemImage: "text.badge.exclamationmark")
-                                            .font(.caption)
-                                            .foregroundStyle(Theme.accent)
+                                ForEach(recordings) { recording in
+                                    NavigationLink(value: recording) {
+                                        RecordingLibraryRow(
+                                            recording: recording,
+                                            activity: statusActivityStore.activity(for: recording),
+                                            isAudioMissing: audioAvailability.isAudioMissing(for: recording)
+                                        )
                                     }
-                                    Text(recording.createdAt.formatted(date: .abbreviated, time: .shortened))
-                                        .font(.caption)
-                                        .foregroundStyle(Theme.muted)
                                 }
-                            }
-                        }
-                        .onDelete(perform: delete)
+                                .onDelete(perform: delete)
                             }
                         }
                     }
@@ -65,7 +61,10 @@ struct LibraryView: View {
             .navigationDestination(for: Recording.self) { recording in
                 RecordingDetailView(recording: recording)
             }
-            .onAppear { sharedInbox.refresh() }
+            .onAppear {
+                sharedInbox.refresh()
+                audioAvailability.reconcile(recordings: recordings)
+            }
         }
         .alert(
             "Couldn’t Delete Recording",
@@ -97,6 +96,98 @@ struct LibraryView: View {
             }
             modelContext.delete(recording)
         }
+    }
+}
+
+private struct RecordingLibraryRow: View {
+    let recording: Recording
+    let activity: RecordingStatusActivity?
+    let isAudioMissing: Bool
+
+    private var status: RecordingStatus {
+        recording.recordingStatus(activity: activity)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(recording.title)
+                        .font(.headline)
+                    Text(recording.createdAt.formatted(date: .abbreviated, time: .shortened))
+                        .font(.caption)
+                        .foregroundStyle(Theme.muted)
+                }
+                Spacer(minLength: 12)
+                RecordingStatusBadge(status: status)
+            }
+
+            HStack(spacing: 10) {
+                RecordingMetadataLabel(
+                    systemImage: "timer",
+                    text: RecordingLibraryMetadata.durationText(seconds: recording.durationSeconds)
+                )
+                RecordingMetadataLabel(
+                    systemImage: "cpu",
+                    text: RecordingLibraryMetadata.modelName(for: recording.finalTranscriptionModelID)
+                )
+            }
+
+            RecordingMetadataLabel(
+                systemImage: "person.3.fill",
+                text: RecordingLibraryMetadata.speakerLabelText(for: recording, status: status)
+            )
+
+            if isAudioMissing {
+                Label("Audio file missing. Transcript data was kept.", systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption)
+                    .foregroundStyle(.yellow)
+            }
+        }
+        .padding(.vertical, 4)
+    }
+}
+
+private struct RecordingStatusBadge: View {
+    let status: RecordingStatus
+
+    var body: some View {
+        Label(status.display.title, systemImage: status.display.systemImage)
+            .font(.caption.weight(.semibold))
+            .padding(.horizontal, 9)
+            .padding(.vertical, 5)
+            .foregroundStyle(.white)
+            .background(badgeColor.opacity(0.22))
+            .overlay(
+                Capsule()
+                    .stroke(badgeColor.opacity(0.65), lineWidth: 1)
+            )
+            .clipShape(Capsule())
+    }
+
+    private var badgeColor: Color {
+        switch status {
+        case .complete:
+            .green
+        case .recordingSaved, .needsTranscription:
+            Theme.accent
+        case .transcribing, .speakerLabeling:
+            .cyan
+        case .speakerLabelsFailed:
+            .yellow
+        }
+    }
+}
+
+private struct RecordingMetadataLabel: View {
+    let systemImage: String
+    let text: String
+
+    var body: some View {
+        Label(text, systemImage: systemImage)
+            .font(.caption)
+            .foregroundStyle(Theme.muted)
+            .lineLimit(1)
     }
 }
 
@@ -275,9 +366,23 @@ struct RecordingDetailView: View {
     @State private var player: AVAudioPlayer?
     @State private var showingNames = false
     @StateObject private var retrySession = TranscriptionSession()
+    @StateObject private var audioAvailability = RecordingAudioAvailabilityStore.shared
+
+    private var isAudioMissing: Bool {
+        audioAvailability.isAudioMissing(for: recording)
+    }
 
     var body: some View {
         VStack(spacing: 12) {
+            if isAudioMissing {
+                Label("Audio file missing. The Library row and any saved transcript were kept.", systemImage: "exclamationmark.triangle.fill")
+                    .font(.callout)
+                    .foregroundStyle(.yellow)
+                    .padding()
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Theme.surface)
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+            }
             if case let .processing(message) = retrySession.state {
                 Spacer()
                 ProgressView(value: retrySession.progress)
@@ -303,6 +408,7 @@ struct RecordingDetailView: View {
                     Label(player?.isPlaying == true ? "Pause" : "Play", systemImage: player?.isPlaying == true ? "pause.fill" : "play.fill")
                 }
                 .buttonStyle(SecondaryButtonStyle())
+                .disabled(isAudioMissing)
                 Button("Rename Speakers") { showingNames = true }
                     .buttonStyle(SecondaryButtonStyle())
                     .disabled(recording.segments.isEmpty)
@@ -319,6 +425,7 @@ struct RecordingDetailView: View {
                     Label("Create Transcript", systemImage: "text.quote")
                 }
                 .buttonStyle(PrimaryButtonStyle(color: Theme.accent))
+                .disabled(isAudioMissing)
             }
             if recording.diarizationNeedsRetry {
                 Label("Speaker labels could not finish. The transcript and audio are safe.", systemImage: "person.crop.circle.badge.questionmark")
@@ -332,6 +439,7 @@ struct RecordingDetailView: View {
                     Label("Retry Speaker Labels", systemImage: "arrow.clockwise")
                 }
                 .buttonStyle(SecondaryButtonStyle())
+                .disabled(isAudioMissing)
             }
         }
         .padding()

@@ -56,3 +56,42 @@ Per [AGENTS.md §4](../../../AGENTS.md).
 
 ## Rollback Considerations
 Derived status + UI are additive/revertible. If a migration was added, rollback must follow the OBJ-01 policy (additive, default-valued) so reverting code leaves data readable.
+
+## Completion Report — 2026-06-19
+
+### Worker Summary
+- Added canonical derived `RecordingStatus` with the required states: `recordingSaved`, `needsTranscription`, `transcribing`, `speakerLabeling`, `speakerLabelsFailed`, and `complete`.
+- Avoided a SwiftData schema change. No stored status field was added; no migration or DECISIONS.md entry was required.
+- Updated Library rows to show title/date, duration, status badge, final transcription model name, speaker-label status, and a missing-audio warning when applicable.
+- Added app-start and Library-open reconciliation for recordings whose audio file is missing. Reconciliation reports/surfaces the condition through in-memory state only; it does not delete rows, delete files, or mutate transcript/model/retry data.
+- Added detail-screen missing-audio messaging and disabled audio-dependent actions when the audio file is absent, while keeping any saved transcript visible.
+
+### Status Derivation
+- `transcribing`: derived from in-memory `TranscriptionSession` activity for the recording audio filename.
+- `speakerLabeling`: derived from in-memory `TranscriptionSession` activity for speaker-label retry or post-transcription labeling.
+- `needsTranscription`: derived from `recording.transcriptionNeedsRetry`.
+- `speakerLabelsFailed`: derived from `recording.diarizationNeedsRetry`.
+- `recordingSaved`: derived when no transcript segments exist and no retry/failure/active activity is present.
+- `complete`: derived when transcript segments exist and no transcription or speaker-label retry is needed.
+
+### Tests Added
+- `RecordingStatusTests.derivesStatusTruthTableFromRecordingAndActivityState()`
+- `RecordingStatusTests.eachStatusHasBadgeCopyAndSymbol()`
+- `RecordingStatusTests.metadataHelpersFormatDurationModelAndSpeakerLabels()`
+- `RecordingStatusTests.missingAudioReconciliationReportsRowsWithoutMutatingThem()`
+
+### Validation
+- Focused `RecordingStatusTests`: PASS.
+- macOS build: PASS.
+- iOS simulator build: PASS.
+- `TranscriberTests`: PASS, 93/93.
+- `git diff --check`: PASS.
+
+### Auditor Alignment Report
+- Result: ALIGNED.
+- Touched paths stayed inside `src/native/Transcriber2/` plus planning/QA docs.
+- No `Recording` schema change, stored status field, dependency bump, strict-concurrency weakening, destructive reconciliation, Dashboard/OBJ-10 implementation, Model Lab tab work, speaker reassignment, progress timeline, diagnostics, export hardening, accessibility, or Mac parity work was introduced.
+
+### Gate Decision
+- Manager recommendation: PROCEED.
+- No OBJ-09-specific Human/device gate remains. Real-device visual review of the Library row can continue as part of normal beta acceptance.
