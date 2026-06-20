@@ -3,10 +3,15 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 struct RecordingView: View {
+    var startRequestID: UUID?
+    var importRequestID: UUID?
+
     @Environment(\.modelContext) private var modelContext
     @StateObject private var session = TranscriptionSession()
     @State private var showingImporter = false
     @State private var processingTask: Task<Void, Never>?
+    @State private var handledStartRequestID: UUID?
+    @State private var handledImportRequestID: UUID?
 
     var body: some View {
         NavigationStack {
@@ -24,6 +29,16 @@ struct RecordingView: View {
 #if os(macOS)
                 await session.prepareSelectedModel()
 #endif
+            }
+            .onAppear {
+                handleExternalStartRequest()
+                handleExternalImportRequest()
+            }
+            .onChange(of: startRequestID) { _, _ in
+                handleExternalStartRequest()
+            }
+            .onChange(of: importRequestID) { _, _ in
+                handleExternalImportRequest()
             }
             .fileImporter(
                 isPresented: $showingImporter,
@@ -287,6 +302,29 @@ struct RecordingView: View {
         processingTask = nil
         Task {
             await session.cancelProcessing()
+        }
+    }
+
+    private func handleExternalStartRequest() {
+        guard let startRequestID, handledStartRequestID != startRequestID else { return }
+        handledStartRequestID = startRequestID
+        guard canStartNewAudio else { return }
+        Task { await session.startRecording(in: modelContext) }
+    }
+
+    private func handleExternalImportRequest() {
+        guard let importRequestID, handledImportRequestID != importRequestID else { return }
+        handledImportRequestID = importRequestID
+        guard canStartNewAudio, session.state != .preparing else { return }
+        showingImporter = true
+    }
+
+    private var canStartNewAudio: Bool {
+        switch session.state {
+        case .idle, .preparing, .failed:
+            true
+        case .recording, .processing, .completed:
+            false
         }
     }
 }

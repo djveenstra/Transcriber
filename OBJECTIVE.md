@@ -2,11 +2,11 @@
 
 _This file holds the **single active objective** the Worker is currently implementing. The Manager sets it from the roadmap and advances it only when the current objective is gated `PROCEED`. Full details for every objective live in [docs/planning/objectives/](docs/planning/objectives/)._
 
-## ▶ Active objective: **OBJ-10 — Dashboard Tab**
+## ▶ Active objective: **OBJ-11 — Model Lab as Top-Level Tab + Diagnostics Columns**
 
-Read the full spec: [docs/planning/objectives/OBJECTIVE-10.md](docs/planning/objectives/OBJECTIVE-10.md).
+Read the full spec: [docs/planning/objectives/OBJECTIVE-11.md](docs/planning/objectives/OBJECTIVE-11.md).
 
-**One-line mission:** Add the PRD's Dashboard home screen with calm system status, recent work needing attention, and prominent Record/Import/Model Lab actions.
+**One-line mission:** Promote Model Lab to a top-level tab and add diagnostics columns for model load time and size/status.
 
 **Before starting, read:** [PRD.md](PRD.md) → [PLAN.md](PLAN.md) → this file → [AGENTS.md](AGENTS.md).
 
@@ -25,8 +25,8 @@ Read the full spec: [docs/planning/objectives/OBJECTIVE-10.md](docs/planning/obj
 | 07 | [Mic fallback + active-mic display + notice](docs/planning/objectives/OBJECTIVE-07.md) | 2 | Done — PROCEED 2026-06-18 |
 | 08 | [Background/lock & 30-min reliability (device gate)](docs/planning/objectives/OBJECTIVE-08.md) | 2 | Done — PROCEED 2026-06-19 |
 | 09 | [Library status badges + canonical `RecordingStatus`](docs/planning/objectives/OBJECTIVE-09.md) | 3 | Done — PROCEED 2026-06-19 |
-| 10 | [Dashboard tab](docs/planning/objectives/OBJECTIVE-10.md) | 3 | ▶ Active |
-| 11 | [Model Lab as top-level tab + diagnostics columns](docs/planning/objectives/OBJECTIVE-11.md) | 3 | Pending |
+| 10 | [Dashboard tab](docs/planning/objectives/OBJECTIVE-10.md) | 3 | Done — PROCEED 2026-06-20 |
+| 11 | [Model Lab as top-level tab + diagnostics columns](docs/planning/objectives/OBJECTIVE-11.md) | 3 | ▶ Active |
 | 12 | [Segment-level speaker reassignment](docs/planning/objectives/OBJECTIVE-12.md) | 4 | Pending |
 | 13 | [Consistent speaker-label states + edit parity](docs/planning/objectives/OBJECTIVE-13.md) | 4 | Pending |
 | 14 | [Phase-timeline progress UI](docs/planning/objectives/OBJECTIVE-14.md) | 5 | Pending |

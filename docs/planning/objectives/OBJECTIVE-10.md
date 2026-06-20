@@ -56,3 +56,50 @@ Per [AGENTS.md §4](../../../AGENTS.md).
 
 ## Rollback Considerations
 Additive view + tab. Revert removes the Dashboard and restores the prior initial tab. No data/schema change.
+
+## Completion Report — 2026-06-20
+
+### Worker Report
+- Added `DashboardView` as the initial tab and kept `Record`, `Library`, and `Settings` reachable.
+- Wired Dashboard Record and Import actions into the existing `RecordingView` flows instead of creating a new recording/import job system.
+- Dashboard recent work derives each row from OBJ-09 `RecordingStatus` via `recording.recordingStatus(activity:)`; it filters non-complete statuses through a small helper and does not duplicate retry/transcript booleans.
+- Model readiness is sourced from `FinalModelDownloader`, `ModelRegistry`, `ModelRegistry.fileSnapshot`, and `ModelStatus`; Dashboard warnings cover missing, downloading, repairing, failed, verifying, and downloaded-not-yet-checked states.
+- Microphone status is sourced from `MicrophoneService` and the persisted microphone selection; unavailable saved inputs are shown as Automatic fallback without inventing hardware state.
+- Speaker-labeling status is read-only: active speaker-labeling work is detected from `RecordingStatusActivityStore`, otherwise Dashboard truthfully reports Sortformer Balanced V2 and notes that separate speaker-model readiness is not available yet.
+- iOS Dashboard opens the existing nested `ModelLabView`; macOS shows a disabled Model Lab action because the current Model Lab view is iOS-only. Model Lab was not promoted to a top-level tab.
+
+### Files Touched
+- `src/native/Transcriber2/Transcriber/DashboardView.swift`
+- `src/native/Transcriber2/Transcriber/RootView.swift`
+- `src/native/Transcriber2/Transcriber/RecordingView.swift`
+- `src/native/Transcriber2/Transcriber/LibraryView.swift`
+- `src/native/Transcriber2/TranscriberTests/DashboardTests.swift`
+- `QA.md`
+- `PLAN.md`
+- `OBJECTIVE.md`
+- `docs/planning/objectives/OBJECTIVE-10.md`
+
+### Tests Added
+- `DashboardTests.recentAttentionFiltersAndSortsByRecordingStatus()`
+- `DashboardTests.recentAttentionLimitIsAppliedAfterFilteringAndSorting()`
+- `DashboardTests.modelWarningsCoverMissingDownloadingRepairingAndFailedStates()`
+- `DashboardTests.microphoneSummaryReportsUnavailableSavedInputWithoutInventingActiveHardware()`
+
+### Validation Evidence
+- macOS build: PASS.
+- iOS simulator build: PASS.
+- Focused `DashboardTests`: PASS.
+- Full `TranscriberTests`: PASS, 97/97.
+- `git diff --check`: PASS.
+- Existing AppIntents metadata extraction warning remains unchanged: `No AppIntents.framework dependency found`.
+
+### Auditor Alignment
+- ALIGNED. Touched paths are limited to the active native app/tests and planning/QA docs.
+- No dependency bump, no `Recording` schema change, no strict-concurrency weakening, no `src/python/`, `src/legacy-ios/`, or `XCode App Build/` edits.
+- OBJ-11 Model Lab tab promotion and all listed out-of-scope work were not implemented.
+
+### Gate Recommendation
+- PROCEED.
+
+### Deferred Human/Device Checks
+- No OBJ-10-specific Human-owned hardware gate. Real iPhone review of Dashboard layout and actions is recommended during normal beta acceptance.

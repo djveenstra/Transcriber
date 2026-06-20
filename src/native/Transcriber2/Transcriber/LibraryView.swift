@@ -148,7 +148,7 @@ private struct RecordingLibraryRow: View {
     }
 }
 
-private struct RecordingStatusBadge: View {
+struct RecordingStatusBadge: View {
     let status: RecordingStatus
 
     var body: some View {
