@@ -52,3 +52,29 @@ Per [AGENTS.md §4](../../../AGENTS.md).
 
 ## Rollback Considerations
 UI + persistence change to an existing field. Revert removes the affordance; previously reassigned data remains valid (speaker field already part of the model). Any migration must be additive per OBJ-01.
+
+## Completion Report — 2026-06-20
+
+### Worker Summary
+- Added a Library-detail-only per-segment ellipsis menu on transcript cards to reassign a saved segment to an existing speaker.
+- Persisted reassignment by updating only `TranscriptSegment.speaker` inside `Recording.segments`, then saving the existing SwiftData `ModelContext`.
+- Kept transcript text, timing, raw transcription, audio, speaker names, and SwiftData schema unchanged.
+- Reused existing display-name/export behavior so speaker rename and reassignment compose: assigning a segment to a renamed speaker exports and displays the renamed speaker name.
+- Updated TXT, SRT, and JSON export coverage to prove reassigned speakers appear in existing exports.
+
+### Auditor Alignment
+- ALIGNED: touched paths stayed inside `src/native/Transcriber2/` plus planning/QA docs.
+- No transcript text editing, speaker merge/split workflow, SwiftData schema change, dependency bump, strict-concurrency weakening, prohibited-path edit, or OBJ-13+ implementation was added.
+- The change is reversible as a normal code/doc revert; reassigned data remains valid because `speaker` was already part of each stored transcript segment.
+
+### QA Evidence
+- Focused reassignment/export tests: PASS.
+- Baseline macOS build: PASS.
+- Baseline iOS simulator build: PASS.
+- Full `TranscriberTests`: PASS, 107 passed / 107 total.
+- `git diff --check`: PASS.
+- QA evidence appended in [QA.md](../../../QA.md#obj-12--segment-level-speaker-reassignment--2026-06-20).
+
+### Gate Decision
+- Manager recommendation: PROCEED.
+- Human/product decision needed: none.

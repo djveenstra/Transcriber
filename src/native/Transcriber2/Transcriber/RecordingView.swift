@@ -438,6 +438,8 @@ struct TranscriptList: View {
 struct TranscriptCard: View {
     let segment: TranscriptSegment
     var speakerNames: [String: String] = [:]
+    var speakerOptions: [String] = []
+    var onReassignSpeaker: ((String) -> Void)?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -448,6 +450,27 @@ struct TranscriptCard: View {
                 Text(segment.timestamp)
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(Theme.muted)
+                Spacer(minLength: 8)
+                if let onReassignSpeaker, !speakerOptions.isEmpty {
+                    Menu {
+                        ForEach(speakerOptions, id: \.self) { speaker in
+                            Button {
+                                onReassignSpeaker(speaker)
+                            } label: {
+                                Label(
+                                    speakerMenuTitle(for: speaker),
+                                    systemImage: speaker == segment.speaker ? "checkmark" : "person"
+                                )
+                            }
+                            .disabled(speaker == segment.speaker)
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
+                            .font(.body)
+                            .foregroundStyle(Theme.muted)
+                    }
+                    .accessibilityLabel("Change speaker")
+                }
             }
             Text(segment.text)
                 .textSelection(.enabled)
@@ -462,6 +485,13 @@ struct TranscriptCard: View {
     private var speakerColor: Color {
         let digits = segment.speaker.filter(\.isNumber)
         return Theme.speakerColors[(Int(digits) ?? 0) % Theme.speakerColors.count]
+    }
+
+    private func speakerMenuTitle(for speaker: String) -> String {
+        let customName = speakerNames[speaker]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let defaultName = TranscriptExporter.displayName(speaker, names: [:])
+        guard !customName.isEmpty else { return defaultName }
+        return "\(customName) (\(defaultName))"
     }
 }
 

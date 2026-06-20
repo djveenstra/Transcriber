@@ -365,6 +365,7 @@ struct RecordingDetailView: View {
     @Environment(\.modelContext) private var modelContext
     @State private var player: AVAudioPlayer?
     @State private var showingNames = false
+    @State private var storageErrorMessage: String?
     @StateObject private var retrySession = TranscriptionSession()
     @StateObject private var audioAvailability = RecordingAudioAvailabilityStore.shared
 
@@ -398,7 +399,11 @@ struct RecordingDetailView: View {
                         description: Text("The audio is safe, but its final transcript still needs to be created.")
                     )
                 } else {
-                    TranscriptListWithNames(segments: recording.segments, names: recording.speakerNames)
+                    TranscriptListWithNames(
+                        segments: recording.segments,
+                        names: recording.speakerNames,
+                        onReassignSpeaker: reassignSegment
+                    )
                 }
             }
             HStack {
@@ -446,6 +451,19 @@ struct RecordingDetailView: View {
         .background(Theme.background)
         .navigationTitle(recording.title)
         .storageErrorAlert(retrySession)
+        .alert(
+            "Storage Issue",
+            isPresented: Binding(
+                get: { storageErrorMessage != nil },
+                set: { isPresented in if !isPresented { storageErrorMessage = nil } }
+            ),
+            actions: {
+                Button("OK", role: .cancel) { storageErrorMessage = nil }
+            },
+            message: {
+                Text(storageErrorMessage ?? "")
+            }
+        )
         .sheet(isPresented: $showingNames) {
             SpeakerRenameView(recording: recording)
         }
@@ -459,16 +477,47 @@ struct RecordingDetailView: View {
             player?.play()
         }
     }
+
+    private func reassignSegment(_ segmentID: TranscriptSegment.ID, to speaker: String) {
+        let currentSegments = recording.segments
+        let updatedSegments = TranscriptSegmentReassignment.reassign(
+            segmentID: segmentID,
+            to: speaker,
+            in: currentSegments
+        )
+        guard updatedSegments != currentSegments else { return }
+
+        recording.segments = updatedSegments
+        do {
+            try modelContext.save()
+            storageErrorMessage = nil
+        } catch {
+            storageErrorMessage = "This speaker change could not be saved. It remains visible here, but it may be lost if you leave this screen."
+        }
+    }
 }
 
 struct TranscriptListWithNames: View {
     let segments: [TranscriptSegment]
     let names: [String: String]
+    var onReassignSpeaker: ((TranscriptSegment.ID, String) -> Void)?
+
+    private var speakers: [String] {
+        TranscriptSegmentReassignment.availableSpeakers(in: segments)
+    }
 
     var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 14) {
-                ForEach(segments) { TranscriptCard(segment: $0, speakerNames: names) }
+                ForEach(segments) { segment in
+                    TranscriptCard(
+                        segment: segment,
+                        speakerNames: names,
+                        speakerOptions: onReassignSpeaker == nil ? [] : speakers
+                    ) { speaker in
+                        onReassignSpeaker?(segment.id, speaker)
+                    }
+                }
             }
         }
     }

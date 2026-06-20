@@ -37,6 +37,36 @@ nonisolated struct TranscriptSegment: Identifiable, Codable, Equatable, Sendable
     }
 }
 
+nonisolated enum TranscriptSegmentReassignment {
+    static func availableSpeakers(in segments: [TranscriptSegment]) -> [String] {
+        var seen: Set<String> = []
+        var speakers: [String] = []
+        for segment in segments where !seen.contains(segment.speaker) {
+            seen.insert(segment.speaker)
+            speakers.append(segment.speaker)
+        }
+        return speakers
+    }
+
+    static func reassign(
+        segmentID: TranscriptSegment.ID,
+        to speaker: String,
+        in segments: [TranscriptSegment]
+    ) -> [TranscriptSegment] {
+        segments.map { segment in
+            guard segment.id == segmentID else { return segment }
+            var updated = segment
+            updated.speaker = speaker
+            return updated
+        }
+    }
+
+    @MainActor
+    static func reassign(segmentID: TranscriptSegment.ID, to speaker: String, in recording: Recording) {
+        recording.segments = reassign(segmentID: segmentID, to: speaker, in: recording.segments)
+    }
+}
+
 nonisolated enum RecordingStatus: String, CaseIterable, Equatable, Sendable {
     case recordingSaved
     case needsTranscription

@@ -82,7 +82,7 @@ On-device acceptance (Human Reviewer, iPhone 17 Pro) covers: real mic capture, b
 
 ## Phase 4 — Speaker workflow completeness (PRD §10/§11; R15)
 
-- **OBJ-12 — Segment-level speaker reassignment.** Reassign a transcript segment to another speaker; persist via migration-safe storage; update exports.
+- **OBJ-12 — Segment-level speaker reassignment.** **DONE 2026-06-20 — Gate: PROCEED; evidence: [QA.md](QA.md#obj-12--segment-level-speaker-reassignment--2026-06-20), [completion report](docs/planning/objectives/OBJECTIVE-12.md#completion-report--2026-06-20).** Added Library detail segment reassignment to existing speakers, persisted through the existing `Recording.segments` blob without schema change, and verified TXT/SRT/JSON exports plus renamed-speaker composition.
 - **OBJ-13 — Consistent speaker-label states + rename/reassign parity.** Surface approximate/failed/canceled/retryable consistently across Record, Library detail, Shared detail, Dashboard.
 
 **Risk:** Medium. **Rollback:** reassignment additive; states derive from existing flags.

@@ -45,4 +45,42 @@ struct TranscriptExportTests {
         #expect(TranscriptExporter.displayName("SPEAKER_02", names: [:]) == "Speaker 3")
         #expect(TranscriptExporter.displayName("S1", names: [:]) == "Speaker 1")
     }
+
+    @Test func exportsReflectReassignedSpeakers() throws {
+        let reassigned = TranscriptSegmentReassignment.reassign(
+            segmentID: segments[1].id,
+            to: "SPEAKER_00",
+            in: segments
+        )
+
+        let text = TranscriptExporter.export(reassigned, as: .text)
+        let srt = TranscriptExporter.export(reassigned, as: .subtitles)
+        let json = TranscriptExporter.export(reassigned, as: .json)
+        let entries = try #require(try JSONSerialization.jsonObject(with: Data(json.utf8)) as? [[String: Any]])
+
+        #expect(text.contains("[0:01] Speaker 1: Hi"))
+        #expect(srt.contains("00:00:01,500 --> 00:00:04,000\nSpeaker 1: Hi"))
+        #expect(entries[1]["speaker"] as? String == "Speaker 1")
+        #expect(entries[1]["text"] as? String == "Hi")
+    }
+
+    @Test func renamedSpeakerAndReassignedSegmentExportTogether() throws {
+        let reassigned = TranscriptSegmentReassignment.reassign(
+            segmentID: segments[1].id,
+            to: "SPEAKER_00",
+            in: segments
+        )
+        let names = ["SPEAKER_00": "Daniel"]
+
+        let text = TranscriptExporter.export(reassigned, speakerNames: names, as: .text)
+        let srt = TranscriptExporter.export(reassigned, speakerNames: names, as: .subtitles)
+        let json = TranscriptExporter.export(reassigned, speakerNames: names, as: .json)
+        let entries = try #require(try JSONSerialization.jsonObject(with: Data(json.utf8)) as? [[String: Any]])
+
+        #expect(text.contains("[0:00] Daniel: Hello there"))
+        #expect(text.contains("[0:01] Daniel: Hi"))
+        #expect(srt.contains("Daniel: Hi"))
+        #expect(entries[0]["speaker"] as? String == "Daniel")
+        #expect(entries[1]["speaker"] as? String == "Daniel")
+    }
 }
