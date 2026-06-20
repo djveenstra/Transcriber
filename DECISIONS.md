@@ -43,12 +43,16 @@ Format per entry: **ID · Date · Decision · Why · Implications · Reversibili
 **Implications:** Baseline test commands include `-only-testing:TranscriberTests`. UI-test runner failures are documented as QA evidence, not worked around by modifying the Xcode project in OBJ-01.
 **Reversibility:** Remove the filter once the scheme/UI-test runner is intentionally configured and validated.
 
+### D-007 · 2026-06-20 · iOS primary tabs are Dashboard, Library, Model Lab, Settings
+**Why:** PRD §6 defines four primary tabs, and OBJ-11's Human Reviewer instruction confirmed Record should remain prominent as a Dashboard action instead of staying in the tab bar.
+**Implications:** Dashboard owns the prominent Record/Import entry points; iOS Model Lab is a top-level tab; Settings may keep a secondary Model Lab link. Removing the Record tab is acceptable only while the Dashboard-triggered recording/import flow remains available.
+**Reversibility:** Tab promotion and Dashboard-triggered Record/Import routing are UI-level changes and can be reverted without schema or data migration.
+
 ---
 
 ## Decisions awaiting the Human Reviewer (open questions)
 
 - **Q-1 (OBJ-01):** Archive the stale `XCode App Build/` template tree? (Proposal only; needs approval before any move.)
-- **Q-2 (OBJ-10):** Does "Record" remain its own tab, or become a Dashboard action, once the Dashboard exists (PRD §6 lists four tabs: Dashboard, Library, Model Lab, Settings)?
 - **Q-3 (OBJ-03):** If model sizes aren't exposed by WhisperKit/FluidAudio, approve a static size table.
 - **Q-4 (OBJ-02):** If WhisperKit's on-disk cache path isn't reliably discoverable, approve a loadability-probe approach for readiness.
 

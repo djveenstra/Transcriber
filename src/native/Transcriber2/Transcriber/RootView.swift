@@ -2,46 +2,82 @@ import SwiftUI
 
 struct RootView: View {
     @State private var selectedTab: RootTab = .dashboard
-    @State private var recordingStartRequestID: UUID?
-    @State private var recordingImportRequestID: UUID?
+    @State private var recordingFlow: RecordingFlow?
 
     var body: some View {
         TabView(selection: $selectedTab) {
             DashboardView(
                 onRecord: {
-                    recordingStartRequestID = UUID()
-                    selectedTab = .record
+                    recordingFlow = .record(UUID())
                 },
                 onImport: {
-                    recordingImportRequestID = UUID()
-                    selectedTab = .record
-                }
+                    recordingFlow = .importAudio(UUID())
+                },
+                onModelLab: modelLabAction
             )
                 .tabItem { Label("Dashboard", systemImage: "gauge.with.dots.needle.33percent") }
                 .tag(RootTab.dashboard)
-            RecordingView(
-                startRequestID: recordingStartRequestID,
-                importRequestID: recordingImportRequestID
-            )
-                .tabItem { Label("Record", systemImage: "mic.fill") }
-                .tag(RootTab.record)
             LibraryView()
                 .tabItem { Label("Library", systemImage: "waveform") }
                 .tag(RootTab.library)
+#if os(iOS)
+            NavigationStack {
+                ModelLabView()
+            }
+                .tabItem { Label("Model Lab", systemImage: "speedometer") }
+                .tag(RootTab.modelLab)
+#endif
             SettingsView()
                 .tabItem { Label("Settings", systemImage: "gearshape.fill") }
                 .tag(RootTab.settings)
         }
         .tint(Theme.accent)
         .background(Theme.background)
+        .sheet(item: $recordingFlow) { flow in
+            RecordingView(
+                startRequestID: flow.startRequestID,
+                importRequestID: flow.importRequestID
+            )
+        }
+    }
+
+    private var modelLabAction: (() -> Void)? {
+#if os(iOS)
+        { selectedTab = .modelLab }
+#else
+        nil
+#endif
     }
 }
 
-private enum RootTab: Hashable {
+enum RootTab: Hashable, Sendable {
     case dashboard
-    case record
     case library
+    case modelLab
     case settings
+
+    static let iOSPrimaryTabs: [RootTab] = [.dashboard, .library, .modelLab, .settings]
+    static let macPrimaryTabs: [RootTab] = [.dashboard, .library, .settings]
+}
+
+private enum RecordingFlow: Identifiable {
+    case record(UUID)
+    case importAudio(UUID)
+
+    var id: UUID {
+        switch self {
+        case let .record(id), let .importAudio(id):
+            id
+        }
+    }
+
+    var startRequestID: UUID? {
+        if case let .record(id) = self { id } else { nil }
+    }
+
+    var importRequestID: UUID? {
+        if case let .importAudio(id) = self { id } else { nil }
+    }
 }
 
 enum Theme {

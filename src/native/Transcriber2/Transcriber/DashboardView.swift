@@ -112,6 +112,7 @@ nonisolated enum DashboardSpeakerLabelStatus {
 struct DashboardView: View {
     let onRecord: () -> Void
     let onImport: () -> Void
+    let onModelLab: (() -> Void)?
 
     @AppStorage(MicrophoneSelectionStore.selectionKey) private var selectedMicrophoneID = MicrophoneSelectionStore.automaticID
 #if os(iOS)
@@ -218,15 +219,15 @@ struct DashboardView: View {
                 .buttonStyle(SecondaryButtonStyle())
 
 #if os(iOS)
-                NavigationLink {
-                    ModelLabView()
-                } label: {
-                    Label("Open Model Lab", systemImage: "speedometer")
+                if let onModelLab {
+                    Button(action: onModelLab) {
+                        Label("Open Model Lab", systemImage: "speedometer")
+                    }
+                    .buttonStyle(SecondaryButtonStyle())
                 }
-                .buttonStyle(SecondaryButtonStyle())
 #else
                 Button {} label: {
-                    Label("Model Lab", systemImage: "speedometer")
+                    Label("Open Model Lab", systemImage: "speedometer")
                 }
                 .buttonStyle(SecondaryButtonStyle())
                 .disabled(true)

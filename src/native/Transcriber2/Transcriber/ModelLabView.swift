@@ -1,25 +1,89 @@
+import Foundation
+
 #if os(iOS)
 import AVFoundation
 import Combine
 import SwiftData
 import SwiftUI
 import UniformTypeIdentifiers
+#endif
 
 struct ModelLabResult: Identifiable, Sendable {
     let id = UUID()
     let modelID: String
     let modelName: String
-    let elapsed: TimeInterval
+    let loadTime: TimeInterval
+    let transcriptionTime: TimeInterval
     let audioDuration: TimeInterval
+    let modelSize: String
+    let modelStatus: String
+    let modelStatusDetail: String
     let transcript: String
     let error: String?
 
     var speedDescription: String {
-        guard elapsed > 0 else { return "—" }
-        return String(format: "%.1f× real time", audioDuration / elapsed)
+        guard transcriptionTime > 0 else { return "—" }
+        return String(format: "%.1f× real time", audioDuration / transcriptionTime)
+    }
+
+    var failureStatus: String {
+        error == nil ? "None" : "Failed"
+    }
+
+    var transcriptOutput: String {
+        transcript.isEmpty ? "No transcript output" : transcript
     }
 }
 
+struct ModelLabModelDiagnostics: Equatable, Sendable {
+    let size: String
+    let status: String
+    let statusDetail: String
+
+    static func snapshot(
+        for descriptor: ModelDescriptor,
+        download: ModelDownloadSnapshot,
+        file: ModelFileSnapshot? = nil,
+        verification: ModelVerificationSnapshot? = nil
+    ) -> ModelLabModelDiagnostics {
+        let file = file ?? ModelRegistry.fileSnapshot(for: descriptor)
+        let status = ModelRegistry.status(
+            for: descriptor,
+            download: download,
+            file: file,
+            verification: verification ?? (file.isPresent ? .ready : .notChecked)
+        )
+        return ModelLabModelDiagnostics(
+            size: ModelRegistry.formattedSize(file.sizeBytes),
+            status: status.label,
+            statusDetail: status.detail
+        )
+    }
+}
+
+enum ModelLabReport {
+    static func report(for results: [ModelLabResult]) -> String {
+        results.map { result in
+            """
+            \(result.modelName)
+            Model status: \(result.modelStatus)
+            Model detail: \(result.modelStatusDetail)
+            Model size: \(result.modelSize)
+            Model load time: \(formatSeconds(result.loadTime))
+            Processing time: \(formatSeconds(result.transcriptionTime))
+            Speed: \(result.speedDescription)
+            Failure status: \(result.failureStatus)
+            \(result.error.map { "Error: \($0)" } ?? "Transcript:\n\(result.transcriptOutput)")
+            """
+        }.joined(separator: "\n\n--------------------\n\n")
+    }
+
+    static func formatSeconds(_ value: TimeInterval) -> String {
+        "\(value.formatted(.number.precision(.fractionLength(1)))) seconds"
+    }
+}
+
+#if os(iOS)
 @MainActor
 final class ModelLabRunner: ObservableObject {
     @Published private(set) var results: [ModelLabResult] = []
@@ -44,45 +108,91 @@ final class ModelLabRunner: ObservableObject {
 
         for (index, choice) in choices.enumerated() {
             runningModelName = choice.name
-            let started = Date()
+            let descriptor = ModelRegistry.descriptor(for: choice)
+            let diagnostics = ModelLabModelDiagnostics.snapshot(
+                for: descriptor,
+                download: downloadSnapshot
+            )
+            let loadStarted = Date()
+            var loadTime: TimeInterval = 0
+            var transcriptionTime: TimeInterval = 0
+            var transcriptionStarted: Date?
             do {
                 let segments: [TranscriptionSegment]
                 switch choice.provider {
                 case .parakeet:
                     let engine = ParakeetFinalTranscriptionEngine(model: choice)
-                    segments = try await engine.transcribeFile(audioURL) { [weak self] value in
-                        Task { @MainActor in
-                            self?.progress = (Double(index) + value) / Double(max(choices.count, 1))
+                    do {
+                        try await engine.prepare { [weak self] value in
+                            Task { @MainActor in
+                                self?.setProgress(index: index, modelCount: choices.count, phaseProgress: value * 0.15)
+                            }
                         }
+                        loadTime = Date().timeIntervalSince(loadStarted)
+                        transcriptionStarted = Date()
+                        segments = try await engine.transcribeFile(audioURL) { [weak self] value in
+                            Task { @MainActor in
+                                self?.setProgress(index: index, modelCount: choices.count, phaseProgress: 0.15 + value * 0.85)
+                            }
+                        }
+                        if let transcriptionStarted {
+                            transcriptionTime = Date().timeIntervalSince(transcriptionStarted)
+                        }
+                        await engine.unload()
+                    } catch {
+                        await engine.unload()
+                        throw error
                     }
-                    await engine.unload()
                 case .whisper:
                     UserDefaults.standard.set(choice.id, forKey: "whisperModel")
                     let engine = WhisperKitTranscriptionEngine()
-                    segments = try await engine.transcribeFile(audioURL) { [weak self] value in
-                        Task { @MainActor in
-                            self?.progress = (Double(index) + value) / Double(max(choices.count, 1))
+                    do {
+                        try await engine.prepare()
+                        loadTime = Date().timeIntervalSince(loadStarted)
+                        transcriptionStarted = Date()
+                        segments = try await engine.transcribeFile(audioURL) { [weak self] value in
+                            Task { @MainActor in
+                                self?.setProgress(index: index, modelCount: choices.count, phaseProgress: 0.15 + value * 0.85)
+                            }
                         }
+                        if let transcriptionStarted {
+                            transcriptionTime = Date().timeIntervalSince(transcriptionStarted)
+                        }
+                        await engine.unload()
+                    } catch {
+                        await engine.unload()
+                        throw error
                     }
-                    await engine.unload()
                 }
                 results.append(
                     ModelLabResult(
                         modelID: choice.id,
                         modelName: choice.name,
-                        elapsed: Date().timeIntervalSince(started),
+                        loadTime: loadTime,
+                        transcriptionTime: transcriptionTime,
                         audioDuration: duration,
+                        modelSize: diagnostics.size,
+                        modelStatus: diagnostics.status,
+                        modelStatusDetail: diagnostics.statusDetail,
                         transcript: segments.map(\.text).joined(separator: " "),
                         error: nil
                     )
                 )
             } catch {
+                loadTime = loadTime == 0 ? Date().timeIntervalSince(loadStarted) : loadTime
+                if let transcriptionStarted, transcriptionTime == 0 {
+                    transcriptionTime = Date().timeIntervalSince(transcriptionStarted)
+                }
                 results.append(
                     ModelLabResult(
                         modelID: choice.id,
                         modelName: choice.name,
-                        elapsed: Date().timeIntervalSince(started),
+                        loadTime: loadTime,
+                        transcriptionTime: transcriptionTime,
                         audioDuration: duration,
+                        modelSize: diagnostics.size,
+                        modelStatus: diagnostics.status,
+                        modelStatusDetail: diagnostics.statusDetail,
                         transcript: "",
                         error: error.localizedDescription
                     )
@@ -95,20 +205,31 @@ final class ModelLabRunner: ObservableObject {
     }
 
     var report: String {
-        results.map { result in
-            """
-            \(result.modelName)
-            Time: \(result.elapsed.formatted(.number.precision(.fractionLength(1)))) seconds
-            Speed: \(result.speedDescription)
-            \(result.error.map { "Error: \($0)" } ?? result.transcript)
-            """
-        }.joined(separator: "\n\n--------------------\n\n")
+        ModelLabReport.report(for: results)
+    }
+
+    private func setProgress(index: Int, modelCount: Int, phaseProgress: Double) {
+        progress = (Double(index) + phaseProgress) / Double(max(modelCount, 1))
+    }
+
+    private var downloadSnapshot: ModelDownloadSnapshot {
+        switch FinalModelDownloader.shared.state {
+        case .idle:
+            .idle
+        case let .downloading(id, progress, status):
+            .downloading(modelID: id, progress: progress, message: status)
+        case let .ready(id):
+            .ready(modelID: id)
+        case let .failed(id, message):
+            .failed(modelID: id, message: message)
+        }
     }
 }
 
 struct ModelLabView: View {
     @Query(sort: \Recording.createdAt, order: .reverse) private var recordings: [Recording]
     @StateObject private var runner = ModelLabRunner()
+    @StateObject private var finalDownloader = FinalModelDownloader.shared
     @State private var selectedAudioFileName = ""
     @State private var selectedModels: Set<String> = []
     @State private var showingImporter = false
@@ -133,16 +254,8 @@ struct ModelLabView: View {
                 Text("Download models in Settings first. Model Lab runs selections one at a time to protect iPhone memory.")
                     .font(.footnote)
                     .foregroundStyle(Theme.muted)
-                ForEach(FinalTranscriptionModelChoice.all) { model in
-                    Toggle(isOn: binding(for: model.id)) {
-                        VStack(alignment: .leading) {
-                            Text(model.name)
-                            Text(model.isDownloaded ? (model.provider == .parakeet ? "Parakeet · downloaded" : "Whisper · downloaded") : "Download in Settings first")
-                                .font(.caption)
-                                .foregroundStyle(Theme.muted)
-                        }
-                    }
-                    .disabled(!model.isDownloaded)
+                ForEach(ModelRegistry.models) { descriptor in
+                    modelToggle(descriptor)
                 }
             }
 
@@ -185,6 +298,9 @@ struct ModelLabView: View {
             }
         }
         .navigationTitle("Model Lab")
+        .onAppear {
+            finalDownloader.refreshFileStatus()
+        }
         .fileImporter(isPresented: $showingImporter, allowedContentTypes: [.audio]) { result in
             guard case let .success(source) = result else { return }
             let accessing = source.startAccessingSecurityScopedResource()
@@ -213,20 +329,71 @@ struct ModelLabView: View {
         )
     }
 
+    private func modelToggle(_ descriptor: ModelDescriptor) -> some View {
+        let diagnostics = diagnostics(for: descriptor)
+        return Toggle(isOn: binding(for: descriptor.id)) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(descriptor.displayName)
+                Text("\(providerLabel(descriptor.provider)) · \(diagnostics.status) · \(diagnostics.size)")
+                    .font(.caption)
+                    .foregroundStyle(Theme.muted)
+                Text(diagnostics.statusDetail)
+                    .font(.caption2)
+                    .foregroundStyle(Theme.muted)
+            }
+        }
+        .disabled(!isRunnable(diagnostics))
+    }
+
     private func resultCard(_ result: ModelLabResult) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(result.modelName).font(.headline)
-            Text("\(result.elapsed.formatted(.number.precision(.fractionLength(1)))) sec · \(result.speedDescription)")
-                .font(.caption)
-                .foregroundStyle(Theme.muted)
+            VStack(alignment: .leading, spacing: 4) {
+                LabeledContent("Status", value: result.modelStatus)
+                LabeledContent("Size", value: result.modelSize)
+                LabeledContent("Load", value: ModelLabReport.formatSeconds(result.loadTime))
+                LabeledContent("Transcribe", value: ModelLabReport.formatSeconds(result.transcriptionTime))
+                LabeledContent("Speed", value: result.speedDescription)
+                LabeledContent("Failure", value: result.failureStatus)
+            }
+            .font(.caption)
+            .foregroundStyle(Theme.muted)
             Divider()
-            Text(result.error ?? result.transcript)
+            Text(result.error.map { "Error: \($0)" } ?? result.transcriptOutput)
                 .textSelection(.enabled)
         }
         .padding()
         .frame(width: 310, alignment: .leading)
         .background(Theme.surface)
         .clipShape(RoundedRectangle(cornerRadius: 14))
+    }
+
+    private func diagnostics(for descriptor: ModelDescriptor) -> ModelLabModelDiagnostics {
+        ModelLabModelDiagnostics.snapshot(for: descriptor, download: downloadSnapshot)
+    }
+
+    private func isRunnable(_ diagnostics: ModelLabModelDiagnostics) -> Bool {
+        diagnostics.status == ModelStatus.downloaded.label || diagnostics.status == ModelStatus.ready.label
+    }
+
+    private var downloadSnapshot: ModelDownloadSnapshot {
+        switch finalDownloader.state {
+        case .idle:
+            .idle
+        case let .downloading(id, progress, status):
+            .downloading(modelID: id, progress: progress, message: status)
+        case let .ready(id):
+            .ready(modelID: id)
+        case let .failed(id, message):
+            .failed(modelID: id, message: message)
+        }
+    }
+
+    private func providerLabel(_ provider: FinalTranscriptionProvider) -> String {
+        switch provider {
+        case .whisper: "Whisper"
+        case .parakeet: "Parakeet"
+        }
     }
 }
 #endif

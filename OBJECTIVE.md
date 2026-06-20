@@ -2,11 +2,11 @@
 
 _This file holds the **single active objective** the Worker is currently implementing. The Manager sets it from the roadmap and advances it only when the current objective is gated `PROCEED`. Full details for every objective live in [docs/planning/objectives/](docs/planning/objectives/)._
 
-## ▶ Active objective: **OBJ-11 — Model Lab as Top-Level Tab + Diagnostics Columns**
+## ▶ Active objective: **OBJ-12 — Segment-Level Speaker Reassignment**
 
-Read the full spec: [docs/planning/objectives/OBJECTIVE-11.md](docs/planning/objectives/OBJECTIVE-11.md).
+Read the full spec: [docs/planning/objectives/OBJECTIVE-12.md](docs/planning/objectives/OBJECTIVE-12.md).
 
-**One-line mission:** Promote Model Lab to a top-level tab and add diagnostics columns for model load time and size/status.
+**One-line mission:** Add a focused way to reassign an individual transcript segment to a different speaker, with migration-safe persistence and export parity.
 
 **Before starting, read:** [PRD.md](PRD.md) → [PLAN.md](PLAN.md) → this file → [AGENTS.md](AGENTS.md).
 
@@ -26,8 +26,8 @@ Read the full spec: [docs/planning/objectives/OBJECTIVE-11.md](docs/planning/obj
 | 08 | [Background/lock & 30-min reliability (device gate)](docs/planning/objectives/OBJECTIVE-08.md) | 2 | Done — PROCEED 2026-06-19 |
 | 09 | [Library status badges + canonical `RecordingStatus`](docs/planning/objectives/OBJECTIVE-09.md) | 3 | Done — PROCEED 2026-06-19 |
 | 10 | [Dashboard tab](docs/planning/objectives/OBJECTIVE-10.md) | 3 | Done — PROCEED 2026-06-20 |
-| 11 | [Model Lab as top-level tab + diagnostics columns](docs/planning/objectives/OBJECTIVE-11.md) | 3 | ▶ Active |
-| 12 | [Segment-level speaker reassignment](docs/planning/objectives/OBJECTIVE-12.md) | 4 | Pending |
+| 11 | [Model Lab as top-level tab + diagnostics columns](docs/planning/objectives/OBJECTIVE-11.md) | 3 | Done — PROCEED 2026-06-20 |
+| 12 | [Segment-level speaker reassignment](docs/planning/objectives/OBJECTIVE-12.md) | 4 | ▶ Active |
 | 13 | [Consistent speaker-label states + edit parity](docs/planning/objectives/OBJECTIVE-13.md) | 4 | Pending |
 | 14 | [Phase-timeline progress UI](docs/planning/objectives/OBJECTIVE-14.md) | 5 | Pending |
 | 15 | [Diagnostics on normal screens + data model](docs/planning/objectives/OBJECTIVE-15.md) | 5 | Pending |

@@ -18,7 +18,7 @@ Promote Model Lab to a top-level tab and enrich its comparison with model **load
 - Dashboard / status-model work (OBJ-09, OBJ-10).
 
 ## Worker Instructions
-1. Add Model Lab to `RootView` tabs (iOS). Coordinate final tab order with OBJ-10/Manager (the Dashboard is the initial tab — see Q-2 in [DECISIONS.md](../../../DECISIONS.md)).
+1. Add Model Lab to `RootView` tabs (iOS). Coordinate final tab order with OBJ-10/Manager (the Dashboard is the initial tab — see D-007 in [DECISIONS.md](../../../DECISIONS.md)).
 2. In `ModelLabRunner`, time model load separately from transcription; add size/status columns from the OBJ-03 registry.
 3. Preserve one-at-a-time runs and the shareable report; extend the report to include load time + size.
 
@@ -53,3 +53,42 @@ Per [AGENTS.md §4](../../../AGENTS.md). Real comparative timings are a **device
 
 ## Rollback Considerations
 Tab promotion + additive columns. Revert restores the nested-in-Settings Model Lab. No data/schema change.
+
+## Completion Report — 2026-06-20
+
+### Worker Summary
+- Promoted Model Lab to the iOS top-level tab bar with final iOS order: Dashboard, Library, Model Lab, Settings.
+- Kept Settings' existing secondary Model Lab entry point.
+- Kept Record and Import reachable from Dashboard by opening the existing `RecordingView` flow with the same start/import request IDs; Record was removed from the primary tab bar per PRD §6 and the Human Reviewer OBJ-11 instruction.
+- Added separate Model Lab load time and transcription/processing time measurements by preparing each model before starting the timed transcription call.
+- Added registry-backed model size/status/detail snapshots to result cards and report export via `ModelRegistry.fileSnapshot`, `ModelRegistry.status`, and `ModelRegistry.formattedSize`.
+- Extended result cards and the shareable report with model load time, processing time, speed/realtime factor, model size/status, failure status, error text, and transcript text.
+- Preserved one-at-a-time execution: selected models still run through the existing sequential loop, with each engine unloaded before the next run starts.
+
+### Files Touched
+- `src/native/Transcriber2/Transcriber/RootView.swift`
+- `src/native/Transcriber2/Transcriber/DashboardView.swift`
+- `src/native/Transcriber2/Transcriber/ModelLabView.swift`
+- `src/native/Transcriber2/TranscriberTests/ModelLabTests.swift`
+- `DECISIONS.md`
+- `PLAN.md`
+- `OBJECTIVE.md`
+- `QA.md`
+- `docs/planning/objectives/OBJECTIVE-11.md`
+
+### Auditor Alignment
+- ALIGNED: Model Lab uses the OBJ-03 `ModelRegistry` for model size/status and does not introduce a second source of truth.
+- ALIGNED: Execution remains one model at a time; no parallel model loads or dependency changes were introduced.
+- ALIGNED: No `Recording` schema changes, migration changes, dependency bumps, strict-concurrency weakening, export hardening, OBJ-12+ speaker work, progress-timeline work, diagnostics-on-normal-screens work, accessibility work, Mac parity work, or cancellation hardening were started.
+- ALIGNED: Touched code paths stayed inside `src/native/Transcriber2/`; planning/QA docs were updated for closeout only.
+
+### QA Evidence
+- Focused `ModelLabTests`: PASS.
+- macOS build: PASS.
+- iOS simulator build: PASS.
+- `TranscriberTests`: PASS, 101/101.
+- `git diff --check`: PASS.
+- Manual/device comparative Model Lab timings remain Human-owned beta measurements; no Human-owned device gate blocks OBJ-11 completion.
+
+### Gate Decision
+- Manager recommendation: PROCEED.
