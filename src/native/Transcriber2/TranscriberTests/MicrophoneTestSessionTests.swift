@@ -20,6 +20,7 @@ struct MicrophoneTestSessionTests {
 
         await session.start()
         #expect(session.state == .testing)
+        #expect(session.notice == nil)
         #expect(recorder.startMeteringCallCount == 1)
         #expect(recorder.stopCallCount == 0)
         #expect(recorder.recordingURLs.isEmpty)
@@ -30,6 +31,7 @@ struct MicrophoneTestSessionTests {
         session.stop()
         #expect(session.state == .idle)
         #expect(session.level == 0)
+        #expect(session.notice == nil)
         #expect(recorder.stopCallCount == 1)
         #expect(recorder.recordingURLs.isEmpty)
     }
@@ -77,11 +79,42 @@ struct MicrophoneTestSessionTests {
 
         await session.start()
 
-        #expect(session.state == .failed("Could not start the microphone test."))
+        #expect(session.state == .failed("Could not test the selected microphone. Try Automatic or reconnect the microphone."))
         #expect(session.level == 0)
         #expect(recorder.startMeteringCallCount == 1)
         #expect(recorder.stopCallCount == 1)
         #expect(recorder.recordingURLs.isEmpty)
+    }
+
+    @Test func startShowsFallbackNoticeWhenSelectedInputFallsBack() async {
+        let recorder = FakeMicrophoneTestRecorder()
+        recorder.startRoute = MicrophoneRecordingRoute(
+            selectedInput: nil,
+            activeInput: nil,
+            activeDisplayName: MicrophoneRecordingRoute.systemDefaultInputName,
+            notice: "Testing with the system default input because the selected microphone could not be opened."
+        )
+        let session = MicrophoneTestSession(recorder: recorder)
+
+        await session.start()
+
+        #expect(session.state == .testing)
+        #expect(session.notice == "Testing with the system default input because the selected microphone could not be opened.")
+    }
+
+    @Test func startCancelsPendingRouteRefreshBeforeOpeningMicrophone() async {
+        let recorder = FakeMicrophoneTestRecorder()
+        var events: [String] = []
+        recorder.onStartMetering = { events.append("startMetering") }
+        let session = MicrophoneTestSession(
+            recorder: recorder,
+            prepareForCaptureStart: { events.append("prepareForCaptureStart") }
+        )
+
+        await session.start()
+
+        #expect(session.state == .testing)
+        #expect(events == ["prepareForCaptureStart", "startMetering"])
     }
 }
 
@@ -95,6 +128,8 @@ private final class FakeMicrophoneTestRecorder: MicrophoneTestRecording {
     var stopCallCount = 0
     var recordingURLs: [URL] = []
     var pendingPermissionContinuation: CheckedContinuation<Bool, Never>?
+    var onStartMetering: (() -> Void)?
+    var startRoute = MicrophoneRecordingRoute.automatic()
 
     private let subject = PassthroughSubject<Float, Never>()
 
@@ -107,11 +142,13 @@ private final class FakeMicrophoneTestRecorder: MicrophoneTestRecording {
         }
     }
 
-    func startMetering() throws {
+    func startMetering() throws -> MicrophoneRecordingRoute {
         startMeteringCallCount += 1
+        onStartMetering?()
         if let startError {
             throw startError
         }
+        return startRoute
     }
 
     func stop() -> (any Error)? {

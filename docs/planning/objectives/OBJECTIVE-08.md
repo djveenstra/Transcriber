@@ -52,3 +52,12 @@ Per [AGENTS.md §4](../../../AGENTS.md). **Cannot be fully done without the devi
 
 ## Rollback Considerations
 Interruption handling is additive observers. Revert removes them, returning to current background behavior. No data/schema change.
+
+## Completion Report — 2026-06-19
+
+- **Gate:** PROCEED.
+- **Evidence:** [QA.md — OBJ-08 final Human Reviewer PASS](../../../QA.md#obj-08--final-human-reviewer-pass-and-gate--2026-06-19).
+- **Implemented:** interruption/media-services safe-stop handling; retryable saved-audio messaging; route-change active-microphone/fallback refresh; Human-owned device checklist for OBJ-04 through OBJ-08; Bluetooth/AirPods runtime input refresh; Test Mic route-change race protection; stale disconnected Bluetooth input cleanup; Bluetooth reconnect retry refresh; Automatic effective fallback when selected inputs are unavailable.
+- **Validation:** macOS build PASS; iOS simulator build PASS; `TranscriberTests` PASS (89/89); focused microphone/Test Mic tests PASS; `git diff --check` PASS.
+- **Human Reviewer result:** PASS for AirPods/Bluetooth route-change reliability. AirPods appear when connected, disappear when disconnected, reappear after Bluetooth disconnect/reconnect without force quit, Test Mic works without freezing, normal recording still works, and Automatic fallback/default behavior is accepted.
+- **Notes:** Longer 5/15/30-minute and background/lock beta reliability checks remain documented in QA.md for continued device acceptance, but no OBJ-08 blocker remains from the current Human Reviewer retest.

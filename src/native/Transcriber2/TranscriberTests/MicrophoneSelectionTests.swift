@@ -58,6 +58,22 @@ struct MicrophoneSelectionTests {
         #expect(MicrophoneSelectionStore.resolvedRoute(for: "bluetooth-airpods", inputs: sampleInputs) == .selected(sampleInputs[1]))
     }
 
+    @Test func visibleSelectionUsesAutomaticWhenPersistedInputIsUnavailable() {
+        #expect(MicrophoneSelectionStore.visibleSelectionID(for: nil, inputs: sampleInputs) == MicrophoneSelectionStore.automaticID)
+        #expect(MicrophoneSelectionStore.visibleSelectionID(
+            for: MicrophoneSelectionStore.automaticID,
+            inputs: sampleInputs
+        ) == MicrophoneSelectionStore.automaticID)
+        #expect(MicrophoneSelectionStore.visibleSelectionID(
+            for: "bluetooth-airpods",
+            inputs: sampleInputs
+        ) == "bluetooth-airpods")
+        #expect(MicrophoneSelectionStore.visibleSelectionID(
+            for: "bluetooth-airpods",
+            inputs: [sampleInputs[0]]
+        ) == MicrophoneSelectionStore.automaticID)
+    }
+
     @Test func recordingRouteUsesSelectedInputWhenPresent() {
         let route = MicrophoneSelectionStore.recordingRoute(for: "bluetooth-airpods", inputs: sampleInputs)
 
@@ -92,6 +108,212 @@ struct MicrophoneSelectionTests {
         #expect(noInputs.activeInput == nil)
         #expect(noInputs.activeDisplayName == MicrophoneRecordingRoute.systemDefaultInputName)
         #expect(noInputs.notice == "Recording with the system default input because the selected microphone was unavailable.")
+    }
+
+    @Test @MainActor func routeChangeRefreshAddsNewBluetoothInputs() throws {
+        let suiteName = "MicrophoneSelectionTests-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        var discoveredInputs = [sampleInputs[0]]
+        var configureAudioSessionCalls: [Bool] = []
+        let service = MicrophoneService(
+            store: MicrophoneSelectionStore(defaults: defaults),
+            discoverInputs: { configureAudioSession in
+                configureAudioSessionCalls.append(configureAudioSession)
+                return discoveredInputs
+            }
+        )
+
+        service.refreshInputs()
+        #expect(service.choices.map(\.id) == [
+            MicrophoneSelectionStore.automaticID,
+            "built-in",
+        ])
+
+        discoveredInputs = [sampleInputs[0], sampleInputs[1]]
+        service.refreshInputsAfterRouteChange()
+
+        #expect(service.choices.map(\.id) == [
+            MicrophoneSelectionStore.automaticID,
+            "built-in",
+            "bluetooth-airpods",
+        ])
+        #expect(configureAudioSessionCalls == [true, false])
+    }
+
+    @Test @MainActor func routeChangeRefreshPreservesFallbackWhenSelectedInputDisappears() throws {
+        let suiteName = "MicrophoneSelectionTests-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let store = MicrophoneSelectionStore(defaults: defaults)
+        store.setSelectedID("bluetooth-airpods")
+        var discoveredInputs = [sampleInputs[0], sampleInputs[1]]
+        var configureAudioSessionCalls: [Bool] = []
+        let service = MicrophoneService(
+            store: store,
+            discoverInputs: { configureAudioSession in
+                configureAudioSessionCalls.append(configureAudioSession)
+                return discoveredInputs
+            }
+        )
+
+        service.refreshInputs()
+        #expect(service.routeResolution() == .selected(sampleInputs[1]))
+
+        discoveredInputs = [sampleInputs[0]]
+        service.refreshInputsAfterRouteChange()
+
+        #expect(service.routeResolution() == .fallbackToDefault(missingID: "bluetooth-airpods"))
+        let recordingRoute = MicrophoneSelectionStore.recordingRoute(
+            for: store.selectedID,
+            inputs: service.inputs
+        )
+        #expect(recordingRoute.activeInput == sampleInputs[0])
+        #expect(recordingRoute.usedFallback)
+        #expect(configureAudioSessionCalls == [true, false])
+    }
+
+    @Test @MainActor func routeRefreshReplacesDisconnectedBluetoothInputs() throws {
+        let suiteName = "MicrophoneSelectionTests-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let store = MicrophoneSelectionStore(defaults: defaults)
+        store.setSelectedID("bluetooth-airpods")
+        var discoveredInputs = [sampleInputs[0], sampleInputs[1]]
+        let service = MicrophoneService(
+            store: store,
+            discoverInputs: { _ in discoveredInputs }
+        )
+
+        service.refreshInputs()
+        #expect(service.choices.map(\.id) == [
+            MicrophoneSelectionStore.automaticID,
+            "built-in",
+            "bluetooth-airpods",
+        ])
+        #expect(service.visibleSelectedID == "bluetooth-airpods")
+
+        discoveredInputs = [sampleInputs[0]]
+        service.refreshInputs()
+
+        #expect(store.selectedID == "bluetooth-airpods")
+        #expect(service.inputs == [sampleInputs[0]])
+        #expect(service.choices.map(\.id) == [
+            MicrophoneSelectionStore.automaticID,
+            "built-in",
+        ])
+        #expect(service.visibleSelectedID == MicrophoneSelectionStore.automaticID)
+    }
+
+    @Test @MainActor func routeRefreshCanRemoveAndReAddBluetoothInputsWithoutRelaunch() throws {
+        let suiteName = "MicrophoneSelectionTests-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let store = MicrophoneSelectionStore(defaults: defaults)
+        store.setSelectedID("bluetooth-airpods")
+        var discoveredInputs = [sampleInputs[0], sampleInputs[1]]
+        let service = MicrophoneService(
+            store: store,
+            discoverInputs: { _ in discoveredInputs }
+        )
+
+        service.refreshInputs()
+        #expect(service.visibleSelectedID == "bluetooth-airpods")
+
+        discoveredInputs = [sampleInputs[0]]
+        service.refreshInputsAfterRouteChange()
+        #expect(service.choices.map(\.id) == [
+            MicrophoneSelectionStore.automaticID,
+            "built-in",
+        ])
+        #expect(service.visibleSelectedID == MicrophoneSelectionStore.automaticID)
+
+        discoveredInputs = [sampleInputs[0], sampleInputs[1]]
+        service.refreshInputsAfterRouteChange()
+        #expect(service.choices.map(\.id) == [
+            MicrophoneSelectionStore.automaticID,
+            "built-in",
+            "bluetooth-airpods",
+        ])
+        #expect(service.visibleSelectedID == "bluetooth-airpods")
+    }
+
+    @Test @MainActor func delayedRouteRefreshCanDiscoverLateBluetoothReconnect() async throws {
+        let suiteName = "MicrophoneSelectionTests-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        var discoveredInputs = [sampleInputs[0]]
+        var configureAudioSessionCalls: [Bool] = []
+        let service = MicrophoneService(
+            store: MicrophoneSelectionStore(defaults: defaults),
+            discoverInputs: { configureAudioSession in
+                configureAudioSessionCalls.append(configureAudioSession)
+                return discoveredInputs
+            },
+            routeRefreshRetryIntervals: [.milliseconds(1)]
+        )
+
+        service.refreshInputs()
+        service.refreshInputsAfterRouteChange()
+        discoveredInputs = [sampleInputs[0], sampleInputs[1]]
+        try await Task.sleep(for: .milliseconds(20))
+
+        #expect(service.choices.map(\.id) == [
+            MicrophoneSelectionStore.automaticID,
+            "built-in",
+            "bluetooth-airpods",
+        ])
+        #expect(service.visibleSelectedID == MicrophoneSelectionStore.automaticID)
+        #expect(configureAudioSessionCalls == [true, false, true])
+    }
+
+    @Test @MainActor func delayedRouteRefreshDoesNotReconfigureAudioSessionDuringCapture() async throws {
+        let suiteName = "MicrophoneSelectionTests-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        var configureAudioSessionCalls: [Bool] = []
+        let service = MicrophoneService(
+            store: MicrophoneSelectionStore(defaults: defaults),
+            discoverInputs: { configureAudioSession in
+                configureAudioSessionCalls.append(configureAudioSession)
+                return sampleInputs
+            },
+            routeRefreshRetryIntervals: [.milliseconds(1)]
+        )
+
+        service.noteCaptureStarted()
+        service.refreshInputsAfterRouteChange()
+        try await Task.sleep(for: .milliseconds(20))
+        service.noteCaptureStopped()
+
+        #expect(configureAudioSessionCalls == [false, false])
+    }
+
+    @Test @MainActor func recordingRouteRefreshDoesNotReconfigureAudioSession() throws {
+        let suiteName = "MicrophoneSelectionTests-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let store = MicrophoneSelectionStore(defaults: defaults)
+        store.setSelectedID("bluetooth-airpods")
+        var configureAudioSessionCalls: [Bool] = []
+        let service = MicrophoneService(
+            store: store,
+            discoverInputs: { configureAudioSession in
+                configureAudioSessionCalls.append(configureAudioSession)
+                return sampleInputs
+            }
+        )
+
+        _ = service.applyPreferredInputForRecording()
+
+        #expect(configureAudioSessionCalls == [false])
     }
 
     private var sampleInputs: [MicrophoneInput] {

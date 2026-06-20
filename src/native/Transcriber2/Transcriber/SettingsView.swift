@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct SettingsView: View {
+    @Environment(\.scenePhase) private var scenePhase
     @AppStorage("keepAudioFiles") private var keepAudioFiles = true
     @AppStorage("whisperModel") private var whisperModel = WhisperModelChoice.defaultID
     @AppStorage(MicrophoneSelectionStore.selectionKey) private var selectedMicrophoneID = MicrophoneSelectionStore.automaticID
@@ -53,7 +54,7 @@ struct SettingsView: View {
 #endif
                 }
                 Section("Microphone") {
-                    Picker("Input", selection: $selectedMicrophoneID) {
+                    Picker("Input", selection: microphonePickerSelection) {
                         ForEach(microphoneService.choices) { choice in
                             Text(choice.name).tag(choice.id)
                         }
@@ -141,6 +142,10 @@ struct SettingsView: View {
                 FinalTranscriptionModelChoice.setSelectedID(value)
             }
 #endif
+            .onChange(of: scenePhase) { _, value in
+                guard value == .active else { return }
+                microphoneService.refreshInputs()
+            }
         }
     }
 
@@ -148,13 +153,27 @@ struct SettingsView: View {
         guard selectedMicrophoneID != MicrophoneSelectionStore.automaticID else {
             return MicrophoneChoice.automatic.detail
         }
+        guard microphoneService.visibleSelectedID != MicrophoneSelectionStore.automaticID else {
+            return "This saved input is unavailable. Test Mic and recordings will use Automatic until it reconnects."
+        }
         return microphoneService.choices.first { $0.id == selectedMicrophoneID }?.detail
             ?? "This saved input is not currently listed by the system."
     }
 
     private var selectedMicrophoneName: String {
-        microphoneService.choices.first { $0.id == selectedMicrophoneID }?.name
-            ?? "Saved input unavailable"
+        microphoneService.choices.first { $0.id == microphoneService.visibleSelectedID }?.name
+            ?? MicrophoneChoice.automatic.name
+    }
+
+    private var microphonePickerSelection: Binding<String> {
+        Binding(
+            get: {
+                microphoneService.visibleSelectedID
+            },
+            set: { newValue in
+                selectedMicrophoneID = newValue
+            }
+        )
     }
 
     private var microphoneTestButtonTitle: String {
@@ -186,7 +205,7 @@ struct SettingsView: View {
         case .starting:
             "Opening microphone input..."
         case .testing:
-            "Microphone test is running."
+            microphoneTest.notice ?? "Microphone test is running."
         case let .failed(message):
             message
         }

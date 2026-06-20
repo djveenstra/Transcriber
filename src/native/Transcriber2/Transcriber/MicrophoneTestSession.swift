@@ -7,7 +7,7 @@ protocol MicrophoneTestRecording: AnyObject {
     var levelUpdates: AnyPublisher<Float, Never> { get }
 
     func requestPermission() async -> Bool
-    func startMetering() throws
+    func startMetering() throws -> MicrophoneRecordingRoute
     @discardableResult func stop() -> (any Error)?
 }
 
@@ -24,13 +24,21 @@ final class MicrophoneTestSession: ObservableObject {
 
     @Published private(set) var state: State = .idle
     @Published private(set) var level: Float = 0
+    @Published private(set) var notice: String?
 
     private let recorder: any MicrophoneTestRecording
+    private let prepareForCaptureStart: @MainActor () -> Void
     private var levelSubscription: AnyCancellable?
     private var startGeneration = 0
 
-    init(recorder: any MicrophoneTestRecording = AudioRecorder()) {
+    init(
+        recorder: any MicrophoneTestRecording = AudioRecorder(),
+        prepareForCaptureStart: @escaping @MainActor () -> Void = {
+            MicrophoneService.shared.cancelPendingRouteRefresh()
+        }
+    ) {
         self.recorder = recorder
+        self.prepareForCaptureStart = prepareForCaptureStart
         levelSubscription = recorder.levelUpdates.sink { [weak self] level in
             self?.level = AudioLevelMeter.normalizedLevel(level)
         }
@@ -61,13 +69,16 @@ final class MicrophoneTestSession: ObservableObject {
         }
 
         do {
-            try recorder.startMetering()
+            prepareForCaptureStart()
+            let route = try recorder.startMetering()
             level = AudioLevelMeter.normalizedLevel(recorder.level)
+            notice = route.notice
             state = .testing
         } catch {
             recorder.stop()
             level = 0
-            state = .failed("Could not start the microphone test.")
+            notice = nil
+            state = .failed("Could not test the selected microphone. Try Automatic or reconnect the microphone.")
         }
     }
 
@@ -76,6 +87,7 @@ final class MicrophoneTestSession: ObservableObject {
         guard state != .idle else { return }
         recorder.stop()
         level = 0
+        notice = nil
         state = .idle
     }
 }

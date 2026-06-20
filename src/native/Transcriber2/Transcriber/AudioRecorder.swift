@@ -37,6 +37,7 @@ final class AudioRecorder: ObservableObject {
     private var startedAt: Date?
 #if os(iOS)
     private var notificationObservers: [NSObjectProtocol] = []
+    private var delayedRouteChangeTask: Task<Void, Never>?
 #endif
 
     var elapsedDuration: TimeInterval {
@@ -54,26 +55,55 @@ final class AudioRecorder: ObservableObject {
     }
 
     func prepareForRecording() throws -> AVAudioFormat {
+        try prepareForRecording(useSystemDefault: false).format
+    }
+
+    private func prepareForRecording(useSystemDefault: Bool) throws -> (format: AVAudioFormat, route: MicrophoneRecordingRoute) {
 #if os(iOS)
         let session = AVAudioSession.sharedInstance()
         try session.setCategory(.record, mode: .measurement, options: [.allowBluetoothHFP])
         try session.setActive(true)
 #endif
-        let route = MicrophoneService.shared.applyPreferredInputForRecording()
+        let route = useSystemDefault
+            ? MicrophoneService.shared.applySystemDefaultInputForRecording()
+            : MicrophoneService.shared.applyPreferredInputForRecording()
         activeMicrophoneName = route.activeDisplayName
         microphoneFallbackNotice = route.notice
         let engine = AVAudioEngine()
         self.engine = engine
-        return engine.inputNode.outputFormat(forBus: 0)
+        return (engine.inputNode.outputFormat(forBus: 0), route)
     }
 
     func start(at url: URL) throws {
         try startEngine(writingTo: url)
     }
 
-    func startMetering() throws {
-        _ = try prepareForRecording()
-        try startEngine(writingTo: nil)
+    @discardableResult
+    func startMetering() throws -> MicrophoneRecordingRoute {
+        let prepared = try prepareForRecording(useSystemDefault: false)
+        do {
+            try startEngine(writingTo: nil)
+            return prepared.route
+        } catch {
+            let selectedID = MicrophoneService.shared.selectedID
+            guard selectedID != MicrophoneSelectionStore.automaticID else { throw error }
+            stop()
+            let fallback = try prepareForRecording(useSystemDefault: true)
+            do {
+                try startEngine(writingTo: nil)
+                let fallbackNotice = "Testing with the system default input because the selected microphone could not be opened."
+                microphoneFallbackNotice = fallbackNotice
+                return MicrophoneRecordingRoute(
+                    selectedInput: nil,
+                    activeInput: fallback.route.activeInput,
+                    activeDisplayName: fallback.route.activeDisplayName,
+                    notice: fallbackNotice
+                )
+            } catch {
+                stop()
+                throw error
+            }
+        }
     }
 
     private func startEngine(writingTo url: URL?) throws {
@@ -96,6 +126,7 @@ final class AudioRecorder: ObservableObject {
         engine.prepare()
         try engine.start()
         self.engine = engine
+        MicrophoneService.shared.noteCaptureStarted()
         startedAt = .now
         duration = 0
 #if os(iOS)
@@ -120,10 +151,13 @@ final class AudioRecorder: ObservableObject {
         }
         fileWriter = nil
         engine = nil
+        MicrophoneService.shared.noteCaptureStopped()
         level = 0
         activeMicrophoneName = MicrophoneRecordingRoute.systemDefaultInputName
         microphoneFallbackNotice = nil
 #if os(iOS)
+        delayedRouteChangeTask?.cancel()
+        delayedRouteChangeTask = nil
         removeAudioSessionObservers()
         try? AVAudioSession.sharedInstance().setActive(false)
 #endif
@@ -140,17 +174,18 @@ final class AudioRecorder: ObservableObject {
                 object: AVAudioSession.sharedInstance(),
                 queue: .main
             ) { [weak self] notification in
+                let typeRawValue = notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt
                 Task { @MainActor in
-                    self?.handleInterruption(notification)
+                    self?.handleInterruption(typeRawValue: typeRawValue)
                 }
             },
             center.addObserver(
                 forName: AVAudioSession.routeChangeNotification,
                 object: AVAudioSession.sharedInstance(),
                 queue: .main
-            ) { [weak self] notification in
+            ) { [weak self] _ in
                 Task { @MainActor in
-                    self?.handleRouteChange(notification)
+                    self?.handleRouteChange()
                 }
             },
             center.addObserver(
@@ -173,9 +208,9 @@ final class AudioRecorder: ObservableObject {
         notificationObservers = []
     }
 
-    private func handleInterruption(_ notification: Notification) {
-        guard let rawType = notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
-              let type = AVAudioSession.InterruptionType(rawValue: rawType) else {
+    private func handleInterruption(typeRawValue: UInt?) {
+        guard let typeRawValue,
+              let type = AVAudioSession.InterruptionType(rawValue: typeRawValue) else {
             return
         }
 
@@ -189,7 +224,18 @@ final class AudioRecorder: ObservableObject {
         }
     }
 
-    private func handleRouteChange(_ notification: Notification) {
+    private func handleRouteChange() {
+        guard engine != nil else { return }
+        applyRouteChangeToActiveRecording()
+        delayedRouteChangeTask?.cancel()
+        delayedRouteChangeTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .milliseconds(500))
+            guard !Task.isCancelled else { return }
+            self?.applyRouteChangeToActiveRecording()
+        }
+    }
+
+    private func applyRouteChangeToActiveRecording() {
         guard engine != nil else { return }
         let route = MicrophoneService.shared.applyPreferredInputForRecording()
         activeMicrophoneName = route.activeDisplayName

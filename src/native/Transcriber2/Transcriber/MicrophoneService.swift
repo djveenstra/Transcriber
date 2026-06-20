@@ -143,6 +143,11 @@ struct MicrophoneSelectionStore: Sendable {
         }
     }
 
+    static func visibleSelectionID(for selectedID: String?, inputs: [MicrophoneInput]) -> String {
+        guard let selectedID, selectedID != automaticID else { return automaticID }
+        return selectedInput(id: selectedID, in: inputs) == nil ? automaticID : selectedID
+    }
+
     static func resolvedRoute(for selectedID: String?, inputs: [MicrophoneInput]) -> MicrophoneRouteResolution {
         guard let selectedID, selectedID != automaticID else { return .automatic }
         guard let input = selectedInput(id: selectedID, in: inputs) else {
@@ -173,9 +178,34 @@ final class MicrophoneService: ObservableObject {
     @Published private(set) var inputs: [MicrophoneInput] = []
 
     private let store: MicrophoneSelectionStore
+    private let discoverInputsProvider: @MainActor (_ configureAudioSession: Bool) -> [MicrophoneInput]
+    private let routeRefreshRetryIntervals: [Duration]
+    private var delayedRouteRefreshTask: Task<Void, Never>?
+    private var captureActive = false
+#if os(iOS)
+    private var routeChangeCancellable: AnyCancellable?
+#endif
 
-    init(store: MicrophoneSelectionStore = MicrophoneSelectionStore()) {
+    init(
+        store: MicrophoneSelectionStore = MicrophoneSelectionStore(),
+        discoverInputs: @escaping @MainActor (_ configureAudioSession: Bool) -> [MicrophoneInput] = {
+            MicrophoneService.discoverInputs(configureAudioSession: $0)
+        },
+        routeRefreshRetryIntervals: [Duration] = MicrophoneService.defaultRouteRefreshRetryIntervals
+    ) {
         self.store = store
+        discoverInputsProvider = discoverInputs
+        self.routeRefreshRetryIntervals = routeRefreshRetryIntervals
+#if os(iOS)
+        routeChangeCancellable = NotificationCenter.default
+            .publisher(for: AVAudioSession.routeChangeNotification)
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                Task { @MainActor [weak self] in
+                    self?.refreshInputsAfterRouteChange()
+                }
+            }
+#endif
     }
 
     var selectedID: String {
@@ -186,10 +216,33 @@ final class MicrophoneService: ObservableObject {
         MicrophoneSelectionStore.choices(for: inputs)
     }
 
+    var visibleSelectedID: String {
+        MicrophoneSelectionStore.visibleSelectionID(for: selectedID, inputs: inputs)
+    }
+
     @discardableResult
-    func refreshInputs() -> [MicrophoneInput] {
-        inputs = Self.discoverInputs()
+    func refreshInputs(configureAudioSession: Bool = true) -> [MicrophoneInput] {
+        inputs = discoverInputsProvider(configureAudioSession)
         return inputs
+    }
+
+    @discardableResult
+    func refreshInputsAfterRouteChange() -> [MicrophoneInput] {
+        scheduleRouteRefreshRetries()
+        return refreshInputs(configureAudioSession: false)
+    }
+
+    func cancelPendingRouteRefresh() {
+        delayedRouteRefreshTask?.cancel()
+        delayedRouteRefreshTask = nil
+    }
+
+    func noteCaptureStarted() {
+        captureActive = true
+    }
+
+    func noteCaptureStopped() {
+        captureActive = false
     }
 
     func routeResolution() -> MicrophoneRouteResolution {
@@ -198,7 +251,8 @@ final class MicrophoneService: ObservableObject {
 
     @discardableResult
     func applyPreferredInputForRecording() -> MicrophoneRecordingRoute {
-        let inputs = refreshInputs()
+        cancelPendingRouteRefresh()
+        let inputs = refreshInputs(configureAudioSession: false)
         let selectedID = store.selectedID
         let route = MicrophoneSelectionStore.recordingRoute(for: selectedID, inputs: inputs)
         guard selectedID != MicrophoneSelectionStore.automaticID else {
@@ -238,10 +292,25 @@ final class MicrophoneService: ObservableObject {
 #endif
     }
 
-    private static func discoverInputs() -> [MicrophoneInput] {
+    @discardableResult
+    func applySystemDefaultInputForRecording() -> MicrophoneRecordingRoute {
+        cancelPendingRouteRefresh()
+        _ = refreshInputs(configureAudioSession: false)
+#if os(iOS)
+        try? AVAudioSession.sharedInstance().setPreferredInput(nil)
+        return .automatic()
+#else
+        return Self.systemDefaultRecordingRoute()
+#endif
+    }
+
+    private static func discoverInputs(configureAudioSession: Bool) -> [MicrophoneInput] {
 #if os(iOS)
         let session = AVAudioSession.sharedInstance()
-        try? session.setCategory(.record, mode: .measurement, options: [.allowBluetoothHFP])
+        if configureAudioSession {
+            try? session.setCategory(.record, mode: .measurement, options: [.allowBluetoothHFP])
+            try? session.setActive(true)
+        }
         return (session.availableInputs ?? []).map(Self.input(from:))
 #else
         let discovery = AVCaptureDevice.DiscoverySession(
@@ -265,6 +334,27 @@ final class MicrophoneService: ObservableObject {
             notice: nil
         )
 #endif
+    }
+
+    private static var defaultRouteRefreshRetryIntervals: [Duration] {
+#if os(iOS)
+        [.milliseconds(500), .seconds(1), .seconds(2), .seconds(4)]
+#else
+        []
+#endif
+    }
+
+    private func scheduleRouteRefreshRetries() {
+        delayedRouteRefreshTask?.cancel()
+        let intervals = routeRefreshRetryIntervals
+        guard !intervals.isEmpty else { return }
+        delayedRouteRefreshTask = Task { @MainActor [weak self] in
+            for interval in intervals {
+                try? await Task.sleep(for: interval)
+                guard !Task.isCancelled, let self else { return }
+                self.refreshInputs(configureAudioSession: !self.captureActive)
+            }
+        }
     }
 
 #if os(iOS)
