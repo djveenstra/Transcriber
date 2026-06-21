@@ -104,19 +104,9 @@ struct RecordingView: View {
         case .processing:
             VStack(spacing: 20) {
                 Spacer()
-                ProgressView(value: session.progress)
-                    .tint(Theme.accent)
-                    .frame(maxWidth: 420)
-                Text(processingMessage)
-                    .font(.headline)
+                processingTimeline(cancelTitle: "Cancel Processing")
                 Text("The final pass is more accurate than the live preview.")
                     .foregroundStyle(Theme.muted)
-                Button {
-                    cancelProcessing()
-                } label: {
-                    Label("Cancel Processing", systemImage: "xmark.circle")
-                }
-                .buttonStyle(SecondaryButtonStyle())
                 Spacer()
             }
         case .completed:
@@ -165,14 +155,7 @@ struct RecordingView: View {
                 }
                 .buttonStyle(PrimaryButtonStyle(color: .red))
             } else if session.state == .completed {
-                if session.isIdentifyingSpeakers {
-                    Button {
-                        cancelProcessing()
-                    } label: {
-                        Label("Cancel Speaker Labels", systemImage: "xmark.circle")
-                    }
-                    .buttonStyle(SecondaryButtonStyle())
-                } else {
+                if !session.isIdentifyingSpeakers {
                     if let recording = session.savedRecordingForEditing,
                        TranscriptEditingAvailability.canRenameOrReassignSpeakers(
                         segmentCount: recording.segments.count,
@@ -212,13 +195,7 @@ struct RecordingView: View {
     private var completedTranscriptContent: some View {
         VStack(spacing: 12) {
             if session.isIdentifyingSpeakers {
-                VStack(spacing: 6) {
-                    ProgressView(value: session.progress)
-                        .tint(Theme.accent)
-                    Text("Transcript ready. Identifying speakers.")
-                        .font(.callout)
-                        .foregroundStyle(Theme.muted)
-                }
+                processingTimeline(cancelTitle: "Cancel Speaker Labels")
             }
             SpeakerLabelStatusView(
                 presentation: session.speakerLabelStatusPresentation,
@@ -249,7 +226,7 @@ struct RecordingView: View {
             case .unavailable: "Recording safely; live preview unavailable"
             case .inactive: "Recording"
             }
-        case let .processing(message): message
+        case let .processing(phase): phase.title
         case .completed: "Final transcript ready"
         case .failed: "Needs attention"
         }
@@ -274,11 +251,6 @@ struct RecordingView: View {
         }
     }
 
-    private var processingMessage: String {
-        if case let .processing(message) = session.state { return message }
-        return "Preparing transcription"
-    }
-
     @ViewBuilder private var modelStatus: some View {
         switch session.modelState {
         case .notLoaded:
@@ -298,6 +270,17 @@ struct RecordingView: View {
 
     private func formatDuration(_ duration: TimeInterval) -> String {
         String(format: "%02d:%02d", Int(duration) / 60, Int(duration) % 60)
+    }
+
+    private func processingTimeline(cancelTitle: String) -> some View {
+        ProcessingTimelineView(
+            phase: session.currentProcessingPhase ?? .preparingModel,
+            progress: session.progress,
+            startedAt: session.processingStartedAt,
+            canCancel: session.canCancelProcessing,
+            cancelTitle: cancelTitle,
+            cancelAction: cancelProcessing
+        )
     }
 
     private func cancelProcessing() {

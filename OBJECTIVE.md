@@ -2,11 +2,11 @@
 
 _This file holds the **single active objective** the Worker is currently implementing. The Manager sets it from the roadmap and advances it only when the current objective is gated `PROCEED`. Full details for every objective live in [docs/planning/objectives/](docs/planning/objectives/)._
 
-## ▶ Active objective: **OBJ-14 — Phase-Timeline Progress UI**
+## ▶ Active objective: **OBJ-15 — Diagnostics on Normal Screens + Diagnostics Data Model**
 
-Read the full spec: [docs/planning/objectives/OBJECTIVE-14.md](docs/planning/objectives/OBJECTIVE-14.md).
+Read the full spec: [docs/planning/objectives/OBJECTIVE-15.md](docs/planning/objectives/OBJECTIVE-15.md).
 
-**One-line mission:** Replace the bare processing progress bar with a calm structured phase timeline showing current phase, rough progress/activity, elapsed time, and existing Cancel/Retry/Details affordances without changing processing semantics.
+**One-line mission:** Capture real processing diagnostics for normal recording/import flows and present them calmly in the OBJ-14 Details disclosure and detail screens without turning normal UI into Model Lab.
 
 **Before starting, read:** [PRD.md](PRD.md) → [PLAN.md](PLAN.md) → this file → [AGENTS.md](AGENTS.md).
 
@@ -29,8 +29,8 @@ Read the full spec: [docs/planning/objectives/OBJECTIVE-14.md](docs/planning/obj
 | 11 | [Model Lab as top-level tab + diagnostics columns](docs/planning/objectives/OBJECTIVE-11.md) | 3 | Done — PROCEED 2026-06-20 |
 | 12 | [Segment-level speaker reassignment](docs/planning/objectives/OBJECTIVE-12.md) | 4 | Done — PROCEED 2026-06-20 |
 | 13 | [Consistent speaker-label states + edit parity](docs/planning/objectives/OBJECTIVE-13.md) | 4 | Done — PROCEED 2026-06-20 |
-| 14 | [Phase-timeline progress UI](docs/planning/objectives/OBJECTIVE-14.md) | 5 | ▶ Active |
-| 15 | [Diagnostics on normal screens + data model](docs/planning/objectives/OBJECTIVE-15.md) | 5 | Pending |
+| 14 | [Phase-timeline progress UI](docs/planning/objectives/OBJECTIVE-14.md) | 5 | Done — PROCEED 2026-06-20 |
+| 15 | [Diagnostics on normal screens + data model](docs/planning/objectives/OBJECTIVE-15.md) | 5 | ▶ Active |
 | 16 | [Export hardening](docs/planning/objectives/OBJECTIVE-16.md) | 6 | Pending |
 | 17 | [Accessibility pass](docs/planning/objectives/OBJECTIVE-17.md) | 6 | Pending |
 | 18 | [Mac companion parity](docs/planning/objectives/OBJECTIVE-18.md) | 7 | Pending |

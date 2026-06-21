@@ -49,3 +49,32 @@ Per [AGENTS.md §4](../../../AGENTS.md).
 
 ## Rollback Considerations
 Refactor of the processing presentation + a phase enum. Revert restores the single bar. No data/schema change; session state semantics preserved either way.
+
+## Completion Report — 2026-06-20
+
+### Worker
+- Files touched: `src/native/Transcriber2/Transcriber/ProcessingPhase.swift`, `src/native/Transcriber2/Transcriber/TranscriptionSession.swift`, `src/native/Transcriber2/Transcriber/RecordingView.swift`, `src/native/Transcriber2/Transcriber/LibraryView.swift`, `src/native/Transcriber2/TranscriberTests/ProcessingPhaseTests.swift`, plus planning/QA docs.
+- Added `ProcessingPhase` with the PRD core phases: `savingRecording`, `preparingModel`, `transcribing`, `savingTranscript`, `identifyingSpeakers`, `savingSpeakerLabels`, and `exporting`.
+- Replaced `TranscriptionSession.State.processing(String)` with `processing(ProcessingPhase)`, added elapsed-time tracking for active processing runs, and mapped existing processing transitions to structured phases.
+- Added a reusable `ProcessingTimelineView` with current phase, rough percent/activity, elapsed time, Cancel, optional Retry support, and minimal Details containing phase, elapsed time, and safe static context.
+- Reused the progress presentation in `RecordingView`, `RecordingDetailView`, and `SharedAudioDetailView`.
+- Cancel and retry behavior stay on existing paths: `cancelProcessing`, `retryTranscription`, `retrySpeakerLabels`, and `retryCurrentSpeakerLabels`. Speaker-label retry continues to use stored `rawTranscription` instead of rerunning transcription.
+- Deferred OBJ-15 diagnostics: no model load time, processing time, realtime factor, fallback flag, or failure metric capture was added.
+
+### Auditor
+- ALIGNED. The phase model maps to PRD §13 core phases, and shared UI is reused instead of duplicating per-screen progress blocks.
+- Cancel/Retry semantics are preserved; new buttons call existing session methods and do not add new retry behavior.
+- No OBJ-15 diagnostics capture was started.
+- No transcription algorithm, diarization algorithm, SwiftData schema, dependency, project-setting, strict-concurrency, `src/python/`, `src/legacy-ios/`, or `XCode App Build/` changes were made.
+- No OBJ-15+ export, accessibility, Mac parity, cancellation-hardening, or acceptance work was started.
+
+### QA
+- Focused tests added in `ProcessingPhaseTests`: phase coverage, legacy-message mapping, display copy, elapsed formatting, progress/cancel/retry presentation helpers, and structured processing-state carrying.
+- Validation passed: macOS build PASS; iOS simulator build PASS; `TranscriberTests` PASS (118/118); `git diff --check` PASS.
+- QA evidence: [QA.md](../../../QA.md#obj-14--phase-timeline-progress-ui--2026-06-20).
+- Device gates: none specific to OBJ-14. Real-device visual tap-through of the timeline during processing is useful beta review, but not a blocking Human-owned hardware gate.
+
+### Manager Gate
+- Gate recommendation: **PROCEED**.
+- OBJ-14 scope is complete in agent-verifiable scope.
+- No Human/product decision is needed for OBJ-14.

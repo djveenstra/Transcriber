@@ -198,6 +198,7 @@ struct SharedAudioDetailView: View {
     @Environment(\.modelContext) private var modelContext
     @StateObject private var session = TranscriptionSession()
     @StateObject private var playback = AudioPlaybackController()
+    @State private var processingTask: Task<Void, Never>?
 
     var body: some View {
         VStack(spacing: 20) {
@@ -219,12 +220,7 @@ struct SharedAudioDetailView: View {
                 Spacer()
             case .preparing, .processing:
                 Spacer()
-                ProgressView(value: session.progress)
-                    .tint(Theme.accent)
-                    .frame(maxWidth: 420)
-                Text(processingMessage)
-                    .font(.headline)
-                    .multilineTextAlignment(.center)
+                sharedProcessingTimeline(cancelTitle: "Cancel Processing")
                 Text("You can leave this screen open while Transcriber works on-device.")
                     .foregroundStyle(Theme.muted)
                     .multilineTextAlignment(.center)
@@ -252,9 +248,12 @@ struct SharedAudioDetailView: View {
 
                     Button {
                         playback.stop()
-                        Task {
+                        processingTask = Task {
                             await session.importAudio(item.url)
-                            saveTranscriptIfCompleted()
+                            if !Task.isCancelled {
+                                saveTranscriptIfCompleted()
+                            }
+                            processingTask = nil
                         }
                     } label: {
                         Label("Transcribe Recording", systemImage: "text.quote")
@@ -290,18 +289,27 @@ struct SharedAudioDetailView: View {
         .background(Theme.background)
         .navigationTitle("Shared Recording")
         .storageErrorAlert(session)
-        .onDisappear { playback.stop() }
+        .onDisappear {
+            playback.stop()
+        }
     }
 
-    private var processingMessage: String {
-        if case let .processing(message) = session.state {
-            return message
-        }
-        return "Preparing transcription"
+    private func sharedProcessingTimeline(cancelTitle: String) -> some View {
+        ProcessingTimelineView(
+            phase: session.currentProcessingPhase ?? .preparingModel,
+            progress: session.progress,
+            startedAt: session.processingStartedAt,
+            canCancel: session.canCancelProcessing,
+            cancelTitle: cancelTitle,
+            cancelAction: cancelProcessing
+        )
     }
 
     private var sharedCompletedTranscriptContent: some View {
         VStack(spacing: 12) {
+            if session.isIdentifyingSpeakers {
+                sharedProcessingTimeline(cancelTitle: "Cancel Speaker Labels")
+            }
             SpeakerLabelStatusView(
                 presentation: session.speakerLabelStatusPresentation,
                 retryAction: sharedSpeakerLabelRetryAction
@@ -331,9 +339,20 @@ struct SharedAudioDetailView: View {
 
     private func retryCurrentSpeakerLabels() {
         saveTranscriptIfCompleted()
-        Task {
+        processingTask = Task {
             await session.retryCurrentSpeakerLabels()
-            saveTranscriptIfCompleted()
+            if !Task.isCancelled {
+                saveTranscriptIfCompleted()
+            }
+            processingTask = nil
+        }
+    }
+
+    private func cancelProcessing() {
+        processingTask?.cancel()
+        processingTask = nil
+        Task {
+            await session.cancelProcessing()
         }
     }
 }
@@ -392,6 +411,7 @@ struct RecordingDetailView: View {
     @StateObject private var retrySession = TranscriptionSession()
     @StateObject private var audioAvailability = RecordingAudioAvailabilityStore.shared
     @StateObject private var statusActivityStore = RecordingStatusActivityStore.shared
+    @State private var retryTask: Task<Void, Never>?
 
     private var isAudioMissing: Bool {
         audioAvailability.isAudioMissing(for: recording)
@@ -408,12 +428,9 @@ struct RecordingDetailView: View {
                     .background(Theme.surface)
                     .clipShape(RoundedRectangle(cornerRadius: 12))
             }
-            if case let .processing(message) = retrySession.state {
+            if case .processing = retrySession.state {
                 Spacer()
-                ProgressView(value: retrySession.progress)
-                    .tint(Theme.accent)
-                    .frame(maxWidth: 420)
-                Text(message).font(.headline)
+                retryProcessingTimeline
                 Spacer()
             } else {
                 if recording.transcriptionNeedsRetry {
@@ -451,8 +468,9 @@ struct RecordingDetailView: View {
             }
             if recording.transcriptionNeedsRetry {
                 Button {
-                    Task {
+                    retryTask = Task {
                         await retrySession.retryTranscription(for: recording, in: modelContext)
+                        retryTask = nil
                     }
                 } label: {
                     Label("Create Transcript", systemImage: "text.quote")
@@ -505,10 +523,30 @@ struct RecordingDetailView: View {
         return { retrySpeakerLabels() }
     }
 
+    private var retryProcessingTimeline: some View {
+        ProcessingTimelineView(
+            phase: retrySession.currentProcessingPhase ?? .preparingModel,
+            progress: retrySession.progress,
+            startedAt: retrySession.processingStartedAt,
+            canCancel: retrySession.canCancelProcessing,
+            cancelTitle: "Cancel Processing",
+            cancelAction: cancelRetryProcessing
+        )
+    }
+
     private func retrySpeakerLabels() {
         guard !isAudioMissing else { return }
-        Task {
+        retryTask = Task {
             await retrySession.retrySpeakerLabels(for: recording, in: modelContext)
+            retryTask = nil
+        }
+    }
+
+    private func cancelRetryProcessing() {
+        retryTask?.cancel()
+        retryTask = nil
+        Task {
+            await retrySession.cancelProcessing()
         }
     }
 

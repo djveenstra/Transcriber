@@ -47,7 +47,7 @@ final class TranscriptionSession: ObservableObject {
         case idle
         case preparing
         case recording
-        case processing(String)
+        case processing(ProcessingPhase)
         case completed
         case failed(String)
     }
@@ -82,6 +82,8 @@ final class TranscriptionSession: ObservableObject {
     @Published private(set) var storageErrorMessage: String?
     @Published private(set) var activeMicrophoneName: String?
     @Published private(set) var microphoneFallbackNotice: String?
+    @Published private(set) var currentProcessingPhase: ProcessingPhase?
+    @Published private(set) var processingStartedAt: Date?
 
     let recorder = AudioRecorder()
 
@@ -159,6 +161,7 @@ final class TranscriptionSession: ObservableObject {
         diarizationFailureDetail = nil
         activeMicrophoneName = nil
         microphoneFallbackNotice = nil
+        clearProcessingPhase()
         saved = false
         processingWasCancelled = false
         processingFinalModelChoice = nil
@@ -259,6 +262,7 @@ final class TranscriptionSession: ObservableObject {
         let writeError = recorder.stop()
         recorder.onSystemEvent = nil
         await stopLiveCaptureTasks()
+        setProcessingPhase(.savingRecording, progress: 0.01)
         preserveRecording(in: context)
 
         if let writeError {
@@ -267,11 +271,12 @@ final class TranscriptionSession: ObservableObject {
                 in: context,
                 failureMessage: "Your recording was saved, but the audio file may be incomplete."
             )
+            clearProcessingPhase()
             state = .failed("Recording stopped with a write error: \(writeError.localizedDescription). The audio file may be incomplete.")
             return
         }
 
-        state = .processing("Finalizing live transcript")
+        setProcessingPhase(.preparingModel, progress: 0.01)
         do {
 #if os(iOS)
 #else
@@ -297,12 +302,13 @@ final class TranscriptionSession: ObservableObject {
                 in: context,
                 failureMessage: "Your recording is safe, but we couldn't save its status. You can retry the transcript from the library."
             )
+            clearProcessingPhase()
             state = .failed(error.localizedDescription)
         }
     }
 
     func importAudio(_ sourceURL: URL) async {
-        state = .processing("Importing audio")
+        setProcessingPhase(.savingRecording, progress: 0.01)
         finalSegments = []
         liveTranscription = []
         liveDiarization = []
@@ -314,6 +320,7 @@ final class TranscriptionSession: ObservableObject {
         diarizationFailureDetail = nil
         activeMicrophoneName = nil
         microphoneFallbackNotice = nil
+        processingStartedAt = .now
         saved = false
         processingWasCancelled = false
         processingFinalModelChoice = nil
@@ -333,6 +340,7 @@ final class TranscriptionSession: ObservableObject {
                 unsavedMessage: "Transcription was canceled. Import the file again when you are ready."
             )
         } catch {
+            clearProcessingPhase()
             state = .failed(error.localizedDescription)
         }
     }
@@ -376,6 +384,7 @@ final class TranscriptionSession: ObservableObject {
         processingWasCancelled = false
         processingFinalModelChoice = nil
         modelFallbackNote = nil
+        clearProcessingPhase()
         do {
             try await processFile(recording.audioURL)
             updateSavedRecording()
@@ -390,6 +399,7 @@ final class TranscriptionSession: ObservableObject {
                 in: context,
                 failureMessage: "Your recording is safe, but we couldn't save its status. You can retry the transcript again."
             )
+            clearProcessingPhase()
             state = .failed(error.localizedDescription)
         }
     }
@@ -417,6 +427,7 @@ final class TranscriptionSession: ObservableObject {
         processingWasCancelled = false
         processingFinalModelChoice = nil
         modelFallbackNote = nil
+        clearProcessingPhase()
         liveAudioContinuation?.finish()
         liveAudioContinuation = nil
         liveConsumerTask?.cancel()
@@ -439,8 +450,7 @@ final class TranscriptionSession: ObservableObject {
         audioURL = recording.audioURL
         rawTranscription = recording.rawTranscription
         finalSegments = recording.segments
-        state = .processing("Identifying speakers")
-        progress = 0.65
+        setProcessingPhase(.identifyingSpeakers, progress: 0.65)
         if let outcome = await runDiarizationWithFallback(recording.audioURL) {
             guard !processingWasCancelled, !Task.isCancelled else {
                 await handleProcessingCancellation(
@@ -456,6 +466,7 @@ final class TranscriptionSession: ObservableObject {
             completionNote = outcome.isApproximate ? approximateSpeakerLabelNote() : nil
             diarizationNeedsRetry = false
             progress = 1
+            clearProcessingPhase()
             state = .completed
             persistChanges(
                 in: context,
@@ -466,6 +477,7 @@ final class TranscriptionSession: ObservableObject {
             recording.diarizationNeedsRetry = true
             diarizationNeedsRetry = true
             progress = 1
+            clearProcessingPhase()
             state = .completed
             persistChanges(
                 in: context,
@@ -477,8 +489,7 @@ final class TranscriptionSession: ObservableObject {
     func retryCurrentSpeakerLabels() async {
         guard let audioURL, !rawTranscription.isEmpty, !Task.isCancelled else { return }
         processingWasCancelled = false
-        state = .processing("Identifying speakers")
-        progress = 0.6
+        setProcessingPhase(.identifyingSpeakers, progress: 0.6)
         if let outcome = await runDiarizationWithFallback(audioURL) {
             guard !processingWasCancelled, !Task.isCancelled else {
                 await handleProcessingCancellation(
@@ -497,6 +508,7 @@ final class TranscriptionSession: ObservableObject {
         savedRecording?.segments = finalSegments
         savedRecording?.diarizationNeedsRetry = diarizationNeedsRetry
         progress = 1
+        clearProcessingPhase()
         state = .completed
     }
 
@@ -523,19 +535,42 @@ final class TranscriptionSession: ObservableObject {
         )
     }
 
+    private func setProcessingPhase(
+        _ phase: ProcessingPhase,
+        progress: Double? = nil,
+        updateState: Bool = true
+    ) {
+        if currentProcessingPhase == nil || processingStartedAt == nil {
+            processingStartedAt = .now
+        }
+        currentProcessingPhase = phase
+        if let progress {
+            self.progress = min(max(progress, 0), 1)
+        }
+        if updateState {
+            state = .processing(phase)
+        }
+    }
+
+    private func clearProcessingPhase() {
+        currentProcessingPhase = nil
+        processingStartedAt = nil
+    }
+
     private func processFile(_ url: URL) async throws {
         statusActivityStore.set(.transcribing, forAudioFileName: url.lastPathComponent)
         defer { statusActivityStore.clear(audioFileName: url.lastPathComponent) }
         processingWasCancelled = false
         try Task.checkCancellation()
-        state = .processing("Preparing transcription")
-        progress = 0.02
+        setProcessingPhase(.preparingModel, progress: 0.02)
         modelState = .loading
         try await verifySelectedFinalModelBeforeProcessing()
         let transcription = try await transcribeSelectedFinalModel(url) { [weak self] value in
             Task { @MainActor in
-                self?.state = .processing("Transcribing")
-                self?.progress = 0.05 + min(max(value, 0), 1) * 0.55
+                self?.setProcessingPhase(
+                    .transcribing,
+                    progress: 0.05 + min(max(value, 0), 1) * 0.55
+                )
             }
         }
         modelState = .ready(activeFinalModelChoice.name)
@@ -549,6 +584,7 @@ final class TranscriptionSession: ObservableObject {
         try Task.checkCancellation()
 
         // Preserve the finished text before speaker labeling begins.
+        setProcessingPhase(.savingTranscript, progress: 0.58)
         finalSegments = TranscriptMerger.merge(transcription: transcription, diarization: [])
         savedRecording?.segments = finalSegments
         if let persistenceContext {
@@ -560,9 +596,10 @@ final class TranscriptionSession: ObservableObject {
         progress = 0.6
 #if os(iOS)
         isIdentifyingSpeakers = true
+        setProcessingPhase(.identifyingSpeakers, progress: 0.6, updateState: false)
         state = .completed
 #else
-        state = .processing("Identifying speakers")
+        setProcessingPhase(.identifyingSpeakers, progress: 0.6)
 #endif
         statusActivityStore.set(.speakerLabeling, forAudioFileName: url.lastPathComponent)
 #if os(macOS)
@@ -596,16 +633,17 @@ final class TranscriptionSession: ObservableObject {
 #if os(iOS)
         isIdentifyingSpeakers = false
 #else
-        state = .processing("Saving")
 #endif
-        progress = 0.98
+        setProcessingPhase(.savingSpeakerLabels, progress: 0.98, updateState: !isIdentifyingSpeakers)
         progress = 1
+        clearProcessingPhase()
         state = .completed
     }
 
     private func handleProcessingCancellation(savedMessage: String, unsavedMessage: String) async {
         isIdentifyingSpeakers = false
         progress = 0
+        clearProcessingPhase()
         livePreviewState = .inactive
         if !rawTranscription.isEmpty {
             if finalSegments.isEmpty {
