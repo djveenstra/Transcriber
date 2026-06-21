@@ -90,7 +90,7 @@ On-device acceptance (Human Reviewer, iPhone 17 Pro) covers: real mic capture, b
 ## Phase 5 — Progress & diagnostics (PRD §13; R8, R17)
 
 - **OBJ-14 — Phase-timeline progress UI.** **DONE 2026-06-20 — Gate: PROCEED; evidence: [QA.md](QA.md#obj-14--phase-timeline-progress-ui--2026-06-20), [completion report](docs/planning/objectives/OBJECTIVE-14.md#completion-report--2026-06-20).** Added the structured PRD phase model, shared phase-timeline progress UI, elapsed time, rough percent/activity, Cancel, minimal Details, and existing retry-surface preservation across Recording, Library detail, and Shared Audio without starting OBJ-15 diagnostics.
-- **OBJ-15 — Diagnostics on normal screens + diagnostics data model.** Thread load time / processing time / RTF / fallback / speaker status through the session; show calmly on detail screens; reuse in Model Lab.
+- **OBJ-15 — Diagnostics on normal screens + diagnostics data model.** **DONE 2026-06-20 — Gate: PROCEED; evidence: [QA.md](QA.md#obj-15--diagnostics-on-normal-screens--diagnostics-data-model--2026-06-20), [completion report](docs/planning/objectives/OBJECTIVE-15.md#completion-report--2026-06-20).** Added session/latest diagnostics for model preparation/load time, transcription time, audio duration, realtime speed, diarization time, fallback flags, speaker-label status, and safe failure messages; showed them calmly in OBJ-14 Details and completed transcript detail surfaces without a SwiftData schema change.
 
 **Risk:** Medium. **Rollback:** diagnostics additive/read-only.
 

@@ -49,3 +49,19 @@ Per [AGENTS.md §4](../../../AGENTS.md). Absolute timing accuracy is a **device*
 
 ## Rollback Considerations
 Additive measurement + read-only UI. Revert removes diagnostics display. Any migration additive per OBJ-01.
+
+## Completion Report — 2026-06-20
+
+**Worker summary:** Added a small `ProcessingDiagnostics` data model, shared diagnostics formatting, and an in-memory `ProcessingDiagnosticsStore` for latest/session diagnostics. `TranscriptionSession` now captures model preparation/load time, final transcription time, audio duration, realtime speed, diarization time, transcription fallback, diarization fallback, speaker-label status, and safe failure/cancellation messages at the existing processing boundaries. Model Lab now reuses the shared seconds/speed formatter.
+
+**Display summary:** OBJ-14 Details disclosure shows diagnostics when available, still collapsed by default. Recording, Shared Audio, and Library detail transcript surfaces show a collapsed Diagnostics disclosure. Saved recordings without current-session diagnostics show only stable derived details (model, audio length, speaker status) and do not invent timing values.
+
+**Persistence boundary:** No SwiftData schema change was made. Diagnostics are session/latest-only through the in-memory store; older saved recordings do not gain persisted timing history. A future persisted diagnostics history would require Human Reviewer approval and a DECISIONS.md migration entry.
+
+**Measured vs deferred:** Measured: model preparation/load wall time, transcription wall time, audio duration from `AVAudioFile` with saved-recording fallback, realtime speed from audio duration/transcription time, diarization wall time, fallback flags, speaker-label status, and safe failure/cancellation text. Deferred: absolute performance/timing accuracy on real device and any durable persisted diagnostics history.
+
+**Auditor report:** ALIGNED. Metrics are captured from real processing boundaries where claimed; UI remains collapsed/secondary and does not create a lab-bench normal screen; no SwiftData schema change, dependency bump, strict-concurrency weakening, transcription/diarization algorithm change, model-selection behavior change, export hardening, accessibility, Mac parity, OBJ-19 cancellation hardening, or prohibited-path edit was introduced.
+
+**QA evidence:** Recorded in [QA.md](../../../QA.md#obj-15--diagnostics-on-normal-screens--diagnostics-data-model--2026-06-20). macOS build PASS; iOS simulator build PASS; full `TranscriberTests` PASS (121/121); `git diff --check` PASS. Focused tests covered diagnostics formatting, collapsed presentation metadata, derived saved-recording summaries, diarization fallback flags/status, Model Lab formatting regression, and ProcessingPhase regression.
+
+**Gate recommendation:** PROCEED. No Human/product decision is required for this implementation because diagnostics were not persisted into `Recording`.

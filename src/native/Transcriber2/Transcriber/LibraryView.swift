@@ -301,7 +301,8 @@ struct SharedAudioDetailView: View {
             startedAt: session.processingStartedAt,
             canCancel: session.canCancelProcessing,
             cancelTitle: cancelTitle,
-            cancelAction: cancelProcessing
+            cancelAction: cancelProcessing,
+            diagnostics: session.latestDiagnostics
         )
     }
 
@@ -314,6 +315,9 @@ struct SharedAudioDetailView: View {
                 presentation: session.speakerLabelStatusPresentation,
                 retryAction: sharedSpeakerLabelRetryAction
             )
+            if let diagnostics = session.latestDiagnostics {
+                DiagnosticsDisclosureView(diagnostics: diagnostics)
+            }
             TranscriptList(segments: session.finalSegments)
         }
     }
@@ -411,6 +415,7 @@ struct RecordingDetailView: View {
     @StateObject private var retrySession = TranscriptionSession()
     @StateObject private var audioAvailability = RecordingAudioAvailabilityStore.shared
     @StateObject private var statusActivityStore = RecordingStatusActivityStore.shared
+    @StateObject private var diagnosticsStore = ProcessingDiagnosticsStore.shared
     @State private var retryTask: Task<Void, Never>?
 
     private var isAudioMissing: Bool {
@@ -444,6 +449,7 @@ struct RecordingDetailView: View {
                         presentation: speakerLabelPresentation,
                         retryAction: speakerLabelRetryAction
                     )
+                    DiagnosticsDisclosureView(diagnostics: detailDiagnostics)
                     TranscriptListWithNames(
                         segments: recording.segments,
                         names: recording.speakerNames,
@@ -530,8 +536,17 @@ struct RecordingDetailView: View {
             startedAt: retrySession.processingStartedAt,
             canCancel: retrySession.canCancelProcessing,
             cancelTitle: "Cancel Processing",
-            cancelAction: cancelRetryProcessing
+            cancelAction: cancelRetryProcessing,
+            diagnostics: retrySession.latestDiagnostics ?? diagnosticsStore.diagnostics(forAudioFileName: recording.audioFileName)
         )
+    }
+
+    private var detailDiagnostics: ProcessingDiagnostics {
+        diagnosticsStore.diagnostics(forAudioFileName: recording.audioFileName)
+            ?? ProcessingDiagnostics.derivedSummary(
+                for: recording,
+                activity: statusActivityStore.activity(for: recording)
+            )
     }
 
     private func retrySpeakerLabels() {

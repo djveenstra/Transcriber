@@ -84,6 +84,7 @@ final class TranscriptionSession: ObservableObject {
     @Published private(set) var microphoneFallbackNotice: String?
     @Published private(set) var currentProcessingPhase: ProcessingPhase?
     @Published private(set) var processingStartedAt: Date?
+    @Published private(set) var latestDiagnostics: ProcessingDiagnostics?
 
     let recorder = AudioRecorder()
 
@@ -105,6 +106,7 @@ final class TranscriptionSession: ObservableObject {
     private var processingFinalModelChoice: FinalTranscriptionModelChoice?
     private var modelFallbackNote: String?
     private let statusActivityStore = RecordingStatusActivityStore.shared
+    private let diagnosticsStore = ProcessingDiagnosticsStore.shared
 
     var liveSegments: [TranscriptSegment] {
         TranscriptMerger.merge(transcription: liveTranscription, diarization: liveDiarization)
@@ -166,6 +168,7 @@ final class TranscriptionSession: ObservableObject {
         processingWasCancelled = false
         processingFinalModelChoice = nil
         modelFallbackNote = nil
+        latestDiagnostics = nil
         persistenceContext = context
 
         guard await recorder.requestPermission() else {
@@ -325,6 +328,7 @@ final class TranscriptionSession: ObservableObject {
         processingWasCancelled = false
         processingFinalModelChoice = nil
         modelFallbackNote = nil
+        latestDiagnostics = nil
 
         let destination = AppStoragePaths.recordingsDirectory
             .appendingPathComponent("import-\(UUID().uuidString).\(sourceURL.pathExtension)")
@@ -384,6 +388,7 @@ final class TranscriptionSession: ObservableObject {
         processingWasCancelled = false
         processingFinalModelChoice = nil
         modelFallbackNote = nil
+        latestDiagnostics = nil
         clearProcessingPhase()
         do {
             try await processFile(recording.audioURL)
@@ -427,6 +432,7 @@ final class TranscriptionSession: ObservableObject {
         processingWasCancelled = false
         processingFinalModelChoice = nil
         modelFallbackNote = nil
+        latestDiagnostics = nil
         clearProcessingPhase()
         liveAudioContinuation?.finish()
         liveAudioContinuation = nil
@@ -450,8 +456,17 @@ final class TranscriptionSession: ObservableObject {
         audioURL = recording.audioURL
         rawTranscription = recording.rawTranscription
         finalSegments = recording.segments
+        beginDiagnostics(
+            for: recording.audioURL,
+            model: recording.finalTranscriptionModelID.isEmpty
+                ? nil
+                : FinalTranscriptionModelChoice.choice(for: recording.finalTranscriptionModelID),
+            speakerLabelStatus: .identifying
+        )
         setProcessingPhase(.identifyingSpeakers, progress: 0.65)
+        let diarizationStarted = Date()
         if let outcome = await runDiarizationWithFallback(recording.audioURL) {
+            let diarizationTime = Date().timeIntervalSince(diarizationStarted)
             guard !processingWasCancelled, !Task.isCancelled else {
                 await handleProcessingCancellation(
                     savedMessage: "Speaker labeling was canceled. Your transcript remains saved.",
@@ -465,6 +480,11 @@ final class TranscriptionSession: ObservableObject {
             finalSegments = merged
             completionNote = outcome.isApproximate ? approximateSpeakerLabelNote() : nil
             diarizationNeedsRetry = false
+            updateDiagnostics(
+                diarizationTime: diarizationTime,
+                diarizationFallbackUsed: outcome.isApproximate,
+                speakerLabelStatus: outcome.isApproximate ? .approximate : .complete
+            )
             progress = 1
             clearProcessingPhase()
             state = .completed
@@ -473,9 +493,16 @@ final class TranscriptionSession: ObservableObject {
                 failureMessage: "The updated speaker labels could not be saved. They remain visible here, but it will be lost if you leave this screen."
             )
         } else {
+            let diarizationTime = Date().timeIntervalSince(diarizationStarted)
             completionNote = speakerLabelFailureMessage(saved: true)
             recording.diarizationNeedsRetry = true
             diarizationNeedsRetry = true
+            updateDiagnostics(
+                diarizationTime: diarizationTime,
+                diarizationFallbackUsed: false,
+                speakerLabelStatus: .retryNeeded,
+                failureMessage: completionNote
+            )
             progress = 1
             clearProcessingPhase()
             state = .completed
@@ -489,8 +516,19 @@ final class TranscriptionSession: ObservableObject {
     func retryCurrentSpeakerLabels() async {
         guard let audioURL, !rawTranscription.isEmpty, !Task.isCancelled else { return }
         processingWasCancelled = false
+        if latestDiagnostics == nil {
+            beginDiagnostics(
+                for: audioURL,
+                model: activeFinalModelChoice,
+                speakerLabelStatus: .identifying
+            )
+        } else {
+            updateDiagnostics(speakerLabelStatus: .identifying)
+        }
         setProcessingPhase(.identifyingSpeakers, progress: 0.6)
+        let diarizationStarted = Date()
         if let outcome = await runDiarizationWithFallback(audioURL) {
+            let diarizationTime = Date().timeIntervalSince(diarizationStarted)
             guard !processingWasCancelled, !Task.isCancelled else {
                 await handleProcessingCancellation(
                     savedMessage: "Speaker labeling was canceled. Your transcript remains saved.",
@@ -501,9 +539,21 @@ final class TranscriptionSession: ObservableObject {
             finalSegments = TranscriptMerger.merge(transcription: rawTranscription, diarization: outcome.segments)
             completionNote = outcome.isApproximate ? approximateSpeakerLabelNote() : nil
             diarizationNeedsRetry = false
+            updateDiagnostics(
+                diarizationTime: diarizationTime,
+                diarizationFallbackUsed: outcome.isApproximate,
+                speakerLabelStatus: outcome.isApproximate ? .approximate : .complete
+            )
         } else {
+            let diarizationTime = Date().timeIntervalSince(diarizationStarted)
             completionNote = speakerLabelFailureMessage(saved: false)
             diarizationNeedsRetry = true
+            updateDiagnostics(
+                diarizationTime: diarizationTime,
+                diarizationFallbackUsed: false,
+                speakerLabelStatus: .retryNeeded,
+                failureMessage: completionNote
+            )
         }
         savedRecording?.segments = finalSegments
         savedRecording?.diarizationNeedsRetry = diarizationNeedsRetry
@@ -535,6 +585,72 @@ final class TranscriptionSession: ObservableObject {
         )
     }
 
+    private func beginDiagnostics(
+        for url: URL,
+        model: FinalTranscriptionModelChoice? = nil,
+        speakerLabelStatus: SpeakerLabelDiagnosticStatus = .notStarted
+    ) {
+        var diagnostics = ProcessingDiagnostics(
+            audioFileName: url.lastPathComponent,
+            finalTranscriptionModelID: model?.id,
+            finalTranscriptionModelName: model?.name,
+            audioDuration: ProcessingDiagnostics.measuredAudioDuration(for: url),
+            speakerLabelStatus: speakerLabelStatus
+        )
+        if diagnostics.audioDuration == nil, let savedRecording, savedRecording.audioFileName == url.lastPathComponent {
+            diagnostics.audioDuration = savedRecording.durationSeconds
+        }
+        publishDiagnostics(diagnostics)
+    }
+
+    private func updateDiagnostics(
+        model: FinalTranscriptionModelChoice? = nil,
+        modelLoadTime: TimeInterval? = nil,
+        transcriptionTime: TimeInterval? = nil,
+        diarizationTime: TimeInterval? = nil,
+        transcriptionFallbackUsed: Bool? = nil,
+        diarizationFallbackUsed: Bool? = nil,
+        speakerLabelStatus: SpeakerLabelDiagnosticStatus? = nil,
+        failureMessage: String? = nil
+    ) {
+        var diagnostics = latestDiagnostics ?? ProcessingDiagnostics(audioFileName: audioURL?.lastPathComponent)
+        if let model {
+            diagnostics.finalTranscriptionModelID = model.id
+            diagnostics.finalTranscriptionModelName = model.name
+        }
+        if let modelLoadTime {
+            diagnostics.modelLoadTime = modelLoadTime
+        }
+        if let transcriptionTime {
+            diagnostics.transcriptionTime = transcriptionTime
+        }
+        if let diarizationTime {
+            diagnostics.diarizationTime = diarizationTime
+        }
+        if let transcriptionFallbackUsed {
+            diagnostics.transcriptionFallbackUsed = transcriptionFallbackUsed
+        }
+        if let diarizationFallbackUsed {
+            diagnostics.diarizationFallbackUsed = diarizationFallbackUsed
+        }
+        if let speakerLabelStatus {
+            diagnostics.speakerLabelStatus = speakerLabelStatus
+        }
+        if let failureMessage {
+            diagnostics.failureMessage = failureMessage
+        }
+        publishDiagnostics(diagnostics)
+    }
+
+    private func recordDiagnosticsFailure(_ message: String) {
+        updateDiagnostics(failureMessage: message)
+    }
+
+    private func publishDiagnostics(_ diagnostics: ProcessingDiagnostics) {
+        latestDiagnostics = diagnostics
+        diagnosticsStore.record(diagnostics)
+    }
+
     private func setProcessingPhase(
         _ phase: ProcessingPhase,
         progress: Double? = nil,
@@ -561,83 +677,115 @@ final class TranscriptionSession: ObservableObject {
         statusActivityStore.set(.transcribing, forAudioFileName: url.lastPathComponent)
         defer { statusActivityStore.clear(audioFileName: url.lastPathComponent) }
         processingWasCancelled = false
-        try Task.checkCancellation()
-        setProcessingPhase(.preparingModel, progress: 0.02)
-        modelState = .loading
-        try await verifySelectedFinalModelBeforeProcessing()
-        let transcription = try await transcribeSelectedFinalModel(url) { [weak self] value in
-            Task { @MainActor in
-                self?.setProcessingPhase(
-                    .transcribing,
-                    progress: 0.05 + min(max(value, 0), 1) * 0.55
+        beginDiagnostics(for: url)
+        do {
+            try Task.checkCancellation()
+            setProcessingPhase(.preparingModel, progress: 0.02)
+            modelState = .loading
+            let modelLoadStarted = Date()
+            try await verifySelectedFinalModelBeforeProcessing()
+            updateDiagnostics(
+                model: activeFinalModelChoice,
+                modelLoadTime: Date().timeIntervalSince(modelLoadStarted),
+                transcriptionFallbackUsed: modelFallbackNote != nil
+            )
+            let transcriptionStarted = Date()
+            let transcription = try await transcribeSelectedFinalModel(url) { [weak self] value in
+                Task { @MainActor in
+                    self?.setProcessingPhase(
+                        .transcribing,
+                        progress: 0.05 + min(max(value, 0), 1) * 0.55
+                    )
+                }
+            }
+            updateDiagnostics(
+                transcriptionTime: Date().timeIntervalSince(transcriptionStarted),
+                speakerLabelStatus: .notStarted
+            )
+            modelState = .ready(activeFinalModelChoice.name)
+            try Task.checkCancellation()
+            guard !processingWasCancelled else { throw CancellationError() }
+            rawTranscription = transcription
+            savedRecording?.rawTranscription = transcription
+            savedRecording?.transcriptionNeedsRetry = false
+            savedRecording?.finalTranscriptionModelID = selectedFinalModelID
+
+            try Task.checkCancellation()
+
+            // Preserve the finished text before speaker labeling begins.
+            setProcessingPhase(.savingTranscript, progress: 0.58)
+            finalSegments = TranscriptMerger.merge(transcription: transcription, diarization: [])
+            savedRecording?.segments = finalSegments
+            if let persistenceContext {
+                persistChanges(
+                    in: persistenceContext,
+                    failureMessage: "Your transcript finished but could not be saved yet. It remains visible here, but it will be lost if you leave this screen."
                 )
             }
-        }
-        modelState = .ready(activeFinalModelChoice.name)
-        try Task.checkCancellation()
-        guard !processingWasCancelled else { throw CancellationError() }
-        rawTranscription = transcription
-        savedRecording?.rawTranscription = transcription
-        savedRecording?.transcriptionNeedsRetry = false
-        savedRecording?.finalTranscriptionModelID = selectedFinalModelID
-
-        try Task.checkCancellation()
-
-        // Preserve the finished text before speaker labeling begins.
-        setProcessingPhase(.savingTranscript, progress: 0.58)
-        finalSegments = TranscriptMerger.merge(transcription: transcription, diarization: [])
-        savedRecording?.segments = finalSegments
-        if let persistenceContext {
-            persistChanges(
-                in: persistenceContext,
-                failureMessage: "Your transcript finished but could not be saved yet. It remains visible here, but it will be lost if you leave this screen."
-            )
-        }
-        progress = 0.6
+            progress = 0.6
 #if os(iOS)
-        isIdentifyingSpeakers = true
-        setProcessingPhase(.identifyingSpeakers, progress: 0.6, updateState: false)
-        state = .completed
+            isIdentifyingSpeakers = true
+            setProcessingPhase(.identifyingSpeakers, progress: 0.6, updateState: false)
+            state = .completed
 #else
-        setProcessingPhase(.identifyingSpeakers, progress: 0.6)
+            setProcessingPhase(.identifyingSpeakers, progress: 0.6)
 #endif
-        statusActivityStore.set(.speakerLabeling, forAudioFileName: url.lastPathComponent)
+            updateDiagnostics(speakerLabelStatus: .identifying)
+            statusActivityStore.set(.speakerLabeling, forAudioFileName: url.lastPathComponent)
 #if os(macOS)
-        await transcriber.unload()
-        modelState = .notLoaded
-        // Give Core ML a moment to fully release the transcription model before the
-        // diarization model loads. Without this pause the two back-to-back loads can
-        // contend for the same GPU/ANE resources. Do not remove this delay or
-        // parallelize model loading.
-        try? await Task.sleep(for: .seconds(1))
+            await transcriber.unload()
+            modelState = .notLoaded
+            // Give Core ML a moment to fully release the transcription model before the
+            // diarization model loads. Without this pause the two back-to-back loads can
+            // contend for the same GPU/ANE resources. Do not remove this delay or
+            // parallelize model loading.
+            try? await Task.sleep(for: .seconds(1))
 #else
-        await unloadSelectedFinalModel()
+            await unloadSelectedFinalModel()
 #endif
 
-        try Task.checkCancellation()
-        guard !processingWasCancelled else { throw CancellationError() }
-        let outcome = await runDiarizationWithFallback(url)
-        try Task.checkCancellation()
-        guard !processingWasCancelled else { throw CancellationError() }
-        if let outcome {
-            finalSegments = TranscriptMerger.merge(
-                transcription: transcription,
-                diarization: outcome.segments
-            )
-            diarizationNeedsRetry = false
-            completionNote = combinedCompletionNote(outcome.isApproximate ? approximateSpeakerLabelNote() : nil)
-        } else {
-            completionNote = combinedCompletionNote(speakerLabelFailureMessage(saved: false))
-            diarizationNeedsRetry = true
-        }
+            try Task.checkCancellation()
+            guard !processingWasCancelled else { throw CancellationError() }
+            let diarizationStarted = Date()
+            let outcome = await runDiarizationWithFallback(url)
+            let diarizationTime = Date().timeIntervalSince(diarizationStarted)
+            try Task.checkCancellation()
+            guard !processingWasCancelled else { throw CancellationError() }
+            if let outcome {
+                finalSegments = TranscriptMerger.merge(
+                    transcription: transcription,
+                    diarization: outcome.segments
+                )
+                diarizationNeedsRetry = false
+                completionNote = combinedCompletionNote(outcome.isApproximate ? approximateSpeakerLabelNote() : nil)
+                updateDiagnostics(
+                    diarizationTime: diarizationTime,
+                    diarizationFallbackUsed: outcome.isApproximate,
+                    speakerLabelStatus: outcome.isApproximate ? .approximate : .complete
+                )
+            } else {
+                let failureMessage = speakerLabelFailureMessage(saved: false)
+                completionNote = combinedCompletionNote(failureMessage)
+                diarizationNeedsRetry = true
+                updateDiagnostics(
+                    diarizationTime: diarizationTime,
+                    diarizationFallbackUsed: false,
+                    speakerLabelStatus: .retryNeeded,
+                    failureMessage: failureMessage
+                )
+            }
 #if os(iOS)
-        isIdentifyingSpeakers = false
+            isIdentifyingSpeakers = false
 #else
 #endif
-        setProcessingPhase(.savingSpeakerLabels, progress: 0.98, updateState: !isIdentifyingSpeakers)
-        progress = 1
-        clearProcessingPhase()
-        state = .completed
+            setProcessingPhase(.savingSpeakerLabels, progress: 0.98, updateState: !isIdentifyingSpeakers)
+            progress = 1
+            clearProcessingPhase()
+            state = .completed
+        } catch {
+            recordDiagnosticsFailure(error.localizedDescription)
+            throw error
+        }
     }
 
     private func handleProcessingCancellation(savedMessage: String, unsavedMessage: String) async {
@@ -646,6 +794,10 @@ final class TranscriptionSession: ObservableObject {
         clearProcessingPhase()
         livePreviewState = .inactive
         if !rawTranscription.isEmpty {
+            updateDiagnostics(
+                speakerLabelStatus: .canceled,
+                failureMessage: "Speaker labeling was canceled. Your transcript is available and speaker labels can be retried later."
+            )
             if finalSegments.isEmpty {
                 finalSegments = TranscriptMerger.merge(transcription: rawTranscription, diarization: [])
             }
@@ -665,6 +817,10 @@ final class TranscriptionSession: ObservableObject {
                 )
             }
         } else if saved {
+            updateDiagnostics(
+                speakerLabelStatus: .notAvailable,
+                failureMessage: savedMessage
+            )
             savedRecording?.transcriptionNeedsRetry = true
             state = .failed(savedMessage)
             if let persistenceContext {
@@ -674,6 +830,10 @@ final class TranscriptionSession: ObservableObject {
                 )
             }
         } else {
+            updateDiagnostics(
+                speakerLabelStatus: .notAvailable,
+                failureMessage: unsavedMessage
+            )
             state = .failed(unsavedMessage)
         }
     }
@@ -940,6 +1100,10 @@ final class TranscriptionSession: ObservableObject {
             pollInterval: pollInterval
         ) {
             diarizer = FluidDiarizationEngine(config: .balancedV2)
+            updateDiagnostics(
+                diarizationFallbackUsed: false,
+                speakerLabelStatus: .complete
+            )
             return DiarizationAttemptOutcome(segments: segments, isApproximate: false)
         }
 
@@ -952,10 +1116,19 @@ final class TranscriptionSession: ObservableObject {
             pollInterval: pollInterval
         ) {
             diarizer = FluidDiarizationEngine(config: .balancedV2)
+            updateDiagnostics(
+                diarizationFallbackUsed: true,
+                speakerLabelStatus: .approximate
+            )
             return DiarizationAttemptOutcome(segments: segments, isApproximate: true)
         }
 
         diarizer = FluidDiarizationEngine(config: .balancedV2)
+        updateDiagnostics(
+            diarizationFallbackUsed: false,
+            speakerLabelStatus: .retryNeeded,
+            failureMessage: diarizationFailureDetail
+        )
         return nil
     }
 

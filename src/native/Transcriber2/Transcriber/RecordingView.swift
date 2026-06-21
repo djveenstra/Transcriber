@@ -201,6 +201,9 @@ struct RecordingView: View {
                 presentation: session.speakerLabelStatusPresentation,
                 retryAction: speakerLabelRetryAction
             )
+            if let diagnostics = session.latestDiagnostics {
+                DiagnosticsDisclosureView(diagnostics: diagnostics)
+            }
             TranscriptList(segments: session.finalSegments)
         }
     }
@@ -279,7 +282,8 @@ struct RecordingView: View {
             startedAt: session.processingStartedAt,
             canCancel: session.canCancelProcessing,
             cancelTitle: cancelTitle,
-            cancelAction: cancelProcessing
+            cancelAction: cancelProcessing,
+            diagnostics: session.latestDiagnostics
         )
     }
 

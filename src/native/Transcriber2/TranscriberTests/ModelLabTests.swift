@@ -54,7 +54,7 @@ struct ModelLabTests {
 
         #expect(report.contains("Failure status: Failed"))
         #expect(report.contains("Error: Model could not load."))
-        #expect(report.contains("Speed: —"))
+        #expect(report.contains("Speed: Not measured"))
     }
 
     @Test func diagnosticsSnapshotUsesModelRegistryStatusAndSizeFormatting() {

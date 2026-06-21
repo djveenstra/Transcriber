@@ -22,8 +22,10 @@ struct ModelLabResult: Identifiable, Sendable {
     let error: String?
 
     var speedDescription: String {
-        guard transcriptionTime > 0 else { return "—" }
-        return String(format: "%.1f× real time", audioDuration / transcriptionTime)
+        DiagnosticsMetricFormatter.speedDescription(
+            audioDuration: audioDuration,
+            processingTime: transcriptionTime
+        )
     }
 
     var failureStatus: String {
@@ -79,7 +81,7 @@ enum ModelLabReport {
     }
 
     static func formatSeconds(_ value: TimeInterval) -> String {
-        "\(value.formatted(.number.precision(.fractionLength(1)))) seconds"
+        DiagnosticsMetricFormatter.formatSeconds(value)
     }
 }
 

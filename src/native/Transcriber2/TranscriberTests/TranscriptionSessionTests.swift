@@ -84,6 +84,8 @@ struct DiarizationFallbackTests {
 
         #expect(outcome.isApproximate == false)
         #expect(outcome.segments.map(\.speaker) == ["SPEAKER_00"])
+        #expect(session.latestDiagnostics?.diarizationFallbackUsed == false)
+        #expect(session.latestDiagnostics?.speakerLabelStatus == .complete)
     }
 
     @Test func fallsBackToFastV2WhenPrimaryFails() async throws {
@@ -99,6 +101,8 @@ struct DiarizationFallbackTests {
 
         #expect(outcome.isApproximate == true)
         #expect(outcome.segments.map(\.speaker) == ["SPEAKER_00"])
+        #expect(session.latestDiagnostics?.diarizationFallbackUsed == true)
+        #expect(session.latestDiagnostics?.speakerLabelStatus == .approximate)
     }
 
     @Test func returnsNilAndRecordsFailureDetailWhenBothAttemptsFail() async {
@@ -112,6 +116,8 @@ struct DiarizationFallbackTests {
 
         #expect(outcome == nil)
         #expect(session.diarizationFailureDetail == "fallback failed")
+        #expect(session.latestDiagnostics?.speakerLabelStatus == .retryNeeded)
+        #expect(session.latestDiagnostics?.failureMessage == "fallback failed")
     }
 
     @Test func watchdogTimesOutWhenDiarizationHangsWithoutProgress() async {

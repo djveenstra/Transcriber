@@ -118,6 +118,7 @@ struct ProcessingTimelineView: View {
     var cancelTitle = "Cancel"
     var cancelAction: (() -> Void)?
     var retryAction: (() -> Void)?
+    var diagnostics: ProcessingDiagnostics?
 
     private var presentation: ProcessingProgressPresentation {
         ProcessingProgressPresentation(
@@ -159,6 +160,10 @@ struct ProcessingTimelineView: View {
                         VStack(alignment: .leading, spacing: 6) {
                             detailRow("Phase", phase.title)
                             detailRow("Elapsed", ProcessingProgressPresentation.elapsedText(elapsed))
+                            if let diagnostics {
+                                Divider()
+                                DiagnosticsRowsView(diagnostics: diagnostics)
+                            }
                             Text(phase.detailText)
                                 .font(.caption)
                                 .foregroundStyle(Theme.muted)

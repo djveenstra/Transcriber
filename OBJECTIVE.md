@@ -2,11 +2,11 @@
 
 _This file holds the **single active objective** the Worker is currently implementing. The Manager sets it from the roadmap and advances it only when the current objective is gated `PROCEED`. Full details for every objective live in [docs/planning/objectives/](docs/planning/objectives/)._
 
-## ▶ Active objective: **OBJ-15 — Diagnostics on Normal Screens + Diagnostics Data Model**
+## ▶ Active objective: **OBJ-16 — Export Hardening**
 
-Read the full spec: [docs/planning/objectives/OBJECTIVE-15.md](docs/planning/objectives/OBJECTIVE-15.md).
+Read the full spec: [docs/planning/objectives/OBJECTIVE-16.md](docs/planning/objectives/OBJECTIVE-16.md).
 
-**One-line mission:** Capture real processing diagnostics for normal recording/import flows and present them calmly in the OBJ-14 Details disclosure and detail screens without turning normal UI into Model Lab.
+**One-line mission:** Make TXT/SRT/JSON exports type-safe and provably correct, including speaker names, reassigned speakers, SRT timing, and import sanity checks.
 
 **Before starting, read:** [PRD.md](PRD.md) → [PLAN.md](PLAN.md) → this file → [AGENTS.md](AGENTS.md).
 
@@ -30,8 +30,8 @@ Read the full spec: [docs/planning/objectives/OBJECTIVE-15.md](docs/planning/obj
 | 12 | [Segment-level speaker reassignment](docs/planning/objectives/OBJECTIVE-12.md) | 4 | Done — PROCEED 2026-06-20 |
 | 13 | [Consistent speaker-label states + edit parity](docs/planning/objectives/OBJECTIVE-13.md) | 4 | Done — PROCEED 2026-06-20 |
 | 14 | [Phase-timeline progress UI](docs/planning/objectives/OBJECTIVE-14.md) | 5 | Done — PROCEED 2026-06-20 |
-| 15 | [Diagnostics on normal screens + data model](docs/planning/objectives/OBJECTIVE-15.md) | 5 | ▶ Active |
-| 16 | [Export hardening](docs/planning/objectives/OBJECTIVE-16.md) | 6 | Pending |
+| 15 | [Diagnostics on normal screens + data model](docs/planning/objectives/OBJECTIVE-15.md) | 5 | Done — PROCEED 2026-06-20 |
+| 16 | [Export hardening](docs/planning/objectives/OBJECTIVE-16.md) | 6 | ▶ Active |
 | 17 | [Accessibility pass](docs/planning/objectives/OBJECTIVE-17.md) | 6 | Pending |
 | 18 | [Mac companion parity](docs/planning/objectives/OBJECTIVE-18.md) | 7 | Pending |
 | 19 | [Cancellation & failure-injection hardening](docs/planning/objectives/OBJECTIVE-19.md) | 7 | Pending |
