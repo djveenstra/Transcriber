@@ -8,6 +8,13 @@ nonisolated enum TranscriptExportFormat: String, CaseIterable, Identifiable, Sen
 }
 
 nonisolated enum TranscriptExporter {
+    struct ExportedSegment: Codable, Equatable, Sendable {
+        let start: Double
+        let end: Double
+        let speaker: String
+        let text: String
+    }
+
     static func exportFile(
         _ segments: [TranscriptSegment],
         speakerNames: [String: String] = [:],
@@ -43,10 +50,16 @@ nonisolated enum TranscriptExporter {
             }.joined(separator: "\n\n")
         case .json:
             let values = segments.map {
-                ["start": Double($0.startMs) / 1_000, "end": Double($0.endMs) / 1_000,
-                 "speaker": displayName($0.speaker, names: speakerNames), "text": $0.text] as [String: Any]
+                ExportedSegment(
+                    start: Double($0.startMs) / 1_000,
+                    end: Double($0.endMs) / 1_000,
+                    speaker: displayName($0.speaker, names: speakerNames),
+                    text: $0.text
+                )
             }
-            let data = try? JSONSerialization.data(withJSONObject: values, options: .prettyPrinted)
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted]
+            let data = try? encoder.encode(values)
             return data.flatMap { String(data: $0, encoding: .utf8) } ?? "[]"
         }
     }

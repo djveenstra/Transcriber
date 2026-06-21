@@ -28,16 +28,22 @@ struct TranscriptExportTests {
         ])
     }
 
-    @Test func jsonExportProducesArrayOfSegmentDictionaries() throws {
+    @Test func jsonExportProducesCodableSegmentArrayWithCompatibleShape() throws {
         let json = TranscriptExporter.export(segments, as: .json)
         let data = Data(json.utf8)
-        let entries = try #require(try JSONSerialization.jsonObject(with: data) as? [[String: Any]])
+        let entries = try JSONDecoder().decode([TranscriptExporter.ExportedSegment].self, from: data)
 
         #expect(entries.count == 2)
-        #expect(entries[0]["speaker"] as? String == "Speaker 1")
-        #expect(entries[0]["text"] as? String == "Hello there")
-        #expect(entries[0]["start"] as? Double == 0)
-        #expect(entries[0]["end"] as? Double == 1.5)
+        #expect(entries[0] == TranscriptExporter.ExportedSegment(
+            start: 0,
+            end: 1.5,
+            speaker: "Speaker 1",
+            text: "Hello there"
+        ))
+        #expect(json.contains("\"start\""))
+        #expect(json.contains("\"end\""))
+        #expect(json.contains("\"speaker\""))
+        #expect(json.contains("\"text\""))
     }
 
     @Test func displayNamePrefersCustomNamesOverDefaults() {
@@ -56,12 +62,27 @@ struct TranscriptExportTests {
         let text = TranscriptExporter.export(reassigned, as: .text)
         let srt = TranscriptExporter.export(reassigned, as: .subtitles)
         let json = TranscriptExporter.export(reassigned, as: .json)
-        let entries = try #require(try JSONSerialization.jsonObject(with: Data(json.utf8)) as? [[String: Any]])
+        let entries = try JSONDecoder().decode([TranscriptExporter.ExportedSegment].self, from: Data(json.utf8))
 
         #expect(text.contains("[0:01] Speaker 1: Hi"))
         #expect(srt.contains("00:00:01,500 --> 00:00:04,000\nSpeaker 1: Hi"))
-        #expect(entries[1]["speaker"] as? String == "Speaker 1")
-        #expect(entries[1]["text"] as? String == "Hi")
+        #expect(entries[1].speaker == "Speaker 1")
+        #expect(entries[1].text == "Hi")
+    }
+
+    @Test func renamedSpeakersExportInEveryFormat() throws {
+        let names = ["SPEAKER_00": "Daniel", "SPEAKER_01": "Alex"]
+
+        let text = TranscriptExporter.export(segments, speakerNames: names, as: .text)
+        let srt = TranscriptExporter.export(segments, speakerNames: names, as: .subtitles)
+        let json = TranscriptExporter.export(segments, speakerNames: names, as: .json)
+        let entries = try JSONDecoder().decode([TranscriptExporter.ExportedSegment].self, from: Data(json.utf8))
+
+        #expect(text.contains("[0:00] Daniel: Hello there"))
+        #expect(text.contains("[0:01] Alex: Hi"))
+        #expect(srt.contains("00:00:00,000 --> 00:00:01,500\nDaniel: Hello there"))
+        #expect(srt.contains("00:00:01,500 --> 00:00:04,000\nAlex: Hi"))
+        #expect(entries.map(\.speaker) == ["Daniel", "Alex"])
     }
 
     @Test func renamedSpeakerAndReassignedSegmentExportTogether() throws {
@@ -75,12 +96,30 @@ struct TranscriptExportTests {
         let text = TranscriptExporter.export(reassigned, speakerNames: names, as: .text)
         let srt = TranscriptExporter.export(reassigned, speakerNames: names, as: .subtitles)
         let json = TranscriptExporter.export(reassigned, speakerNames: names, as: .json)
-        let entries = try #require(try JSONSerialization.jsonObject(with: Data(json.utf8)) as? [[String: Any]])
+        let entries = try JSONDecoder().decode([TranscriptExporter.ExportedSegment].self, from: Data(json.utf8))
 
         #expect(text.contains("[0:00] Daniel: Hello there"))
         #expect(text.contains("[0:01] Daniel: Hi"))
         #expect(srt.contains("Daniel: Hi"))
-        #expect(entries[0]["speaker"] as? String == "Daniel")
-        #expect(entries[1]["speaker"] as? String == "Daniel")
+        #expect(entries[0].speaker == "Daniel")
+        #expect(entries[1].speaker == "Daniel")
+    }
+
+    @Test func subtitlesExportFormatsMillisecondsAndHours() {
+        let longSegments = [
+            TranscriptSegment(startMs: 3_723_004, endMs: 3_724_567, speaker: "SPEAKER_00", text: "Past the hour"),
+        ]
+
+        let srt = TranscriptExporter.export(longSegments, as: .subtitles)
+
+        #expect(srt == "1\n01:02:03,004 --> 01:02:04,567\nSpeaker 1: Past the hour")
+    }
+
+    @Test func subtitlesExportKeepsSequentialNumbersAndTimestampSyntax() {
+        let srt = TranscriptExporter.export(segments, as: .subtitles)
+        let blocks = srt.components(separatedBy: "\n\n")
+
+        #expect(blocks[0].hasPrefix("1\n00:00:00,000 --> 00:00:01,500\n"))
+        #expect(blocks[1].hasPrefix("2\n00:00:01,500 --> 00:00:04,000\n"))
     }
 }

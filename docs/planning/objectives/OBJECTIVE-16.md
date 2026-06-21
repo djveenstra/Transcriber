@@ -48,3 +48,17 @@ Per [AGENTS.md §4](../../../AGENTS.md).
 
 ## Rollback Considerations
 Internal refactor + tests. Revert restores `JSONSerialization`. No data/schema change.
+
+## Completion Report — 2026-06-21
+
+**Worker summary:** Added `TranscriptExporter.ExportedSegment: Codable` and changed JSON export to encode `[ExportedSegment]` with `JSONEncoder` and pretty printing. The JSON shape remains compatible: a top-level array of segment objects with `start`, `end`, `speaker`, and `text`; start/end remain seconds as decimal numbers; `speaker` remains the display name; `text` remains transcript text.
+
+**Speaker/export behavior:** TXT, SRT, and JSON all continue to resolve speaker names through `TranscriptExporter.displayName(_:names:)`. Because OBJ-12 reassignment updates the segment speaker id, reassigned segments export as the new speaker; if that speaker has a custom rename, the renamed display name exports in all three formats.
+
+**Import sanity:** Strengthened `SharedAudioInbox` filter tests for all supported audio extensions, odd unsupported names, and a 12 MB placeholder `.m4a` that is classified without reading/parsing contents. This covers import eligibility sanity without adding heavy fixtures or broad codec claims.
+
+**Auditor report:** ALIGNED. `TranscriptExporter` JSON no longer uses `JSONSerialization` or `[String: Any]` for segment construction; the only remaining `[String: Any]` in the active app is unrelated AVAudioRecorder settings in `CapturedAudioChunk`. Export output remains compatible at the field/shape level; speaker names, renamed speakers, reassigned speakers, and renamed-plus-reassigned speakers are covered in TXT/SRT/JSON tests. SRT numbering and timestamp syntax include milliseconds and >1h formatting. No new export formats, share UI redesign, transcript text editing, speaker merge/split workflow, schema change, dependency bump, strict-concurrency weakening, prohibited-path edit, or OBJ-17+ work was introduced.
+
+**QA evidence:** Recorded in [QA.md](../../../QA.md#obj-16--export-hardening--2026-06-21). macOS build PASS; iOS simulator build PASS; focused `TranscriptExportTests` + `SharedAudioInboxTests` PASS; full `TranscriberTests` PASS (126/126); `git diff --check` PASS.
+
+**Gate recommendation:** PROCEED. No Human/product decision is required because JSON compatibility was preserved.

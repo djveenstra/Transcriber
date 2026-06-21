@@ -2,11 +2,11 @@
 
 _This file holds the **single active objective** the Worker is currently implementing. The Manager sets it from the roadmap and advances it only when the current objective is gated `PROCEED`. Full details for every objective live in [docs/planning/objectives/](docs/planning/objectives/)._
 
-## ▶ Active objective: **OBJ-16 — Export Hardening**
+## ▶ Active objective: **OBJ-17 — Accessibility Pass**
 
-Read the full spec: [docs/planning/objectives/OBJECTIVE-16.md](docs/planning/objectives/OBJECTIVE-16.md).
+Read the full spec: [docs/planning/objectives/OBJECTIVE-17.md](docs/planning/objectives/OBJECTIVE-17.md).
 
-**One-line mission:** Make TXT/SRT/JSON exports type-safe and provably correct, including speaker names, reassigned speakers, SRT timing, and import sanity checks.
+**One-line mission:** Bring the app to Apple's accessibility basics: Dynamic Type, VoiceOver labels/traits, contrast, reachability, and non-color speaker/status cues.
 
 **Before starting, read:** [PRD.md](PRD.md) → [PLAN.md](PLAN.md) → this file → [AGENTS.md](AGENTS.md).
 
@@ -31,8 +31,8 @@ Read the full spec: [docs/planning/objectives/OBJECTIVE-16.md](docs/planning/obj
 | 13 | [Consistent speaker-label states + edit parity](docs/planning/objectives/OBJECTIVE-13.md) | 4 | Done — PROCEED 2026-06-20 |
 | 14 | [Phase-timeline progress UI](docs/planning/objectives/OBJECTIVE-14.md) | 5 | Done — PROCEED 2026-06-20 |
 | 15 | [Diagnostics on normal screens + data model](docs/planning/objectives/OBJECTIVE-15.md) | 5 | Done — PROCEED 2026-06-20 |
-| 16 | [Export hardening](docs/planning/objectives/OBJECTIVE-16.md) | 6 | ▶ Active |
-| 17 | [Accessibility pass](docs/planning/objectives/OBJECTIVE-17.md) | 6 | Pending |
+| 16 | [Export hardening](docs/planning/objectives/OBJECTIVE-16.md) | 6 | Done — PROCEED 2026-06-21 |
+| 17 | [Accessibility pass](docs/planning/objectives/OBJECTIVE-17.md) | 6 | ▶ Active |
 | 18 | [Mac companion parity](docs/planning/objectives/OBJECTIVE-18.md) | 7 | Pending |
 | 19 | [Cancellation & failure-injection hardening](docs/planning/objectives/OBJECTIVE-19.md) | 7 | Pending |
 | 20 | [Beta acceptance + decomposition + tech debt](docs/planning/objectives/OBJECTIVE-20.md) | 8 | Pending |

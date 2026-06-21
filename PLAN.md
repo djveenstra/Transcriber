@@ -96,7 +96,7 @@ On-device acceptance (Human Reviewer, iPhone 17 Pro) covers: real mic capture, b
 
 ## Phase 6 — Export & accessibility (PRD §11/§15; R16, R19)
 
-- **OBJ-16 — Export hardening.** JSON via `Codable`; verify speaker names in all formats; SRT timing tests; large/odd-format import checks.
+- **OBJ-16 — Export hardening.** **DONE 2026-06-21 — Gate: PROCEED; evidence: [QA.md](QA.md#obj-16--export-hardening--2026-06-21), [completion report](docs/planning/objectives/OBJECTIVE-16.md#completion-report--2026-06-21).** JSON via `Codable`; verified speaker names in all formats; SRT timing tests; large/odd-format import checks.
 - **OBJ-17 — Accessibility pass.** Dynamic Type, VoiceOver labels/traits (incl. transcript cards + status dots), contrast audit, non-color status/speaker indicators, reachability.
 
 **Risk:** Low–Medium. **Rollback:** mostly additive/cosmetic.
