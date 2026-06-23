@@ -183,18 +183,24 @@ struct SpeakerLabelStatusView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Label(presentation.title, systemImage: presentation.systemImage)
-                .font(.callout.weight(.semibold))
-                .foregroundStyle(presentation.needsAttention ? .yellow : Theme.muted)
-            Text(presentation.detail)
-                .font(.callout)
-                .foregroundStyle(Theme.muted)
-                .fixedSize(horizontal: false, vertical: true)
+            VStack(alignment: .leading, spacing: 10) {
+                Label(presentation.title, systemImage: presentation.systemImage)
+                    .font(.callout.weight(.semibold))
+                    .foregroundStyle(presentation.needsAttention ? .yellow : Theme.muted)
+                Text(presentation.detail)
+                    .font(.callout)
+                    .foregroundStyle(Theme.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Speaker labels")
+            .accessibilityValue("\(presentation.title). \(presentation.detail)")
             if presentation.showsRetry, let retryAction {
                 Button(action: retryAction) {
                     Label("Retry Speaker Labels", systemImage: "arrow.clockwise")
                 }
                 .buttonStyle(SecondaryButtonStyle())
+                .accessibilityHint("Retries speaker labeling without re-running transcription.")
             }
         }
         .padding()

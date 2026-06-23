@@ -208,31 +208,13 @@ struct DashboardView: View {
             Text("Record, import, or check recent work from here.")
                 .foregroundStyle(Theme.muted)
 
-            HStack(spacing: 12) {
-                Button(action: onRecord) {
-                    Label("Record", systemImage: "mic.fill")
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 12) {
+                    actionButtons
                 }
-                .buttonStyle(PrimaryButtonStyle(color: Theme.accent))
-
-                Button(action: onImport) {
-                    Label("Import", systemImage: "square.and.arrow.down")
+                VStack(alignment: .leading, spacing: 10) {
+                    actionButtons
                 }
-                .buttonStyle(SecondaryButtonStyle())
-
-#if os(iOS)
-                if let onModelLab {
-                    Button(action: onModelLab) {
-                        Label("Open Model Lab", systemImage: "speedometer")
-                    }
-                    .buttonStyle(SecondaryButtonStyle())
-                }
-#else
-                Button {} label: {
-                    Label("Open Model Lab", systemImage: "speedometer")
-                }
-                .buttonStyle(SecondaryButtonStyle())
-                .disabled(true)
-#endif
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -240,6 +222,37 @@ struct DashboardView: View {
         .background(Theme.surface)
         .clipShape(RoundedRectangle(cornerRadius: 12))
         .overlay(RoundedRectangle(cornerRadius: 12).stroke(Theme.border))
+    }
+
+    @ViewBuilder private var actionButtons: some View {
+        Button(action: onRecord) {
+            Label("Record", systemImage: "mic.fill")
+        }
+        .buttonStyle(PrimaryButtonStyle(color: Theme.accent))
+        .accessibilityHint("Starts a new recording.")
+
+        Button(action: onImport) {
+            Label("Import", systemImage: "square.and.arrow.down")
+        }
+        .buttonStyle(SecondaryButtonStyle())
+        .accessibilityHint("Imports an audio file from Files.")
+
+#if os(iOS)
+        if let onModelLab {
+            Button(action: onModelLab) {
+                Label("Open Model Lab", systemImage: "speedometer")
+            }
+            .buttonStyle(SecondaryButtonStyle())
+            .accessibilityHint("Opens model comparison tools.")
+        }
+#else
+        Button {} label: {
+            Label("Open Model Lab", systemImage: "speedometer")
+        }
+        .buttonStyle(SecondaryButtonStyle())
+        .disabled(true)
+        .accessibilityHint("Model Lab is available on iPhone in this beta.")
+#endif
     }
 
     private var statusGrid: some View {
@@ -313,6 +326,11 @@ struct DashboardView: View {
             .clipShape(RoundedRectangle(cornerRadius: 12))
             .overlay(RoundedRectangle(cornerRadius: 12).stroke(Theme.border))
         }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(item.title)
+        .accessibilityValue(
+            "\(item.status.display.title). \(item.createdAt.formatted(date: .abbreviated, time: .shortened)). \(item.durationText). \(item.modelName). \(item.speakerLabelText)."
+        )
     }
 
     private func attentionItem(for recording: Recording) -> DashboardRecordingAttentionItem {
@@ -367,6 +385,9 @@ private struct DashboardStatusCard: View {
             RoundedRectangle(cornerRadius: 12)
                 .stroke(summary.needsAttention ? Color.yellow.opacity(0.75) : Theme.border)
         )
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(summary.title)
+        .accessibilityValue("\(summary.value). \(summary.detail)")
     }
 }
 
@@ -379,8 +400,10 @@ private struct DashboardWarningView: View {
             .foregroundStyle(.yellow)
             .padding()
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Theme.surface)
-            .clipShape(RoundedRectangle(cornerRadius: 12))
-            .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.yellow.opacity(0.65)))
+        .background(Theme.surface)
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.yellow.opacity(0.65)))
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isStaticText)
     }
 }

@@ -37,6 +37,71 @@ nonisolated struct TranscriptSegment: Identifiable, Codable, Equatable, Sendable
     }
 }
 
+nonisolated enum TranscriptAccessibility {
+    static func label(
+        for segment: TranscriptSegment,
+        speakerNames: [String: String] = [:],
+        canReassignSpeaker: Bool = false
+    ) -> String {
+        let speaker = TranscriptExporter.displayName(segment.speaker, names: speakerNames)
+        let editStatus = canReassignSpeaker ? "Speaker can be changed." : "Speaker is fixed."
+        return "\(speaker). \(timeRangeText(for: segment)). \(sentence(segment.text)) \(editStatus)"
+    }
+
+    static func timeRangeText(for segment: TranscriptSegment) -> String {
+        "\(spokenTime(segment.startMs)) to \(spokenTime(segment.endMs))"
+    }
+
+    static func speakerCue(for speaker: String, names: [String: String] = [:]) -> String {
+        let displayName = TranscriptExporter.displayName(speaker, names: names)
+        if displayName.localizedCaseInsensitiveCompare(speaker) == .orderedSame,
+           let lastDigit = speaker.filter(\.isNumber).last {
+            return "S\(lastDigit)"
+        }
+        let words = displayName
+            .split(separator: " ")
+            .filter { !$0.isEmpty }
+        if words.count >= 2,
+           let first = words[0].first,
+           let number = Int(words[1]) {
+            return "\(String(first).uppercased())\(number)"
+        }
+        let initials = words
+            .prefix(2)
+            .compactMap(\.first)
+            .map { String($0).uppercased() }
+            .joined()
+        return initials.isEmpty ? "SP" : initials
+    }
+
+    private static func spokenTime(_ milliseconds: Int) -> String {
+        let totalSeconds = max(0, milliseconds / 1_000)
+        let hours = totalSeconds / 3_600
+        let minutes = (totalSeconds % 3_600) / 60
+        let seconds = totalSeconds % 60
+        if hours > 0 {
+            return "\(unit(hours, "hour")) \(unit(minutes, "minute")) \(unit(seconds, "second"))"
+        }
+        if minutes > 0 {
+            return "\(unit(minutes, "minute")) \(unit(seconds, "second"))"
+        }
+        return unit(seconds, "second")
+    }
+
+    private static func sentence(_ text: String) -> String {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return "No transcript text." }
+        if let last = trimmed.last, ".!?".contains(last) {
+            return trimmed
+        }
+        return "\(trimmed)."
+    }
+
+    private static func unit(_ value: Int, _ singular: String) -> String {
+        value == 1 ? "1 \(singular)" : "\(value) \(singular)s"
+    }
+}
+
 nonisolated enum TranscriptSegmentReassignment {
     static func availableSpeakers(in segments: [TranscriptSegment]) -> [String] {
         var seen: Set<String> = []

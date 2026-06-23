@@ -247,8 +247,11 @@ struct ModelLabView: View {
                     }
                 }
                 Button("Import Audio for Comparison") { showingImporter = true }
+                    .accessibilityHint("Imports an audio file for model comparison.")
                 if let importedURL {
                     Label(importedURL.lastPathComponent, systemImage: "waveform")
+                        .accessibilityLabel("Imported audio")
+                        .accessibilityValue(importedURL.lastPathComponent)
                 }
             }
 
@@ -276,11 +279,16 @@ struct ModelLabView: View {
                     Label("Run Comparison", systemImage: "speedometer")
                 }
                 .disabled(selectedAudioURL == nil || selectedModels.isEmpty || runner.isRunning)
+                .accessibilityHint("Runs selected models one at a time on the chosen audio.")
 
                 if runner.isRunning {
                     ProgressView(value: runner.progress)
+                        .accessibilityLabel("Model Lab progress")
+                        .accessibilityValue("\(Int((runner.progress * 100).rounded())) percent")
                     Text("Running \(runner.runningModelName ?? "model")")
                         .foregroundStyle(Theme.muted)
+                        .accessibilityLabel("Running model")
+                        .accessibilityValue(runner.runningModelName ?? "model")
                 }
             }
 
@@ -296,6 +304,7 @@ struct ModelLabView: View {
                     ShareLink(item: runner.report) {
                         Label("Share Comparison Report", systemImage: "square.and.arrow.up")
                     }
+                    .accessibilityHint("Shares the Model Lab comparison report.")
                 }
             }
         }
@@ -345,6 +354,10 @@ struct ModelLabView: View {
             }
         }
         .disabled(!isRunnable(diagnostics))
+        .accessibilityElement(children: .combine)
+        .accessibilityValue(
+            "\(providerLabel(descriptor.provider)). \(diagnostics.status). \(diagnostics.size). \(diagnostics.statusDetail)"
+        )
     }
 
     private func resultCard(_ result: ModelLabResult) -> some View {
@@ -368,6 +381,21 @@ struct ModelLabView: View {
         .frame(width: 310, alignment: .leading)
         .background(Theme.surface)
         .clipShape(RoundedRectangle(cornerRadius: 14))
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(result.modelName)
+        .accessibilityValue(resultAccessibilityValue(result))
+    }
+
+    private func resultAccessibilityValue(_ result: ModelLabResult) -> String {
+        [
+            "Status \(result.modelStatus)",
+            "Size \(result.modelSize)",
+            "Load \(ModelLabReport.formatSeconds(result.loadTime))",
+            "Transcribe \(ModelLabReport.formatSeconds(result.transcriptionTime))",
+            "Speed \(result.speedDescription)",
+            "Failure \(result.failureStatus)",
+            result.error.map { "Error \($0)" } ?? "Transcript \(result.transcriptOutput)",
+        ].joined(separator: ". ")
     }
 
     private func diagnostics(for descriptor: ModelDescriptor) -> ModelLabModelDiagnostics {

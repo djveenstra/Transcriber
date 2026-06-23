@@ -1,7 +1,10 @@
-import AVFoundation
+@preconcurrency import AVFoundation
 import Combine
+import os
 import SwiftData
 import SwiftUI
+
+private nonisolated let playbackLogger = Logger(subsystem: "com.daniel.transcriber2", category: "Playback")
 
 struct LibraryView: View {
     @Environment(\.modelContext) private var modelContext
@@ -122,15 +125,13 @@ private struct RecordingLibraryRow: View {
                 RecordingStatusBadge(status: status)
             }
 
-            HStack(spacing: 10) {
-                RecordingMetadataLabel(
-                    systemImage: "timer",
-                    text: RecordingLibraryMetadata.durationText(seconds: recording.durationSeconds)
-                )
-                RecordingMetadataLabel(
-                    systemImage: "cpu",
-                    text: RecordingLibraryMetadata.modelName(for: recording.finalTranscriptionModelID)
-                )
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 10) {
+                    metadataSummary
+                }
+                VStack(alignment: .leading, spacing: 4) {
+                    metadataSummary
+                }
             }
 
             RecordingMetadataLabel(
@@ -145,6 +146,34 @@ private struct RecordingLibraryRow: View {
             }
         }
         .padding(.vertical, 4)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(recording.title)
+        .accessibilityValue(accessibilityValue)
+    }
+
+    @ViewBuilder private var metadataSummary: some View {
+        RecordingMetadataLabel(
+            systemImage: "timer",
+            text: RecordingLibraryMetadata.durationText(seconds: recording.durationSeconds)
+        )
+        RecordingMetadataLabel(
+            systemImage: "cpu",
+            text: RecordingLibraryMetadata.modelName(for: recording.finalTranscriptionModelID)
+        )
+    }
+
+    private var accessibilityValue: String {
+        var parts = [
+            status.display.title,
+            recording.createdAt.formatted(date: .abbreviated, time: .shortened),
+            RecordingLibraryMetadata.durationText(seconds: recording.durationSeconds),
+            RecordingLibraryMetadata.modelName(for: recording.finalTranscriptionModelID),
+            RecordingLibraryMetadata.speakerLabelText(for: recording, status: status),
+        ]
+        if isAudioMissing {
+            parts.append("Audio file missing. Transcript data was kept.")
+        }
+        return parts.joined(separator: ". ")
     }
 }
 
@@ -163,6 +192,9 @@ struct RecordingStatusBadge: View {
                     .stroke(badgeColor.opacity(0.65), lineWidth: 1)
             )
             .clipShape(Capsule())
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Status")
+            .accessibilityValue(status.display.title)
     }
 
     private var badgeColor: Color {
@@ -187,7 +219,7 @@ private struct RecordingMetadataLabel: View {
         Label(text, systemImage: systemImage)
             .font(.caption)
             .foregroundStyle(Theme.muted)
-            .lineLimit(1)
+            .fixedSize(horizontal: false, vertical: true)
     }
 }
 
@@ -237,45 +269,7 @@ struct SharedAudioDetailView: View {
                 EmptyView()
             }
 
-            HStack(spacing: 12) {
-                if allowsPlaybackAndTranscription {
-                    Button {
-                        playback.toggle(url: item.url)
-                    } label: {
-                        Label(playback.isPlaying ? "Pause" : "Play", systemImage: playback.isPlaying ? "pause.fill" : "play.fill")
-                    }
-                    .buttonStyle(SecondaryButtonStyle())
-
-                    Button {
-                        playback.stop()
-                        processingTask = Task {
-                            await session.importAudio(item.url)
-                            if !Task.isCancelled {
-                                saveTranscriptIfCompleted()
-                            }
-                            processingTask = nil
-                        }
-                    } label: {
-                        Label("Transcribe Recording", systemImage: "text.quote")
-                    }
-                    .buttonStyle(PrimaryButtonStyle(color: Theme.accent))
-                } else if session.state == .completed {
-                    if let recording = session.savedRecordingForEditing,
-                       TranscriptEditingAvailability.canRenameOrReassignSpeakers(
-                        segmentCount: recording.segments.count,
-                        isPersistedEditableRecording: true
-                       ) {
-                        NavigationLink {
-                            RecordingDetailView(recording: recording)
-                        } label: {
-                            Label("Edit Speakers", systemImage: "person.text.rectangle")
-                        }
-                        .buttonStyle(SecondaryButtonStyle())
-                    }
-                    TranscriptShareMenu(segments: session.finalSegments)
-                        .buttonStyle(PrimaryButtonStyle(color: Theme.accent))
-                }
-            }
+            sharedAudioActionArea
 
             if allowsPlaybackAndTranscription {
                 Button("Delete Recording", role: .destructive) {
@@ -288,10 +282,112 @@ struct SharedAudioDetailView: View {
         .padding()
         .background(Theme.background)
         .navigationTitle("Shared Recording")
+#if os(iOS)
+        .navigationBarTitleDisplayMode(.inline)
+#endif
         .storageErrorAlert(session)
         .onDisappear {
             playback.stop()
         }
+    }
+
+    @ViewBuilder private var sharedAudioActionArea: some View {
+        if usesSharedAudioProcessingActionBar {
+            sharedAudioProcessingActionBar
+        } else if session.state == .completed {
+            CompactTranscriptActionBar {
+                sharedAudioCompletedControls
+            }
+        } else {
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 12) {
+                    sharedAudioControls
+                }
+                VStack(spacing: 10) {
+                    sharedAudioControls
+                }
+            }
+        }
+    }
+
+    private var usesSharedAudioProcessingActionBar: Bool {
+        if case .processing = session.state { return true }
+        return session.state == .preparing || (session.state == .completed && session.isIdentifyingSpeakers)
+    }
+
+    private var sharedAudioProcessingActionBar: some View {
+        CompactTranscriptActionBar {
+            CompactTranscriptActionButton(
+                kind: .cancelProcessing,
+                isDisabled: !session.canCancelProcessing,
+                backgroundColor: .red
+            ) {
+                cancelProcessing()
+            }
+        }
+    }
+
+    @ViewBuilder private var sharedAudioControls: some View {
+        if allowsPlaybackAndTranscription {
+            Button {
+                playback.toggle(url: item.url)
+            } label: {
+                Label(playback.isPlaying ? "Pause" : "Play", systemImage: playback.isPlaying ? "pause.fill" : "play.fill")
+            }
+            .buttonStyle(SecondaryButtonStyle())
+            .accessibilityHint(playback.isPlaying ? "Pauses this shared audio file." : "Plays this shared audio file.")
+
+            Button {
+                playback.stop()
+                processingTask = Task {
+                    await session.importAudio(item.url)
+                    if !Task.isCancelled {
+                        saveTranscriptIfCompleted()
+                    }
+                    processingTask = nil
+                }
+            } label: {
+                Label("Transcribe Recording", systemImage: "text.quote")
+            }
+            .buttonStyle(PrimaryButtonStyle(color: Theme.accent))
+            .accessibilityHint("Creates a transcript from this shared audio file.")
+        } else if session.state == .completed {
+            if let recording = session.savedRecordingForEditing,
+               TranscriptEditingAvailability.canRenameOrReassignSpeakers(
+                segmentCount: recording.segments.count,
+                isPersistedEditableRecording: true
+               ) {
+                NavigationLink {
+                    RecordingDetailView(recording: recording)
+                } label: {
+                    Label("Edit Speakers", systemImage: "person.text.rectangle")
+                }
+                .buttonStyle(SecondaryButtonStyle())
+                .accessibilityHint("Opens speaker rename and reassignment tools.")
+            }
+            TranscriptShareMenu(segments: session.finalSegments)
+                .buttonStyle(PrimaryButtonStyle(color: Theme.accent))
+        }
+    }
+
+    @ViewBuilder private var sharedAudioCompletedControls: some View {
+        if let recording = session.savedRecordingForEditing,
+           TranscriptEditingAvailability.canRenameOrReassignSpeakers(
+            segmentCount: recording.segments.count,
+            isPersistedEditableRecording: true
+           ) {
+            NavigationLink {
+                RecordingDetailView(recording: recording)
+            } label: {
+                CompactTranscriptActionContent(kind: .editSpeakers)
+            }
+            .buttonStyle(CompactTranscriptActionButtonStyle())
+            .accessibilityLabel(CompactTranscriptAction.editSpeakers.label)
+            .accessibilityHint(CompactTranscriptAction.editSpeakers.hint)
+            .accessibilityAddTraits(.isButton)
+        }
+        TranscriptShareMenu(segments: session.finalSegments, isCompact: true)
+            .buttonStyle(CompactTranscriptActionButtonStyle())
     }
 
     private func sharedProcessingTimeline(cancelTitle: String) -> some View {
@@ -307,7 +403,7 @@ struct SharedAudioDetailView: View {
     }
 
     private var sharedCompletedTranscriptContent: some View {
-        VStack(spacing: 12) {
+        TranscriptReviewScroll(segments: session.finalSegments) {
             if session.isIdentifyingSpeakers {
                 sharedProcessingTimeline(cancelTitle: "Cancel Speaker Labels")
             }
@@ -318,7 +414,6 @@ struct SharedAudioDetailView: View {
             if let diagnostics = session.latestDiagnostics {
                 DiagnosticsDisclosureView(diagnostics: diagnostics)
             }
-            TranscriptList(segments: session.finalSegments)
         }
     }
 
@@ -362,54 +457,128 @@ struct SharedAudioDetailView: View {
 }
 
 @MainActor
-final class AudioPlaybackController: NSObject, ObservableObject, AVAudioPlayerDelegate {
+final class AudioPlaybackController: ObservableObject {
     @Published private(set) var isPlaying = false
-    private var player: AVAudioPlayer?
+
+    private let engine = AVAudioEngine()
+    private let playerNode = AVAudioPlayerNode()
+    private var isPlayerNodeAttached = false
+    private var currentFile: AVAudioFile?
+    private var currentURL: URL?
+    private var hasScheduledFile = false
+    private var playbackID = UUID()
 
     func toggle(url: URL) {
         if isPlaying {
-            player?.pause()
-            isPlaying = false
+            pause()
             return
         }
 
+        play(url: url)
+    }
+
+    func stop() {
+        resetPlayback(deactivateSession: true)
+    }
+
+    private func play(url: URL) {
         do {
 #if os(iOS)
             let audioSession = AVAudioSession.sharedInstance()
             try audioSession.setCategory(.playback, mode: .default)
             try audioSession.setActive(true)
 #endif
-            if player == nil {
-                player = try AVAudioPlayer(contentsOf: url)
-                player?.delegate = self
+            if currentURL != url || currentFile == nil || !hasScheduledFile {
+                try load(url: url)
             }
-            player?.prepareToPlay()
-            isPlaying = player?.play() == true
+            if !engine.isRunning {
+                try engine.start()
+            }
+            playerNode.play()
+            isPlaying = true
+            playbackLogger.info("Playback started for \(url.lastPathComponent, privacy: .public)")
         } catch {
-            isPlaying = false
+            playbackLogger.error("Playback failed for \(url.lastPathComponent, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            resetPlayback(deactivateSession: true)
         }
     }
 
-    func stop() {
-        player?.stop()
-        player = nil
+    private func pause() {
+        playerNode.pause()
+        isPlaying = false
+        playbackLogger.info("Playback paused")
+    }
+
+    private func load(url: URL) throws {
+        resetPlayback(deactivateSession: false)
+        let file = try AVAudioFile(forReading: url)
+        guard AudioPlaybackFileInspector.duration(for: file) > 0 else {
+            throw CocoaError(.fileReadCorruptFile)
+        }
+        if !isPlayerNodeAttached {
+            engine.attach(playerNode)
+            isPlayerNodeAttached = true
+        }
+        engine.disconnectNodeOutput(playerNode)
+        engine.connect(playerNode, to: engine.mainMixerNode, format: file.processingFormat)
+        currentFile = file
+        currentURL = url
+        scheduleCurrentFile()
+    }
+
+    private func scheduleCurrentFile() {
+        guard let currentFile else { return }
+        let id = UUID()
+        playbackID = id
+        hasScheduledFile = true
+        playerNode.scheduleFile(
+            currentFile,
+            at: nil,
+            completionCallbackType: .dataPlayedBack
+        ) { [weak self] _ in
+            Task { @MainActor in
+                guard let self, self.playbackID == id else { return }
+                self.playerNode.stop()
+                self.hasScheduledFile = false
+                self.isPlaying = false
+                playbackLogger.info("Playback finished")
+            }
+        }
+    }
+
+    private func resetPlayback(deactivateSession: Bool) {
+        playbackID = UUID()
+        playerNode.stop()
+        playerNode.reset()
+        engine.stop()
+        currentFile = nil
+        currentURL = nil
+        hasScheduledFile = false
         isPlaying = false
 #if os(iOS)
-        try? AVAudioSession.sharedInstance().setActive(false)
+        if deactivateSession {
+            try? AVAudioSession.sharedInstance().setActive(false)
+        }
 #endif
     }
+}
 
-    nonisolated func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
-        Task { @MainActor in
-            isPlaying = false
-        }
+nonisolated enum AudioPlaybackFileInspector {
+    static func duration(for url: URL) -> TimeInterval? {
+        guard let file = try? AVAudioFile(forReading: url) else { return nil }
+        return duration(for: file)
+    }
+
+    static func duration(for file: AVAudioFile) -> TimeInterval {
+        guard file.processingFormat.sampleRate > 0 else { return 0 }
+        return Double(file.length) / file.processingFormat.sampleRate
     }
 }
 
 struct RecordingDetailView: View {
     @Bindable var recording: Recording
     @Environment(\.modelContext) private var modelContext
-    @State private var player: AVAudioPlayer?
+    @StateObject private var playback = CompletedRecordingAudioPlayer()
     @State private var showingNames = false
     @State private var storageErrorMessage: String?
     @StateObject private var retrySession = TranscriptionSession()
@@ -445,33 +614,21 @@ struct RecordingDetailView: View {
                         description: Text("The audio is safe, but its final transcript still needs to be created.")
                     )
                 } else {
-                    SpeakerLabelStatusView(
-                        presentation: speakerLabelPresentation,
-                        retryAction: speakerLabelRetryAction
-                    )
-                    DiagnosticsDisclosureView(diagnostics: detailDiagnostics)
-                    TranscriptListWithNames(
+                    TranscriptReviewScroll(
                         segments: recording.segments,
-                        names: recording.speakerNames,
+                        speakerNames: recording.speakerNames,
+                        speakerOptions: TranscriptSegmentReassignment.availableSpeakers(in: recording.segments),
                         onReassignSpeaker: reassignSegment
-                    )
+                    ) {
+                        SpeakerLabelStatusView(
+                            presentation: speakerLabelPresentation,
+                            retryAction: speakerLabelRetryAction
+                        )
+                        DiagnosticsDisclosureView(diagnostics: detailDiagnostics)
+                    }
                 }
             }
-            HStack {
-                Button {
-                    togglePlayback()
-                } label: {
-                    Label(player?.isPlaying == true ? "Pause" : "Play", systemImage: player?.isPlaying == true ? "pause.fill" : "play.fill")
-                }
-                .buttonStyle(SecondaryButtonStyle())
-                .disabled(isAudioMissing)
-                Button("Rename Speakers") { showingNames = true }
-                    .buttonStyle(SecondaryButtonStyle())
-                    .disabled(recording.segments.isEmpty)
-                TranscriptShareMenu(segments: recording.segments, speakerNames: recording.speakerNames)
-                .buttonStyle(PrimaryButtonStyle(color: Theme.accent))
-                .disabled(recording.segments.isEmpty)
-            }
+            detailActionArea
             if recording.transcriptionNeedsRetry {
                 Button {
                     retryTask = Task {
@@ -488,6 +645,9 @@ struct RecordingDetailView: View {
         .padding()
         .background(Theme.background)
         .navigationTitle(recording.title)
+#if os(iOS)
+        .navigationBarTitleDisplayMode(.inline)
+#endif
         .storageErrorAlert(retrySession)
         .alert(
             "Storage Issue",
@@ -505,15 +665,47 @@ struct RecordingDetailView: View {
         .sheet(isPresented: $showingNames) {
             SpeakerRenameView(recording: recording)
         }
+        .onDisappear {
+            playback.stop()
+        }
     }
 
-    private func togglePlayback() {
-        if player?.isPlaying == true {
-            player?.pause()
+    @ViewBuilder private var detailActionArea: some View {
+        if case .processing = retrySession.state {
+            CompactTranscriptActionBar {
+                CompactTranscriptActionButton(
+                    kind: .cancelProcessing,
+                    isDisabled: !retrySession.canCancelProcessing,
+                    backgroundColor: .red
+                ) {
+                    cancelRetryProcessing()
+                }
+            }
         } else {
-            if player == nil { player = try? AVAudioPlayer(contentsOf: recording.audioURL) }
-            player?.play()
+            VStack(spacing: 8) {
+                CompletedRecordingMiniPlayer(
+                    player: playback,
+                    audioURL: recording.audioURL,
+                    isDisabled: isAudioMissing
+                )
+                CompactTranscriptActionBar {
+                    detailControls
+                }
+            }
         }
+    }
+
+    @ViewBuilder private var detailControls: some View {
+        CompactTranscriptActionButton(
+            kind: .renameSpeakers,
+            isDisabled: recording.segments.isEmpty
+        ) {
+            showingNames = true
+        }
+
+        TranscriptShareMenu(segments: recording.segments, speakerNames: recording.speakerNames, isCompact: true)
+            .buttonStyle(CompactTranscriptActionButtonStyle())
+            .disabled(recording.segments.isEmpty)
     }
 
     private var speakerLabelPresentation: SpeakerLabelStatusPresentation {
@@ -584,6 +776,334 @@ struct RecordingDetailView: View {
     }
 }
 
+@MainActor
+final class CompletedRecordingAudioPlayer: ObservableObject {
+    enum PlaybackState: Equatable {
+        case idle
+        case preparing
+        case ready
+        case playing
+        case paused
+        case failed(String)
+    }
+
+    @Published private(set) var state: PlaybackState = .idle
+    @Published private(set) var currentTime: TimeInterval = 0
+    @Published private(set) var duration: TimeInterval = 0
+
+    private var player: AVPlayer?
+    private var sourceURL: URL?
+    private var playableURL: URL?
+    private var timeObserver: Any?
+    private var endObserver: NSObjectProtocol?
+
+    var isPlaying: Bool {
+        state == .playing
+    }
+
+    var isPreparing: Bool {
+        state == .preparing
+    }
+
+    var errorMessage: String? {
+        if case let .failed(message) = state { return message }
+        return nil
+    }
+
+    func play(url: URL) async {
+        do {
+#if os(iOS)
+            let audioSession = AVAudioSession.sharedInstance()
+            try audioSession.setCategory(.playback, mode: .default)
+            try audioSession.setActive(true)
+#endif
+            if sourceURL != url || player == nil {
+                try await prepare(url: url)
+            }
+            if currentTime >= duration, duration > 0 {
+                seek(to: 0)
+            }
+            player?.play()
+            state = .playing
+            playbackLogger.info("Completed recording playback started for \(url.lastPathComponent, privacy: .public)")
+        } catch {
+            fail("Playback could not start.")
+            playbackLogger.error("Completed recording playback failed for \(url.lastPathComponent, privacy: .public): \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    func pause() {
+        player?.pause()
+        if player != nil {
+            state = .paused
+        }
+    }
+
+    func seek(by seconds: TimeInterval) {
+        seek(to: currentTime + seconds)
+    }
+
+    func stop() {
+        removeObservers()
+        player?.pause()
+        player = nil
+        sourceURL = nil
+        playableURL = nil
+        currentTime = 0
+        duration = 0
+        state = .idle
+#if os(iOS)
+        try? AVAudioSession.sharedInstance().setActive(false)
+#endif
+    }
+
+    private func prepare(url: URL) async throws {
+        state = .preparing
+        removeObservers()
+
+        guard let originalDuration = AudioPlaybackFileInspector.duration(for: url), originalDuration > 0 else {
+            throw CocoaError(.fileReadCorruptFile)
+        }
+
+        let playbackURL = try await CompletedRecordingPlaybackCache.playbackURL(for: url)
+        let item = AVPlayerItem(url: playbackURL)
+        let player = AVPlayer(playerItem: item)
+        self.player = player
+        sourceURL = url
+        playableURL = playbackURL
+        duration = originalDuration
+        currentTime = 0
+        addObservers(player: player, item: item)
+        state = .ready
+    }
+
+    private func addObservers(player: AVPlayer, item: AVPlayerItem) {
+        let interval = CMTime(seconds: 0.25, preferredTimescale: 600)
+        timeObserver = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self] time in
+            Task { @MainActor in
+                guard let self else { return }
+                self.currentTime = max(0, time.seconds.isFinite ? time.seconds : 0)
+                if let itemDuration = player.currentItem?.duration.seconds, itemDuration.isFinite, itemDuration > 0 {
+                    self.duration = itemDuration
+                }
+            }
+        }
+        endObserver = NotificationCenter.default.addObserver(
+            forName: .AVPlayerItemDidPlayToEndTime,
+            object: item,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.currentTime = self?.duration ?? 0
+                self?.state = .paused
+            }
+        }
+    }
+
+    private func removeObservers() {
+        if let timeObserver, let player {
+            player.removeTimeObserver(timeObserver)
+        }
+        timeObserver = nil
+
+        if let endObserver {
+            NotificationCenter.default.removeObserver(endObserver)
+        }
+        endObserver = nil
+    }
+
+    private func seek(to seconds: TimeInterval) {
+        let target = CompletedRecordingPlaybackPresentation.clampedTime(seconds, duration: duration)
+        player?.seek(
+            to: CMTime(seconds: target, preferredTimescale: 600),
+            toleranceBefore: .zero,
+            toleranceAfter: .zero
+        )
+        currentTime = target
+    }
+
+    private func fail(_ message: String) {
+        removeObservers()
+        player = nil
+        sourceURL = nil
+        playableURL = nil
+        currentTime = 0
+        duration = 0
+        state = .failed(message)
+#if os(iOS)
+        try? AVAudioSession.sharedInstance().setActive(false)
+#endif
+    }
+}
+
+struct CompletedRecordingMiniPlayer: View {
+    @ObservedObject var player: CompletedRecordingAudioPlayer
+    let audioURL: URL
+    var isDisabled: Bool
+
+    private var progress: Double {
+        guard player.duration > 0 else { return 0 }
+        return min(max(player.currentTime / player.duration, 0), 1)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 12) {
+                playbackButton(systemImage: "gobackward.10", label: "Back 10 seconds", hint: "Moves playback back by 10 seconds.") {
+                    player.seek(by: -10)
+                }
+                .disabled(isDisabled || player.duration <= 0)
+
+                playbackButton(
+                    systemImage: player.isPlaying ? "pause.fill" : "play.fill",
+                    label: player.isPlaying ? "Pause" : "Play",
+                    hint: player.isPlaying ? "Pauses the recording." : "Plays the recording."
+                ) {
+                    if player.isPlaying {
+                        player.pause()
+                    } else {
+                        Task { await player.play(url: audioURL) }
+                    }
+                }
+                .disabled(isDisabled || player.isPreparing)
+
+                playbackButton(systemImage: "goforward.10", label: "Forward 10 seconds", hint: "Moves playback forward by 10 seconds.") {
+                    player.seek(by: 10)
+                }
+                .disabled(isDisabled || player.duration <= 0)
+
+                Spacer(minLength: 8)
+
+                Text(CompletedRecordingPlaybackPresentation.timeRangeText(
+                    currentTime: player.currentTime,
+                    duration: player.duration
+                ))
+                .font(.caption.monospacedDigit())
+                .foregroundStyle(Theme.muted)
+                .accessibilityHidden(true)
+            }
+
+            ProgressView(value: progress)
+                .tint(Theme.accent)
+                .accessibilityLabel("Playback progress")
+                .accessibilityValue(CompletedRecordingPlaybackPresentation.accessibilityProgressValue(
+                    currentTime: player.currentTime,
+                    duration: player.duration
+                ))
+
+            if player.isPreparing {
+                Label("Preparing playback", systemImage: "waveform")
+                    .font(.caption)
+                    .foregroundStyle(Theme.muted)
+            } else if let message = player.errorMessage {
+                Label(message, systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption)
+                    .foregroundStyle(.yellow)
+            }
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.surface)
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Theme.border))
+        .accessibilityElement(children: .contain)
+    }
+
+    private func playbackButton(
+        systemImage: String,
+        label: String,
+        hint: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Image(systemName: systemImage)
+                .font(.system(size: 22, weight: .semibold))
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(.white)
+        .background(Theme.background.opacity(0.75))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .accessibilityLabel(label)
+        .accessibilityHint(hint)
+        .accessibilityAddTraits(.isButton)
+    }
+}
+
+@MainActor
+enum CompletedRecordingPlaybackCache {
+    static func playbackURL(for sourceURL: URL) async throws -> URL {
+        guard sourceURL.pathExtension.localizedCaseInsensitiveCompare("caf") == .orderedSame else {
+            return sourceURL
+        }
+
+        let outputURL = cacheURL(for: sourceURL)
+        if isCacheCurrent(sourceURL: sourceURL, outputURL: outputURL) {
+            return outputURL
+        }
+
+        try FileManager.default.createDirectory(at: cacheDirectory, withIntermediateDirectories: true)
+        try? FileManager.default.removeItem(at: outputURL)
+
+        let asset = AVURLAsset(url: sourceURL)
+        guard let exportSession = AVAssetExportSession(asset: asset, presetName: AVAssetExportPresetAppleM4A) else {
+            throw CocoaError(.fileWriteUnknown)
+        }
+        exportSession.shouldOptimizeForNetworkUse = false
+        try await exportSession.export(to: outputURL, as: .m4a)
+
+        guard let duration = AudioPlaybackFileInspector.duration(for: outputURL), duration > 0 else {
+            throw CocoaError(.fileReadCorruptFile)
+        }
+        return outputURL
+    }
+
+    static func cacheURL(for sourceURL: URL) -> URL {
+        let baseName = sourceURL.deletingPathExtension().lastPathComponent
+        return cacheDirectory.appendingPathComponent("\(baseName).m4a")
+    }
+
+    static func isCacheCurrent(sourceURL: URL, outputURL: URL) -> Bool {
+        let manager = FileManager.default
+        guard manager.fileExists(atPath: outputURL.path),
+              let sourceDate = try? manager.attributesOfItem(atPath: sourceURL.path)[.modificationDate] as? Date,
+              let outputDate = try? manager.attributesOfItem(atPath: outputURL.path)[.modificationDate] as? Date else {
+            return false
+        }
+        return outputDate >= sourceDate
+    }
+
+    private static var cacheDirectory: URL {
+        let base = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+        return base
+            .appendingPathComponent("Transcriber2Beta", isDirectory: true)
+            .appendingPathComponent("Playback", isDirectory: true)
+    }
+}
+
+nonisolated enum CompletedRecordingPlaybackPresentation {
+    static func clampedTime(_ time: TimeInterval, duration: TimeInterval) -> TimeInterval {
+        guard duration > 0 else { return 0 }
+        return min(max(time, 0), duration)
+    }
+
+    static func timeRangeText(currentTime: TimeInterval, duration: TimeInterval) -> String {
+        "\(timeText(currentTime)) / \(timeText(duration))"
+    }
+
+    static func accessibilityProgressValue(currentTime: TimeInterval, duration: TimeInterval) -> String {
+        "\(timeText(currentTime)) of \(timeText(duration))"
+    }
+
+    static func timeText(_ time: TimeInterval) -> String {
+        let totalSeconds = max(0, Int(time.rounded()))
+        let minutes = totalSeconds / 60
+        let seconds = totalSeconds % 60
+        return String(format: "%d:%02d", minutes, seconds)
+    }
+}
+
 struct TranscriptListWithNames: View {
     let segments: [TranscriptSegment]
     let names: [String: String]
@@ -594,17 +1114,59 @@ struct TranscriptListWithNames: View {
     }
 
     var body: some View {
-        ScrollView {
-            LazyVStack(alignment: .leading, spacing: 14) {
-                ForEach(segments) { segment in
-                    TranscriptCard(
-                        segment: segment,
-                        speakerNames: names,
-                        speakerOptions: onReassignSpeaker == nil ? [] : speakers
-                    ) { speaker in
-                        onReassignSpeaker?(segment.id, speaker)
+        TranscriptReviewScroll(
+            segments: segments,
+            speakerNames: names,
+            speakerOptions: onReassignSpeaker == nil ? [] : speakers,
+            onReassignSpeaker: { segmentID, speaker in
+                onReassignSpeaker?(segmentID, speaker)
+            }
+        ) {
+            EmptyView()
+        }
+    }
+}
+
+struct TranscriptReviewScroll<Header: View>: View {
+    let segments: [TranscriptSegment]
+    var speakerNames: [String: String] = [:]
+    var speakerOptions: [String] = []
+    let header: Header
+    var onReassignSpeaker: ((TranscriptSegment.ID, String) -> Void)?
+
+    init(
+        segments: [TranscriptSegment],
+        speakerNames: [String: String] = [:],
+        speakerOptions: [String] = [],
+        onReassignSpeaker: ((TranscriptSegment.ID, String) -> Void)? = nil,
+        @ViewBuilder header: () -> Header
+    ) {
+        self.segments = segments
+        self.speakerNames = speakerNames
+        self.speakerOptions = speakerOptions
+        self.onReassignSpeaker = onReassignSpeaker
+        self.header = header()
+    }
+
+    var body: some View {
+        ScrollViewReader { proxy in
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 14) {
+                    header
+                    ForEach(segments) { segment in
+                        TranscriptCard(
+                            segment: segment,
+                            speakerNames: speakerNames,
+                            speakerOptions: onReassignSpeaker == nil ? [] : speakerOptions
+                        ) { speaker in
+                            onReassignSpeaker?(segment.id, speaker)
+                        }
+                        .id(segment.id)
                     }
                 }
+            }
+            .onChange(of: segments.count) { _, _ in
+                if let last = segments.last { proxy.scrollTo(last.id, anchor: .bottom) }
             }
         }
     }
@@ -630,6 +1192,7 @@ struct SpeakerRenameView: View {
                             set: { names[speaker] = $0 }
                         )
                     )
+                    .accessibilityLabel("Name for \(TranscriptExporter.displayName(speaker, names: [:]))")
                 }
             }
             .navigationTitle("Rename Speakers")

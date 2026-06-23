@@ -24,6 +24,9 @@ struct RecordingView: View {
             .padding()
             .background(Theme.background.ignoresSafeArea())
             .navigationTitle("Transcriber 2.0")
+#if os(iOS)
+            .navigationBarTitleDisplayMode(.inline)
+#endif
             .storageErrorAlert(session)
             .task {
 #if os(macOS)
@@ -118,11 +121,9 @@ struct RecordingView: View {
 
     private var statusHeader: some View {
         HStack {
-            Circle()
-                .fill(session.state == .recording ? .red : Theme.accent)
-                .frame(width: 10, height: 10)
-            Text(statusText)
+            Label(statusText, systemImage: statusIcon)
                 .font(.subheadline.weight(.semibold))
+                .foregroundStyle(session.state == .recording ? .red : Theme.muted)
             Spacer()
             if session.state == .recording {
                 Label(session.activeMicrophoneName ?? MicrophoneRecordingRoute.systemDefaultInputName, systemImage: "mic.fill")
@@ -133,67 +134,137 @@ struct RecordingView: View {
                 TimelineView(.periodic(from: .now, by: 1)) { _ in
                     Text(formatDuration(session.recorder.elapsedDuration))
                         .font(.system(.body, design: .monospaced))
+                        .accessibilityLabel("Elapsed recording time")
                 }
             }
         }
         .foregroundStyle(Theme.muted)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Recording status")
+        .accessibilityValue(statusHeaderAccessibilityValue)
     }
 
     private var controls: some View {
-        HStack(spacing: 14) {
-            if session.state == .recording {
-                Button {
-                    processingTask = Task {
-                        await session.stopRecording(in: modelContext)
-                        if !Task.isCancelled {
-                            session.saveCompletedRecording(in: modelContext)
-                        }
-                        processingTask = nil
-                    }
-                } label: {
-                    Label("Stop", systemImage: "stop.fill")
-                }
-                .buttonStyle(PrimaryButtonStyle(color: .red))
+        Group {
+            if usesProcessingActionBar {
+                processingActionBar
             } else if session.state == .completed {
-                if !session.isIdentifyingSpeakers {
-                    if let recording = session.savedRecordingForEditing,
-                       TranscriptEditingAvailability.canRenameOrReassignSpeakers(
-                        segmentCount: recording.segments.count,
-                        isPersistedEditableRecording: true
-                       ) {
-                        NavigationLink {
-                            RecordingDetailView(recording: recording)
-                        } label: {
-                            Label("Edit Speakers", systemImage: "person.text.rectangle")
-                        }
-                        .buttonStyle(SecondaryButtonStyle())
-                    }
-                    TranscriptShareMenu(segments: session.finalSegments)
-                    .buttonStyle(PrimaryButtonStyle(color: Theme.accent))
-                    Button("New") { session.reset() }
-                        .buttonStyle(SecondaryButtonStyle())
-                }
+                completedActionBar
             } else {
-                Button {
-                    Task { await session.startRecording(in: modelContext) }
-                } label: {
-                    Label("Record", systemImage: "mic.fill")
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 14) {
+                        controlButtons
+                    }
+                    VStack(spacing: 10) {
+                        controlButtons
+                    }
                 }
-                .buttonStyle(PrimaryButtonStyle(color: Theme.accent))
-                Button {
-                    showingImporter = true
-                } label: {
-                    Label("Import", systemImage: "square.and.arrow.down")
-                }
-                .buttonStyle(SecondaryButtonStyle())
-                .disabled(session.state == .preparing)
             }
         }
         .padding(.bottom, 8)
     }
 
+    private var usesProcessingActionBar: Bool {
+        if case .processing = session.state { return true }
+        return session.state == .completed && session.isIdentifyingSpeakers
+    }
+
+    private var processingActionBar: some View {
+        CompactTranscriptActionBar {
+            CompactTranscriptActionButton(
+                kind: .cancelProcessing,
+                isDisabled: !session.canCancelProcessing,
+                backgroundColor: .red
+            ) {
+                cancelProcessing()
+            }
+        }
+    }
+
+    @ViewBuilder private var completedActionBar: some View {
+        if !session.isIdentifyingSpeakers {
+            CompactTranscriptActionBar {
+                if let recording = session.savedRecordingForEditing,
+                   TranscriptEditingAvailability.canRenameOrReassignSpeakers(
+                    segmentCount: recording.segments.count,
+                    isPersistedEditableRecording: true
+                   ) {
+                    NavigationLink {
+                        RecordingDetailView(recording: recording)
+                    } label: {
+                        CompactTranscriptActionContent(kind: .editSpeakers)
+                    }
+                    .buttonStyle(CompactTranscriptActionButtonStyle())
+                    .accessibilityLabel(CompactTranscriptAction.editSpeakers.label)
+                    .accessibilityHint(CompactTranscriptAction.editSpeakers.hint)
+                    .accessibilityAddTraits(.isButton)
+                }
+                TranscriptShareMenu(segments: session.finalSegments, isCompact: true)
+                    .buttonStyle(CompactTranscriptActionButtonStyle())
+                CompactTranscriptActionButton(kind: .newRecording) {
+                    session.reset()
+                }
+            }
+        }
+    }
+
+    @ViewBuilder private var controlButtons: some View {
+        if session.state == .recording {
+            Button {
+                processingTask = Task {
+                    await session.stopRecording(in: modelContext)
+                    if !Task.isCancelled {
+                        session.saveCompletedRecording(in: modelContext)
+                    }
+                    processingTask = nil
+                }
+            } label: {
+                Label("Stop", systemImage: "stop.fill")
+            }
+            .buttonStyle(PrimaryButtonStyle(color: .red))
+            .accessibilityHint("Stops recording and saves the audio before final transcription.")
+        } else if session.state == .completed {
+            if !session.isIdentifyingSpeakers {
+                if let recording = session.savedRecordingForEditing,
+                   TranscriptEditingAvailability.canRenameOrReassignSpeakers(
+                    segmentCount: recording.segments.count,
+                    isPersistedEditableRecording: true
+                   ) {
+                    NavigationLink {
+                        RecordingDetailView(recording: recording)
+                    } label: {
+                        Label("Edit Speakers", systemImage: "person.text.rectangle")
+                    }
+                    .buttonStyle(SecondaryButtonStyle())
+                    .accessibilityHint("Opens speaker rename and reassignment tools.")
+                }
+                TranscriptShareMenu(segments: session.finalSegments)
+                    .buttonStyle(PrimaryButtonStyle(color: Theme.accent))
+                Button("New") { session.reset() }
+                    .buttonStyle(SecondaryButtonStyle())
+                    .accessibilityHint("Clears this completed transcript from the recording screen.")
+            }
+        } else {
+            Button {
+                Task { await session.startRecording(in: modelContext) }
+            } label: {
+                Label("Record", systemImage: "mic.fill")
+            }
+            .buttonStyle(PrimaryButtonStyle(color: Theme.accent))
+            .accessibilityHint("Starts recording immediately.")
+            Button {
+                showingImporter = true
+            } label: {
+                Label("Import", systemImage: "square.and.arrow.down")
+            }
+            .buttonStyle(SecondaryButtonStyle())
+            .disabled(session.state == .preparing)
+            .accessibilityHint("Imports an audio file for transcription.")
+        }
+    }
+
     private var completedTranscriptContent: some View {
-        VStack(spacing: 12) {
+        TranscriptReviewScroll(segments: session.finalSegments) {
             if session.isIdentifyingSpeakers {
                 processingTimeline(cancelTitle: "Cancel Speaker Labels")
             }
@@ -204,7 +275,6 @@ struct RecordingView: View {
             if let diagnostics = session.latestDiagnostics {
                 DiagnosticsDisclosureView(diagnostics: diagnostics)
             }
-            TranscriptList(segments: session.finalSegments)
         }
     }
 
@@ -233,6 +303,47 @@ struct RecordingView: View {
         case .completed: "Final transcript ready"
         case .failed: "Needs attention"
         }
+    }
+
+    private var statusIcon: String {
+        switch session.state {
+        case .recording:
+            return "record.circle.fill"
+        case .failed:
+            return "exclamationmark.triangle.fill"
+        case .completed:
+            return "checkmark.circle.fill"
+        case .processing, .preparing:
+            return "hourglass"
+        case .idle:
+            return "circle"
+        }
+    }
+
+    private var modelStatusAccessibilityText: String {
+        switch session.modelState {
+        case .notLoaded:
+            return "\(session.selectedModelName), not loaded"
+        case .loading:
+            return "\(session.selectedModelName), loading"
+        case let .ready(name):
+            if name == session.selectedModelName {
+                return "\(name), ready"
+            }
+            return "Selected \(session.selectedModelName), loaded \(name)"
+        case .failed:
+            return "\(session.selectedModelName), unavailable"
+        }
+    }
+
+    private var statusHeaderAccessibilityValue: String {
+        var parts = [statusText, "Model \(modelStatusAccessibilityText)"]
+        if session.state == .recording {
+            let mic = session.activeMicrophoneName ?? MicrophoneRecordingRoute.systemDefaultInputName
+            parts.append("Microphone \(mic)")
+            parts.append("Elapsed \(formatDuration(session.recorder.elapsedDuration))")
+        }
+        return parts.joined(separator: ". ")
     }
 
     private var livePreviewTitle: String {
@@ -332,6 +443,7 @@ struct RecordingView: View {
 struct TranscriptShareMenu: View {
     let segments: [TranscriptSegment]
     var speakerNames: [String: String] = [:]
+    var isCompact = false
     @Environment(\.scenePhase) private var scenePhase
     @State private var shareURL: URL?
     @State private var showingShareSheet = false
@@ -351,8 +463,15 @@ struct TranscriptShareMenu: View {
                 }
             }
         } label: {
-            Label("Share", systemImage: "square.and.arrow.up")
+            if isCompact {
+                CompactTranscriptActionContent(kind: .share)
+            } else {
+                Label("Share", systemImage: "square.and.arrow.up")
+            }
         }
+        .accessibilityLabel(isCompact ? CompactTranscriptAction.share.label : "Share transcript")
+        .accessibilityHint(isCompact ? CompactTranscriptAction.share.hint : "Choose TXT, SRT, or JSON export.")
+        .accessibilityAddTraits(.isButton)
         .sheet(isPresented: $showingShareSheet, onDismiss: clearShareItem) {
             if let shareURL {
                 SystemShareSheet(item: shareURL) {
@@ -377,6 +496,160 @@ struct TranscriptShareMenu: View {
 
     private func clearShareItem() {
         shareURL = nil
+    }
+}
+
+nonisolated enum CompactTranscriptAction: Equatable, Sendable {
+    case play(isPlaying: Bool)
+    case editSpeakers
+    case renameSpeakers
+    case share
+    case newRecording
+    case transcribeRecording
+    case cancelProcessing
+
+    var label: String {
+        switch self {
+        case let .play(isPlaying):
+            isPlaying ? "Pause" : "Play"
+        case .editSpeakers:
+            "Edit Speakers"
+        case .renameSpeakers:
+            "Rename Speakers"
+        case .share:
+            "Share Transcript"
+        case .newRecording:
+            "New Recording"
+        case .transcribeRecording:
+            "Transcribe Recording"
+        case .cancelProcessing:
+            "Cancel Processing"
+        }
+    }
+
+    var compactTitle: String {
+        switch self {
+        case let .play(isPlaying):
+            isPlaying ? "Pause" : "Play"
+        case .editSpeakers:
+            "Edit"
+        case .renameSpeakers:
+            "Rename"
+        case .share:
+            "Share"
+        case .newRecording:
+            "New"
+        case .transcribeRecording:
+            "Transcribe"
+        case .cancelProcessing:
+            "Cancel"
+        }
+    }
+
+    var hint: String {
+        switch self {
+        case let .play(isPlaying):
+            isPlaying ? "Pauses the original audio." : "Plays the original audio."
+        case .editSpeakers:
+            "Opens speaker rename and reassignment tools."
+        case .renameSpeakers:
+            "Opens speaker name fields."
+        case .share:
+            "Choose TXT, SRT, or JSON export."
+        case .newRecording:
+            "Clears this completed transcript from the recording screen."
+        case .transcribeRecording:
+            "Creates a transcript from this shared audio file."
+        case .cancelProcessing:
+            "Cancels the current processing step."
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case let .play(isPlaying):
+            isPlaying ? "pause.fill" : "play.fill"
+        case .editSpeakers, .renameSpeakers:
+            "person.text.rectangle"
+        case .share:
+            "square.and.arrow.up"
+        case .newRecording:
+            "plus"
+        case .transcribeRecording:
+            "text.quote"
+        case .cancelProcessing:
+            "xmark.circle.fill"
+        }
+    }
+}
+
+struct CompactTranscriptActionContent: View {
+    let kind: CompactTranscriptAction
+
+    var body: some View {
+        VStack(spacing: 3) {
+            Image(systemName: kind.systemImage)
+                .font(.system(size: 25, weight: .semibold))
+                .frame(height: 27)
+            Text(kind.compactTitle)
+                .font(.caption2.weight(.semibold))
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+        }
+        .frame(minWidth: 58)
+        .padding(.horizontal, 8)
+        .dynamicTypeSize(...DynamicTypeSize.accessibility1)
+    }
+}
+
+struct CompactTranscriptActionBar<Content: View>: View {
+    let content: Content
+
+    init(@ViewBuilder content: () -> Content) {
+        self.content = content()
+    }
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 10) {
+                content
+            }
+            .padding(.horizontal, 4)
+            .padding(.vertical, 6)
+        }
+        .frame(maxWidth: .infinity, minHeight: 68, maxHeight: 76, alignment: .leading)
+        .accessibilityElement(children: .contain)
+    }
+}
+
+struct CompactTranscriptActionButton: View {
+    let kind: CompactTranscriptAction
+    var isDisabled = false
+    var backgroundColor = Theme.surface
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            CompactTranscriptActionContent(kind: kind)
+        }
+        .buttonStyle(CompactTranscriptActionButtonStyle(backgroundColor: backgroundColor))
+        .disabled(isDisabled)
+        .accessibilityLabel(kind.label)
+        .accessibilityHint(kind.hint)
+        .accessibilityAddTraits(.isButton)
+    }
+}
+
+struct CompactTranscriptActionButtonStyle: ButtonStyle {
+    var backgroundColor = Theme.surface
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .frame(minWidth: 64, minHeight: 58)
+            .background(backgroundColor.opacity(configuration.isPressed ? 0.7 : 1))
+            .foregroundStyle(.white)
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .overlay(RoundedRectangle(cornerRadius: 10).stroke(Theme.border))
     }
 }
 
@@ -442,44 +715,81 @@ struct TranscriptCard: View {
     var onReassignSpeaker: ((String) -> Void)?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text(TranscriptExporter.displayName(segment.speaker, names: speakerNames))
-                    .font(.caption.bold())
-                    .foregroundStyle(speakerColor)
-                Text(segment.timestamp)
-                    .font(.caption.monospacedDigit())
-                    .foregroundStyle(Theme.muted)
-                Spacer(minLength: 8)
-                if let onReassignSpeaker, !speakerOptions.isEmpty {
-                    Menu {
-                        ForEach(speakerOptions, id: \.self) { speaker in
-                            Button {
-                                onReassignSpeaker(speaker)
-                            } label: {
-                                Label(
-                                    speakerMenuTitle(for: speaker),
-                                    systemImage: speaker == segment.speaker ? "checkmark" : "person"
-                                )
-                            }
-                            .disabled(speaker == segment.speaker)
-                        }
-                    } label: {
-                        Image(systemName: "ellipsis.circle")
-                            .font(.body)
-                            .foregroundStyle(Theme.muted)
+        HStack(alignment: .top, spacing: 8) {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 8) {
+                    Label {
+                        Text(displayName)
+                            .font(.caption.bold())
+                    } icon: {
+                        Text(TranscriptAccessibility.speakerCue(for: segment.speaker, names: speakerNames))
+                            .font(.caption2.bold())
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 3)
+                            .background(speakerColor.opacity(0.25))
+                            .overlay(Capsule().stroke(speakerColor, lineWidth: 1))
+                            .clipShape(Capsule())
                     }
-                    .accessibilityLabel("Change speaker")
+                    .foregroundStyle(.white)
+                    Text(segment.timestamp)
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(Theme.muted)
+                    Spacer(minLength: 8)
                 }
+                Text(segment.text)
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
-            Text(segment.text)
-                .textSelection(.enabled)
-                .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(accessibilityLabel)
+            .accessibilityHint(accessibilityHint)
+            Spacer(minLength: 8)
+            if let onReassignSpeaker, !speakerOptions.isEmpty {
+                Menu {
+                    ForEach(speakerOptions, id: \.self) { speaker in
+                        Button {
+                            onReassignSpeaker(speaker)
+                        } label: {
+                            Label(
+                                speakerMenuTitle(for: speaker),
+                                systemImage: speaker == segment.speaker ? "checkmark" : "person"
+                            )
+                        }
+                        .disabled(speaker == segment.speaker)
+                    }
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                        .font(.title3)
+                        .foregroundStyle(Theme.muted)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
+                }
+                .accessibilityLabel("Change speaker for \(displayName)")
+                .accessibilityHint("Reassign this transcript card to another speaker.")
+            }
         }
         .padding()
         .background(Theme.surface)
         .clipShape(RoundedRectangle(cornerRadius: 12))
         .overlay(RoundedRectangle(cornerRadius: 12).stroke(Theme.border))
+    }
+
+    private var displayName: String {
+        TranscriptExporter.displayName(segment.speaker, names: speakerNames)
+    }
+
+    private var accessibilityLabel: String {
+        TranscriptAccessibility.label(
+            for: segment,
+            speakerNames: speakerNames,
+            canReassignSpeaker: onReassignSpeaker != nil && !speakerOptions.isEmpty
+        )
+    }
+
+    private var accessibilityHint: String {
+        onReassignSpeaker == nil || speakerOptions.isEmpty
+            ? "Transcript segment."
+            : "Use the change speaker button to reassign the speaker."
     }
 
     private var speakerColor: Color {
@@ -503,7 +813,8 @@ struct PrimaryButtonStyle: ButtonStyle {
             .padding(.horizontal, 22)
             .padding(.vertical, 13)
             .background(color.opacity(configuration.isPressed ? 0.7 : 1))
-            .foregroundStyle(.black)
+            .foregroundStyle(.white)
+            .fixedSize(horizontal: false, vertical: true)
             .clipShape(RoundedRectangle(cornerRadius: 10))
     }
 }
@@ -516,6 +827,7 @@ struct SecondaryButtonStyle: ButtonStyle {
             .padding(.vertical, 13)
             .background(Theme.surface)
             .foregroundStyle(.white)
+            .fixedSize(horizontal: false, vertical: true)
             .clipShape(RoundedRectangle(cornerRadius: 10))
             .overlay(RoundedRectangle(cornerRadius: 10).stroke(Theme.border))
     }

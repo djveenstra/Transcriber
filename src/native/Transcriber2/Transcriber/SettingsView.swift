@@ -82,6 +82,8 @@ struct SettingsView: View {
                         Label(microphoneTestButtonTitle, systemImage: microphoneTestButtonIcon)
                     }
                     .disabled(microphoneTest.isBusy)
+                    .accessibilityLabel(microphoneTestButtonTitle)
+                    .accessibilityHint(microphoneTest.isTesting ? "Stops the microphone level test." : "Starts a microphone level test without saving audio.")
                 }
 #if os(iOS)
                 Section("Compare Models") {
@@ -301,6 +303,9 @@ struct SettingsView: View {
             actionControl(for: descriptor, status: status)
         }
         .padding(.vertical, 4)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(descriptor.displayName)
+        .accessibilityValue(modelStorageAccessibilityValue(descriptor: descriptor, status: status, file: file))
     }
 
     @ViewBuilder private func actionControl(for descriptor: ModelDescriptor, status: ModelStatus) -> some View {
@@ -309,17 +314,39 @@ struct SettingsView: View {
             Button("Download") {
                 Task { await finalDownloader.download(descriptor.choice) }
             }
+            .accessibilityLabel("Download \(descriptor.displayName)")
         case .missingOrCorrupt, .failed:
             Button("Repair") {
                 Task { await finalDownloader.repair(descriptor.choice) }
             }
+            .accessibilityLabel("Repair \(descriptor.displayName)")
         case .downloaded, .ready:
             Button("Redownload") {
                 Task { await finalDownloader.redownload(descriptor.choice) }
             }
+            .accessibilityLabel("Redownload \(descriptor.displayName)")
         case .downloading, .verifying:
             EmptyView()
         }
+    }
+
+    private func modelStorageAccessibilityValue(
+        descriptor: ModelDescriptor,
+        status: ModelStatus,
+        file: ModelFileSnapshot
+    ) -> String {
+        var parts = [
+            providerLabel(descriptor.provider),
+            descriptor.speedHint,
+            descriptor.accuracyHint,
+            status.label,
+            status.detail,
+            "Storage \(ModelRegistry.formattedSize(file.sizeBytes))",
+        ]
+        if isSelected(descriptor) {
+            parts.append("Selected")
+        }
+        return parts.joined(separator: ". ")
     }
 
     private var downloadSnapshot: ModelDownloadSnapshot {

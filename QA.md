@@ -338,3 +338,164 @@ Use an iPhone 17 Pro or equivalent beta test device. Install the current OBJ-08 
 - Regression checklist: PASS for scoped regression: macOS build, iOS-simulator build, strict-concurrency build, focused export/import tests, full `TranscriberTests`, and `git diff --check` are green. No schema, dependency, audio deletion, transcript deletion, `src/python/`, `src/legacy-ios/`, or `XCode App Build/` changes.
 - Device gates outstanding: none specific to OBJ-16. A real-device share-sheet tap-through for TXT/SRT/JSON is useful during beta acceptance, but no Human-owned hardware gate blocks this objective.
 - Verdict: PASS. Manager gate recommendation: PROCEED.
+
+## OBJ-17 — Accessibility Pass — 2026-06-21
+- Tier: agent-verifiable fixes complete; Human light VoiceOver/device sanity pass still requested by `OBJECTIVE-17.md`.
+- Build: macOS PASS / iOS-sim PASS. The iOS simulator build emitted the existing AppIntents metadata extraction warning (`No AppIntents.framework dependency found`) and completed successfully.
+- Unit/integration tests: 129 passed / 129 total using `-only-testing:TranscriberTests`; focused `TranscriptSegmentReassignmentTests` + `ProcessingPhaseTests` PASS before the full bundle. New tests: `TranscriptSegmentReassignmentTests.transcriptAccessibilityLabelReadsSpeakerTimeTextAndEditState()`, `speakerCueAddsNonColorSpeakerIdentity()`, and `ProcessingPhaseTests.progressAccessibilityValueIncludesPhaseProgressElapsedAndDetail()`.
+- Manual UI: agent code review verifies Dynamic Type-friendly wrapping via `ViewThatFits` on primary action/control rows, removal of the Library metadata single-line limit, coherent VoiceOver labels/values on Dashboard cards, recording status, transcript cards, progress timeline, speaker-label cards, Model Lab controls/results, Settings microphone/model rows, and share/export controls. Simulator Accessibility Inspector / real VoiceOver audio pass was not performed by the agent.
+- Accessibility fixes: primary button foreground changed from black to white; recording status now uses icon plus text instead of a color-only dot; transcript speaker cards include a speaker cue pill plus name and a coherent VoiceOver label; status/model/microphone/progress cards expose plain-language accessibility values; small ellipsis speaker reassignment control now has a 44-point hit area and explicit label/hint.
+- Auditor: ALIGNED. Auditor verified changes are presentation-only, no transcription/diarization/model/export/persistence behavior changes, no app redesign, no `Recording` schema change, no dependency bump, `SWIFT_STRICT_CONCURRENCY = complete` unchanged, no prohibited-path edits, no OBJ-18/OBJ-19/OBJ-20 work, and non-color speaker/status cues were added where addressed.
+- Regression checklist: PASS for scoped regression: macOS build, iOS-simulator build, focused accessibility-copy tests, full `TranscriberTests`, and `git diff --check` are green. No schema, dependency, audio deletion, transcript deletion, `src/python/`, `src/legacy-ios/`, or `XCode App Build/` changes.
+- Device gates outstanding: Human Reviewer should do a light real-device VoiceOver/Dynamic Type sanity pass on Dashboard, Record/Stop/Cancel, Library detail transcript cards, speaker rename/reassign, Model Lab, Settings microphone/model rows, and Share/export menus.
+- Verdict: PASS for agent-verifiable OBJ-17 scope. Manager gate recommendation: ASK USER until the Human VoiceOver/device sanity pass is accepted; do not advance `OBJECTIVE.md` to OBJ-18 yet.
+
+## OBJ-17 — Human Reviewer FIX FIRST: Transcript Detail Large Text Layout — 2026-06-21
+- Source: Human Reviewer accessibility/device visual pass after the first OBJ-17 agent build.
+- Result: Mostly PASS, but transcript detail reading remains uncomfortable at larger text sizes.
+- Finding 1: speaker-label status card and Diagnostics row need to scroll with transcript content instead of staying fixed above it.
+- Finding 2: bottom action area takes too much vertical space when Play, Rename Speakers, Share, and New/new-recording actions stack vertically.
+- Finding 3: at large text sizes, transcript content should get priority; status/actions must remain available but should not dominate the screen.
+- Required follow-up: move status/Diagnostics into scrollable transcript content, make the bottom action area compact, preserve safe-area behavior and all existing actions, keep icon-only controls accessible if used, and avoid unrelated backlog/model/transcription behavior.
+- Gate recommendation: FIX FIRST. Do not advance OBJ-17 until this targeted layout/accessibility follow-up is fixed and validated.
+
+## OBJ-17 — FIX FIRST Follow-Up: Transcript Detail Large Text Layout — 2026-06-21
+- Tier: agent-verifiable fix complete; Human should re-check the one transcript detail screen at large Dynamic Type.
+- Fix summary: Recording, Shared Audio, and Library transcript detail surfaces now put the speaker-label status card, speaker-label processing timeline, and Diagnostics disclosure inside the same scrollable transcript content as the transcript cards, so those rows scroll away instead of staying fixed above the transcript.
+- Compact action area: completed transcript actions now use a horizontal compact action bar with 44-point icon targets for Edit/Rename Speakers, Share, Play/Pause, and New Recording where those actions exist. The bar remains visible but no longer falls back into a tall vertical stack that squeezes transcript reading.
+- Accessibility: icon-only compact actions use `CompactTranscriptAction` labels, hints, and SF Symbols; the share menu uses the same compact labels/hints when icon-only. Added focused test `TranscriptSegmentReassignmentTests.compactTranscriptActionsHaveAccessibleLabelsHintsAndIcons()`.
+- Scope check: no transcription, diarization, model, export format, persistence, retry, schema, dependency, strict-concurrency, OBJ-18, OBJ-19, or OBJ-20 behavior was changed. The future backlog item for changing transcription model and rerunning transcription from the transcript page was not implemented.
+- Validation: focused compact-action accessibility test PASS; macOS build PASS; iOS simulator build PASS on available `iPhone 17, iOS 26.5` simulator after the documented `iPhone 16` simulator was unavailable; full `TranscriberTests` PASS (130/130); `git diff --check` PASS.
+- Auditor: ALIGNED. Auditor verified the follow-up is layout/accessibility-only, compact/icon actions have labels and hints, status/Diagnostics scroll with transcript content, all existing actions remain available, and prohibited paths/dependencies/project settings were not touched.
+- Device gates outstanding: Human Reviewer should re-check Library/Recording transcript detail at large text sizes to confirm the transcript now gets priority and the compact action bar feels comfortable above the tab bar.
+- Verdict: PASS for agent-verifiable follow-up. Manager gate recommendation: ASK USER for the one-screen Human visual re-check before advancing OBJ-17.
+
+## OBJ-17 — Human Reviewer FIX FIRST: Transcript Detail Action Bar Legibility — 2026-06-21
+- Source: Human Reviewer transcript detail visual recheck after the first layout follow-up.
+- Result: Still not passing.
+- Finding 1: bottom action icons are too small and need to be larger/easier to visually understand and tap.
+- Finding 2: bottom action bar disappears while transcription is running and while speaker labels are being applied.
+- Required follow-up: make the compact bottom actions more legible without returning to a tall stacked layout; preserve at least 44-point tap targets; keep controls usable at large Dynamic Type; provide a compact processing action bar with Cancel when Play/Rename/Share/New are not appropriate; restore the completed transcript action bar after processing finishes.
+- Gate recommendation: FIX FIRST. Do not advance OBJ-17 until this targeted action-bar follow-up is fixed, validated, installed, launched, and rechecked by the Human Reviewer.
+
+## OBJ-17 — FIX FIRST Follow-Up: Transcript Detail Action Bar Legibility — 2026-06-21
+- Tier: agent-verifiable fix complete; Human should re-check the one transcript detail/action-bar screen on iPhone.
+- Fix summary: compact transcript actions now use larger visible SF Symbols plus short visual labels (`Edit`, `Rename`, `Share`, `New`, `Play`, `Pause`, `Cancel`) in a still-horizontal action bar. Tap targets remain at least 44 points, with the visual target increased beyond the prior 44x44 icon-only buttons.
+- Processing controls: Recording, Shared Audio, and Library retry processing now show a compact processing action bar with a red Cancel control when transcription/speaker-label processing is active. Completed transcript actions return after processing completes. Existing processing timelines still keep their own Cancel affordance.
+- Accessibility: compact actions still use explicit labels/hints/traits through `CompactTranscriptAction`; the focused test now covers visible compact titles and the new `cancelProcessing` action.
+- Scope check: no transcription, diarization, model, export format, persistence, retry, save, schema, dependency, signing, bundle ID, team, entitlements, deployment target, project structure, OBJ-18, OBJ-19, or OBJ-20 behavior was changed. The future model-change/rerun backlog item was not implemented.
+- Validation: focused compact-action accessibility test PASS; macOS build PASS; iOS simulator build PASS on available `iPhone 17, iOS 26.5` simulator; full `TranscriberTests` PASS (130/130); `git diff --check` PASS.
+- Device detection: `xcrun xctrace list devices` listed `iPhone 14 Pro (26.5.1)` with device id `00008150-000909261440401C` under offline devices, while `xcodebuild -showdestinations` listed the same phone as an available iOS destination. `xcrun devicectl list devices` showed `iPhone 14 Pro` connected with identifier `F8EA1DB6-2D3A-53EE-A3D9-80A6FE2CB204`.
+- Install/run: physical-device build PASS using existing project/scheme/signing settings. Installed `com.daniel.transcriber2.beta` to the connected iPhone with `devicectl`; launched `com.daniel.transcriber2.beta` successfully.
+- Auditor: ALIGNED. Auditor verified the follow-up is layout/accessibility-only, compact/icon actions retain labels and hints, Cancel remains reachable during processing, completed actions remain available after processing, and prohibited settings/paths/dependencies were not changed.
+- Device gates outstanding: Human Reviewer should re-check transcript detail at large text sizes, including completed state and speaker-labeling/transcribing state, to confirm the larger action bar is readable and Cancel remains obvious.
+- Verdict: PASS for agent-verifiable follow-up. Manager gate recommendation: ASK USER for the one-screen Human visual re-check before advancing OBJ-17.
+
+## OBJ-17 — Human Reviewer FIX FIRST: Transcript Detail Play Button Regression — 2026-06-22
+- Source: Human Reviewer transcript detail/action-bar recheck on the installed iPhone build.
+- Result: Still not passing.
+- Finding 1: Play in the completed transcript action bar does nothing. Because OBJ-17 changed the completed transcript action bar, this is a blocking regression for OBJ-17.
+- Finding 2: during transcription/speaker-labeling only Cancel shows. This may be acceptable if processing is active and completed actions are intentionally unavailable; verify Cancel is clear, reachable, and accessible.
+- Finding 3: speaker labeling/diarization can appear to hang or take longer than expected even on a short recording. A second short single-speaker recording eventually completed but still felt slow. This is device-observed and outside OBJ-17 unless caused by the accessibility/layout change; do not change the diarization algorithm here.
+- Finding 4: it is not obvious that the user can swipe down from the transcription screen to get back to Dashboard. Log as a UX follow-up unless a small OBJ-17-safe accessibility fix is identified.
+- Finding 5: Human Reviewer is not confident background/closed recording is still active because iOS does not show an obvious Dynamic Island or status-area recording indicator. Log as a background-recording/device-acceptance concern for later OBJ-20 or follow-up to OBJ-08; do not change background recording behavior in OBJ-17.
+- Required follow-up: restore Play/Pause behavior in the completed transcript action bar, preserve the compact larger-icon bar, preserve accessibility labels/hints, preserve status/diagnostics scrolling, preserve Cancel during processing, and avoid unrelated backlog work.
+- Gate recommendation: FIX FIRST until Play/Pause is fixed, validated, installed, launched, and rechecked by the Human Reviewer.
+
+## OBJ-17 — FIX FIRST Follow-Up: Transcript Detail Play Button Regression — 2026-06-22
+- Tier: agent-verifiable fix complete; Human should re-check Play/Pause on the installed iPhone build.
+- Fix summary: saved-recording transcript detail now uses the existing `AudioPlaybackController` for the compact Play/Pause action, matching the shared-audio playback path that activates the iOS playback audio session and publishes play state for the visible Play/Pause label.
+- Processing controls: the Cancel-only compact action bar during transcription/speaker-labeling is intentional for OBJ-17. Completed actions remain hidden while processing is active because Play/Rename/Share/New are not safe or meaningful until the current processing step finishes; Cancel remains visible, reachable, and labeled through `CompactTranscriptAction.cancelProcessing`.
+- Device-observed backlog notes: speaker-labeling/diarization duration or apparent hanging remains logged for later investigation because OBJ-17 did not alter the diarization algorithm; swipe-down return-to-Dashboard discoverability is logged as a UX follow-up; background/closed recording indicator confidence remains a Human/device acceptance concern for OBJ-20 or an OBJ-08 follow-up. None of these backlog items were implemented in this pass.
+- Accessibility/layout preservation: compact larger-icon action bar, labels/hints/traits, status/Diagnostics scrolling with transcript content, and Cancel visibility during processing were preserved.
+- Validation: macOS build PASS; iOS simulator build PASS with the existing AppIntents metadata warning; focused compact-action accessibility test PASS; full `TranscriberTests` PASS (130/130); `git diff --check` PASS.
+- Device detection: `xcrun devicectl list devices` showed the connected iPhone available with identifier `F8EA1DB6-2D3A-53EE-A3D9-80A6FE2CB204`; `xcodebuild -showdestinations` listed physical destination `00008150-000909261440401C`.
+- Install/run: physical-device build PASS using existing project/scheme/signing settings. Installed `com.daniel.transcriber2.beta` to the connected iPhone with `devicectl`; first launch attempt was denied because the device was locked; after retry, launch succeeded.
+- Auditor: ALIGNED. Auditor verified the Play/Pause restoration is limited to the transcript detail playback regression, compact action accessibility remains present, and no transcription, diarization, model, export, persistence, retry, save, signing, background-recording, Dynamic Island, navigation redesign, dependency, project-structure, or OBJ-18+ behavior was changed.
+- Device gates outstanding: Human Reviewer should re-check this one screen on iPhone: completed transcript Play/Pause, compact action bar legibility, and Cancel visibility during processing.
+- Verdict: PASS for agent-verifiable follow-up. Manager gate recommendation: ASK USER for the targeted Human playback/action-bar recheck before advancing OBJ-17.
+
+## OBJ-17 — Human Reviewer FIX FIRST: Functional Playback/Live Preview/Speaker Labels Recheck — 2026-06-22
+- Source: Human Reviewer recheck on the installed iPhone build after the first Play/Pause follow-up.
+- Result: Still not passing. Human Reviewer asked to stop layout polishing and classify functional behavior before OBJ-17 can pass.
+- Finding 1: Play gives only about half a second of playback, then stops or does not do anything useful.
+- Clarification: Play was not previously tested by the Human Reviewer before OBJ-17, so this is known broken now but is not proven to be a regression from OBJ-17.
+- Finding 2: live preview crashed again.
+- Finding 3: speaker labels did not work or appeared stuck.
+- Finding 4: the transcript/detail screen still wastes vertical space with the large `Transcriber 2.0` header. This is secondary until functional issues are resolved or safely classified.
+- Required follow-up: determine whether OBJ-17 action-bar/layout/accessibility changes caused or worsened Play/Pause, live preview crashes, or speaker-label stuck behavior; fix any OBJ-17-caused regression; otherwise document the device findings and defer broader stabilization outside OBJ-17.
+- Gate recommendation: FIX FIRST until the functional behavior is fixed or clearly classified for a Human Reviewer decision.
+
+## OBJ-17 — FIX FIRST Follow-Up: Functional Playback Triage — 2026-06-22
+- Tier: agent-verifiable playback fix attempt complete; Human should re-check playback and the noted device behaviors on iPhone.
+- Playback investigation: OBJ-17 did touch the saved-recording playback UI path by moving completed transcript actions into the compact action bar and routing the button through `AudioPlaybackController`. Because this was the only OBJ-17-touched functional path related to the Human finding, playback was treated as an in-scope follow-up.
+- Playback fix attempt: `AudioPlaybackController` now uses a retained `AVPlayer`/`AVPlayerItem`, activates the iOS playback audio session before playback, observes end-of-file to reset the visible Play/Pause state, and keeps the compact action bar wiring intact. This preserves the existing Play/Pause action while avoiding a short-lived local player path.
+- Live preview investigation: OBJ-17 did not change `TranscriptionSession`, `AudioRecorder`, transcription engines, live-preview engine behavior, retry/session-state logic, persistence, or audio save paths. The live preview crash is logged as a Human/device functional finding outside the accessibility/layout scope unless later evidence connects it to OBJ-17.
+- Speaker-label investigation: OBJ-17 did not change `DiarizationEngine`, model loading/selection, session retry behavior, or transcript persistence. Focused diarization fallback tests passed, including watchdog/fallback coverage and retrying speaker labels from stored raw transcription. Speaker-label stuck/failure is logged as a Human/device functional finding outside OBJ-17 unless later evidence connects it to OBJ-17.
+- Header layout: deferred. The large transcript/detail header remains a known layout issue, but it was not changed in this pass because functional playback and device stability need Human confirmation first.
+- Processing controls: Cancel-only controls during active transcription/speaker-labeling remain intentional and accessible. Completed actions remain unavailable while processing is active; Cancel remains the clear reachable action.
+- Scope check: no transcription, diarization, model, export, retry, save, persistence, signing, background-recording, Dynamic Island, model-change/rerun, delete-downloaded-models, navigation redesign, dependency, project-structure, OBJ-18, OBJ-19, or OBJ-20 behavior was implemented.
+- Validation: macOS build PASS; iOS simulator build PASS with the existing AppIntents metadata warning only; focused compact-action accessibility test PASS; focused `DiarizationFallbackTests` PASS; focused `ProcessingPhaseTests` PASS; full `TranscriberTests` PASS (130/130); `git diff --check` PASS before docs and again after docs.
+- Device detection: `xcrun devicectl list devices` showed the connected iPhone available with identifier `F8EA1DB6-2D3A-53EE-A3D9-80A6FE2CB204`; `xcodebuild -showdestinations` listed physical destination `00008150-000909261440401C`.
+- Install/run: physical-device build PASS using existing project/scheme/signing settings. Installed `com.daniel.transcriber2.beta` to the connected iPhone with `devicectl`; first launch attempt was denied because the device was locked; after unlock/retry, launch succeeded.
+- Auditor: ALIGNED. Auditor verified the only functional code change is limited to the OBJ-17-touched playback helper, accessibility labels/hints remain present, compact action layout remains intact, and no broad transcription/diarization/model/export/persistence/background-recording behavior or OBJ-18+ work was introduced.
+- Device gates outstanding: Human Reviewer should re-check completed transcript Play/Pause first, then re-check live preview, speaker labels, Cancel during processing, and the remaining header layout issue.
+- Verdict: ASK USER. Recommendation: re-check this installed build for Play/Pause. If playback is now acceptable but live preview or speaker-label behavior still fails, pause before OBJ-18 and create a targeted stabilization objective rather than expanding OBJ-17.
+
+## OBJ-17 — Human Reviewer Product Decision: Diarization Reliability Blocks Beta — 2026-06-22
+- Source: Human Reviewer product decision after repeated iPhone testing during OBJ-17 closeout.
+- Result: OBJ-17 closeout is paused. Do not commit OBJ-17, merge, advance to OBJ-18, start Mac parity, add server/cloud processing, add pyannote, or add new dependencies until the Manager receives Human approval for the next plan step.
+- Product finding: speaker labeling/diarization has been unreliable across repeated testing, including crashes or crash contribution, stuck speaker labeling, frequent need to cancel out, and long duration even on short recordings.
+- Product impact: speaker labeling is a key beta feature, so the app cannot be considered beta-ready while diarization can crash, hang, or leave the workflow stuck.
+- OBJ-17 classification: this is not treated as an OBJ-17 accessibility failure unless later evidence shows OBJ-17 caused it. OBJ-17 remains open for Play/Pause and visual accessibility follow-up, but the diarization concern is now logged as a blocking product concern requiring a proposed stabilization/engine-decision objective before OBJ-18.
+- Proposed next objective: OBJ-17.5 — Diarization Reliability & Engine Decision, to decide whether the current on-device diarization implementation is acceptable for beta, and if not, what hardened replacement/fallback architecture should be used.
+- Gate implication: do not silently advance from OBJ-17 to OBJ-18 while diarization reliability remains unresolved. Human approval is required before inserting OBJ-17.5 into `PLAN.md`/`OBJECTIVE.md` or creating `docs/planning/objectives/OBJECTIVE-17.5.md`.
+
+## OBJ-17 — FIX FIRST Follow-Up: Transcript Detail Header Recheck Build — 2026-06-22
+- Tier: agent-verifiable layout fix complete; Human should re-check the transcript/detail header on iPhone.
+- Human decision: OBJ-17.5 is approved in principle as the next checkpoint after OBJ-17 is accepted, committed, and merged, but its planning files must not be applied until OBJ-17 is ready to close. Mac parity remains blocked behind the diarization checkpoint.
+- Header/layout fix: iOS transcript-related screens now use compact inline navigation titles for the recording/transcript screen, saved recording detail, and shared recording detail. This reduces the large `Transcriber 2.0`/detail header space while preserving the native navigation bar back/dismiss affordance.
+- Playback status: the prior scoped playback fix remains in place through `AudioPlaybackController` using a retained `AVPlayer`/`AVPlayerItem`; Human device verification is still required to confirm Play/Pause no longer stops after about half a second.
+- Action bar/accessibility status: compact larger-icon action bar, accessibility labels/hints/traits, status/Diagnostics scrolling, and Cancel visibility during processing remain preserved.
+- Diarization status: no diarization architecture work was implemented. The reliability concern remains logged as a blocking product concern for OBJ-17.5 before OBJ-18.
+- Validation: macOS build PASS; iOS simulator build PASS with the existing AppIntents metadata warning only; focused compact-action accessibility test PASS; full `TranscriberTests` PASS (130/130); physical iPhone build PASS using existing project/scheme/signing settings.
+- Install/run: installed updated `com.daniel.transcriber2.beta` on the connected iPhone. Launch was attempted three times but iOS refused because the device was locked, so this specific build is installed but not launched by the agent.
+- Gate implication: ASK USER / Human recheck needed for Play/Pause, transcript/detail header spacing, compact action bar accessibility, and Cancel visibility during processing before OBJ-17 can close.
+
+## OBJ-17 — Human Reviewer FAIL: Play/Pause Still Broken, Header PASS — 2026-06-22
+- Source: Human Reviewer recheck on the installed iPhone build after the transcript/detail header follow-up.
+- Result: FAIL. Keep OBJ-17 open; do not commit, merge, advance `OBJECTIVE.md`, create OBJ-17.5 files, or start OBJ-18.
+- Finding 1: Play/Pause still does not work. Play gives the same short or failed playback behavior as before.
+- Finding 2: header/title layout is much better. Human Reviewer marked this part PASS.
+- Finding 3: bottom action bar is visible after canceling processing.
+- Finding 4: during active processing only Cancel is visible. This may be acceptable for OBJ-17 when processing is intentionally modal, but the product direction is shifting toward background processing where the user is not trapped on the processing screen.
+- Finding 5: diarization/speaker labeling again became stuck or unusably slow. A short recording was still not handled after about 1.5-2 minutes.
+- Product direction for OBJ-17.5 planning: preload the default/Base English model on app launch; investigate warming or preloading diarization resources; allow transcription and speaker-label processing to continue while the user navigates elsewhere; show visible per-recording processing states in Dashboard, Library, and detail; add timeout/failure handling so `Identifying speakers` never hangs forever; keep the transcript available even if speaker labeling fails.
+- Required OBJ-17 action: fix Play/Pause or return BLOCKED with a precise explanation. Preserve the compact action bar, accessibility labels/hints, status/Diagnostics scrolling, and Cancel visibility during processing. Do not implement model preload, background processing, diarization reliability architecture, OBJ-18, or unrelated backlog items inside OBJ-17.
+- Gate recommendation: FIX FIRST until Play/Pause is fixed or safely blocked/classified.
+
+## OBJ-17 — FIX FIRST Follow-Up: Local Playback Repair — 2026-06-22
+- Tier: agent-verifiable fix attempt complete; Human should re-check Play/Pause on the installed iPhone build.
+- Playback investigation: OBJ-17 changed the saved-recording transcript detail action area, so the completed transcript Play/Pause wiring remains in scope for OBJ-17 fallout. The earlier retained `AVPlayer` attempt did not satisfy Human device testing, so the playback helper was returned to explicit local-file playback behavior using a retained `AVAudioPlayer`.
+- Playback fix attempt: `AudioPlaybackController` now creates and retains an `AVAudioPlayer` for the current recording URL, activates the iOS playback audio session before playback, supplies file type hints for common saved/imported audio formats, keeps Play/Pause state published for the compact action bar, resets at end of file, and clears state on decode errors.
+- Tests added: `TranscriptSegmentReassignmentTests.playbackFileTypeHintsCoverSavedAndImportedAudio()` covers CAF, M4A, WAV, MP3, and unknown extension hint behavior.
+- Header/layout: Human Reviewer PASS for the compact inline transcript/detail header is recorded and the improvement remains in place.
+- Action bar/accessibility: compact larger-icon action bar, accessible labels/hints/traits, status/Diagnostics scrolling with transcript content, and Cancel-only processing controls remain preserved. During active transcription/speaker-labeling, Cancel is intentionally the only compact bottom action because completed actions are not safe or meaningful until processing finishes.
+- Scope check: no model preload, background processing, diarization architecture, transcription, diarization algorithm, model, export, retry, save, persistence, signing, background-recording, Dynamic Island, model-change/rerun, delete-downloaded-models, dependency, project-structure, OBJ-18, OBJ-19, or OBJ-20 work was implemented.
+- OBJ-17.5 planning note: diarization reliability remains logged as a blocking product concern before OBJ-18. The queued OBJ-17.5 proposal should include default/Base English model preload on app launch, diarization resource warm/preload investigation, background processing while navigating, per-recording processing status, timeout/failure handling for stuck speaker identification, and transcript availability when speaker labeling fails. No OBJ-17.5 planning files were created or applied in this pass.
+- Validation: macOS build PASS; iOS simulator build PASS with the existing AppIntents metadata warning only; focused playback hint test PASS; focused compact-action accessibility test PASS; full `TranscriberTests` PASS (131/131) after rerunning serially when an initial parallel run hit an Xcode build database lock; `git diff --check` PASS.
+- Device install/run: physical iPhone build PASS using existing project/scheme/signing settings. Installed `com.daniel.transcriber2.beta` to the connected iPhone with `devicectl`; launched `com.daniel.transcriber2.beta` successfully.
+- Auditor: ALIGNED. Auditor verified the only functional code change is limited to the OBJ-17-touched playback helper, compact action accessibility remains present, Cancel remains reachable during processing, and no broad transcription/diarization/model/preload/background-processing/export/persistence behavior or OBJ-18+ work was introduced.
+- Device gates outstanding: Human Reviewer should re-check completed transcript Play/Pause first, then verify the compact action bar remains usable and Cancel remains clear during processing.
+- Verdict: ASK USER. The code-level Play/Pause fix attempt is green and installed/launched, but real iPhone audio behavior needs Human confirmation before OBJ-17 can close.
+
+## OBJ-17 — Final Human Reviewer PASS and Gate — 2026-06-23
+- Source: Human Reviewer final closeout approval on the installed iPhone build after the dedicated playback repair path.
+- Human Reviewer result: PASS for OBJ-17.
+- Confirmed on iPhone: playback works, playback continues past 1 second, Pause works, Play works again after Pause, Back/Forward/player controls are acceptable, and the dedicated mini-player/playback-safe M4A derivative approach is acceptable.
+- Confirmed on iPhone: original recording preservation remains a requirement; the M4A derivative is accepted only as a cache/regenerable playback artifact.
+- Confirmed on iPhone: header/title layout is much better and acceptable; compact player/action controls are acceptable; accessibility/layout items are acceptable for OBJ-17.
+- Current closeout validation: macOS build PASS; iOS simulator build PASS; physical iPhone build/install/launch PASS from the installed OBJ-17 build; full `TranscriberTests` PASS (133/133); focused playback/cache tests PASS; focused compact-action accessibility test PASS; `git diff --check` PASS.
+- Auditor closeout: ALIGNED. OBJ-17 remains limited to accepted playback/action-bar/layout/accessibility work plus planning/QA docs. No transcription, diarization algorithm, model, export, retry, save, persistence, signing, background-recording, dependency, SwiftData schema, prohibited-path, OBJ-18, OBJ-19, or OBJ-20 implementation work was introduced.
+- Diarization blocker: speaker-label reliability is not accepted as fixed. FluidAudio/Sortformer diarization safety, timeout, cancellation, transcript preservation, playback preservation, retry state, and overlapping-attempt protection are queued as **OBJ-17.1 — FluidAudio Diarization Safety & Timeout Stabilization** before OBJ-18.
+- Verdict: PASS. Manager gate decision: PROCEED for OBJ-17. Do not start OBJ-18 until OBJ-17.1 is completed or explicitly re-gated by the Human Reviewer.

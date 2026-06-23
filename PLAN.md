@@ -5,7 +5,7 @@ _Read alongside [PRD.md](PRD.md), [AGENTS.md](AGENTS.md), and the active [OBJECT
 ## How to read this plan
 
 - The product target is [PRD.md](PRD.md). The current code is reviewed in [docs/planning/ARCHITECTURE_REVIEW.md](docs/planning/ARCHITECTURE_REVIEW.md); the delta is in [docs/planning/GAP_ANALYSIS.md](docs/planning/GAP_ANALYSIS.md).
-- Work is delivered as **20 sequential objectives** (`docs/planning/objectives/OBJECTIVE-01.md` … `-20.md`), each ≈ one implementation session, each independently completable, building, and green.
+- Work is delivered as **20 sequential objectives** (`docs/planning/objectives/OBJECTIVE-01.md` … `-20.md`), with Human-approved 17.x stabilization checkpoints inserted when beta-blocking risk appears. Each objective is independently completable, building, and green.
 - **Active path:** the only app under development is `src/native/Transcriber2/`. Never modify `src/python/` (independent), and treat `src/legacy-ios/` and `XCode App Build/` as read-only reference.
 - **Sequencing is dependency-driven.** Foundations (status model, model registry, microphone abstraction, diagnostics model) precede the UI that consumes them. Critical-risk work precedes new surface area.
 
@@ -97,13 +97,14 @@ On-device acceptance (Human Reviewer, iPhone 17 Pro) covers: real mic capture, b
 ## Phase 6 — Export & accessibility (PRD §11/§15; R16, R19)
 
 - **OBJ-16 — Export hardening.** **DONE 2026-06-21 — Gate: PROCEED; evidence: [QA.md](QA.md#obj-16--export-hardening--2026-06-21), [completion report](docs/planning/objectives/OBJECTIVE-16.md#completion-report--2026-06-21).** JSON via `Codable`; verified speaker names in all formats; SRT timing tests; large/odd-format import checks.
-- **OBJ-17 — Accessibility pass.** Dynamic Type, VoiceOver labels/traits (incl. transcript cards + status dots), contrast audit, non-color status/speaker indicators, reachability.
+- **OBJ-17 — Accessibility pass.** **DONE 2026-06-23 — Gate: PROCEED; evidence: [QA.md](QA.md#obj-17--final-human-reviewer-pass-and-gate--2026-06-23), [completion report](docs/planning/objectives/OBJECTIVE-17.md#final-closeout-report--2026-06-23).** Dynamic Type, VoiceOver labels/traits, contrast audit, non-color status/speaker indicators, reachability, compact transcript actions, transcript/detail header cleanup, and accepted playback-safe M4A derivative path for completed-recording playback.
+- **OBJ-17.1 — FluidAudio Diarization Safety & Timeout Stabilization.** Diagnose current FluidAudio/Sortformer diarization hangs; add per-stage private diagnostics; fix timeout/cancel stuck-state behavior; preserve transcript and playback on timeout/failure/cancel; keep retry safe; prevent unsafe overlapping diarization attempts. No engine replacement, sherpa-onnx, server/cloud/off-device processing, new dependencies, OBJ-18 work, model-change/rerun backlog, or delete-downloaded-models backlog.
 
-**Risk:** Low–Medium. **Rollback:** mostly additive/cosmetic.
+**Risk:** Low–Medium for OBJ-16/OBJ-17; Medium for OBJ-17.1 because it touches diarization state safety. **Rollback:** export/accessibility changes are mostly additive/cosmetic; OBJ-17.1 must remain narrow and reversible.
 
 ## Phase 7 — Mac parity & hardening (PRD §4/§17; R6, R7, R9)
 
-- **OBJ-18 — Mac companion parity.** Open/import/play/share verified; Model Lab on Mac where feasible; document intentional iPhone-first gaps.
+- **OBJ-18 — Mac companion parity.** Open/import/play/share verified; Model Lab on Mac where feasible; document intentional iPhone-first gaps. **Blocked behind OBJ-17.1 unless the Human Reviewer explicitly re-gates diarization safety.**
 - **OBJ-19 — Cancellation & failure-injection hardening.** Full cancel matrix + forced model/mic/diarization failures; stress interleavings; verify model unload + UI recovery + data safety.
 
 **Risk:** Medium. **Rollback:** test-led; behavior fixes isolated.
@@ -126,8 +127,8 @@ OBJ-01
  │                         └ OBJ-11 (Model Lab tab; also needs OBJ-03 registry)
  ├─ OBJ-12 ─ OBJ-13                       (speaker workflow; OBJ-12 needs migration policy from OBJ-01)
  ├─ OBJ-14 ─ OBJ-15                       (progress + diagnostics)
- ├─ OBJ-16, OBJ-17                        (export, accessibility)
- ├─ OBJ-18                                (Mac parity; after IA + diagnostics)
+ ├─ OBJ-16 ─ OBJ-17 ─ OBJ-17.1            (export, accessibility, diarization safety checkpoint)
+ ├─ OBJ-18                                (Mac parity; after IA + diagnostics + OBJ-17.1)
  └─ OBJ-19 ─ OBJ-20                       (hardening + acceptance + tech debt; last)
 ```
 

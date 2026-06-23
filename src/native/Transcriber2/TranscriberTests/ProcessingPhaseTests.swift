@@ -67,6 +67,17 @@ struct ProcessingPhaseTests {
         #expect(retryable.showsRetry)
     }
 
+    @Test func progressAccessibilityValueIncludesPhaseProgressElapsedAndDetail() {
+        let presentation = ProcessingProgressPresentation(
+            phase: .transcribing,
+            progress: 0.42,
+            canCancel: true,
+            showsRetry: false
+        )
+
+        #expect(presentation.accessibilityValue(elapsed: 65) == "Transcribing. Progress 42%. Elapsed 01:05. The final pass creates the transcript from the saved audio.")
+    }
+
     @Test func transcriptionSessionProcessingStateCarriesPhase() {
         let state = TranscriptionSession.State.processing(.transcribing)
 

@@ -108,6 +108,11 @@ struct ProcessingProgressPresentation: Equatable {
         }
         return String(format: "%02d:%02d", minutes, seconds)
     }
+
+    func accessibilityValue(elapsed: TimeInterval) -> String {
+        let progressText = percentText.map { "Progress \($0)" } ?? phase.activityText
+        return "\(phase.title). \(progressText). Elapsed \(Self.elapsedText(elapsed)). \(phase.detailText)"
+    }
 }
 
 struct ProcessingTimelineView: View {
@@ -142,6 +147,8 @@ struct ProcessingTimelineView: View {
 
             ProgressView(value: progress.map { min(max($0, 0), 1) })
                 .tint(Theme.accent)
+                .accessibilityLabel("Progress")
+                .accessibilityValue(presentation.statusText)
 
             TimelineView(.periodic(from: startedAt ?? .now, by: 1)) { context in
                 let elapsed = startedAt.map { context.date.timeIntervalSince($0) } ?? 0
@@ -153,6 +160,7 @@ struct ProcessingTimelineView: View {
                         )
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(Theme.muted)
+                        .accessibilityLabel("Elapsed time")
                         Spacer()
                     }
 
@@ -175,18 +183,12 @@ struct ProcessingTimelineView: View {
                 }
             }
 
-            HStack(spacing: 10) {
-                if canCancel, let cancelAction {
-                    Button(action: cancelAction) {
-                        Label(cancelTitle, systemImage: "xmark.circle")
-                    }
-                    .buttonStyle(SecondaryButtonStyle())
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 10) {
+                    timelineControls
                 }
-                if let retryAction {
-                    Button(action: retryAction) {
-                        Label("Retry", systemImage: "arrow.clockwise")
-                    }
-                    .buttonStyle(SecondaryButtonStyle())
+                VStack(alignment: .leading, spacing: 10) {
+                    timelineControls
                 }
             }
         }
@@ -194,6 +196,24 @@ struct ProcessingTimelineView: View {
         .frame(maxWidth: 460, alignment: .leading)
         .background(Theme.surface)
         .clipShape(RoundedRectangle(cornerRadius: 12))
+        .accessibilityElement(children: .contain)
+    }
+
+    @ViewBuilder private var timelineControls: some View {
+        if canCancel, let cancelAction {
+            Button(action: cancelAction) {
+                Label(cancelTitle, systemImage: "xmark.circle")
+            }
+            .buttonStyle(SecondaryButtonStyle())
+            .accessibilityHint("Stops the current processing step and keeps saved audio or transcript work where available.")
+        }
+        if let retryAction {
+            Button(action: retryAction) {
+                Label("Retry", systemImage: "arrow.clockwise")
+            }
+            .buttonStyle(SecondaryButtonStyle())
+            .accessibilityHint("Retries this processing step.")
+        }
     }
 
     private func detailRow(_ label: String, _ value: String) -> some View {

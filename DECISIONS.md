@@ -48,6 +48,12 @@ Format per entry: **ID · Date · Decision · Why · Implications · Reversibili
 **Implications:** Dashboard owns the prominent Record/Import entry points; iOS Model Lab is a top-level tab; Settings may keep a secondary Model Lab link. Removing the Record tab is acceptable only while the Dashboard-triggered recording/import flow remains available.
 **Reversibility:** Tab promotion and Dashboard-triggered Record/Import routing are UI-level changes and can be reverted without schema or data migration.
 
+### D-008 · 2026-06-23 · Diarization and audio-pipeline guardrails before Mac parity
+**Why:** Human Reviewer device testing accepted OBJ-17 playback/accessibility but did not accept speaker-label reliability. The app must remain useful when diarization is slow, canceled, times out, or fails.
+**Decision:** Off-device/server diarization, pyannote, sherpa-onnx, and any new dependencies are investigation options only until the Human Reviewer explicitly approves them. The beta must preserve transcript availability and safe failure even if speaker labeling is imperfect. The M4A playback derivative is accepted as a cache/regenerable playback artifact, not the canonical source of truth. Background/locked-screen recording is mandatory for the product.
+**Implications:** OBJ-17.1 stabilizes the current FluidAudio/Sortformer path first: diagnostics, timeout, cancellation, transcript preservation, playback preservation, retry safety, and overlapping-attempt protection. Future local/on-device alternatives may be researched, but not implemented without a scoped approval. Original/master audio remains preserved, and cache derivatives can be regenerated.
+**Reversibility:** Policy/documentation only. Any future engine, dependency, or pipeline replacement requires its own approved objective and validation.
+
 ---
 
 ## Decisions awaiting the Human Reviewer (open questions)
