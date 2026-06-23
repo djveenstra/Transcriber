@@ -592,7 +592,7 @@ struct RecordingDetailView: View {
     }
 
     var body: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: 8) {
             if isAudioMissing {
                 Label("Audio file missing. The Library row and any saved transcript were kept.", systemImage: "exclamationmark.triangle.fill")
                     .font(.callout)
@@ -614,17 +614,20 @@ struct RecordingDetailView: View {
                         description: Text("The audio is safe, but its final transcript still needs to be created.")
                     )
                 } else {
+                    CompletedRecordingMiniPlayer(
+                        player: playback,
+                        audioURL: recording.audioURL,
+                        isDisabled: isAudioMissing,
+                        isCompact: true
+                    )
                     TranscriptReviewScroll(
                         segments: recording.segments,
                         speakerNames: recording.speakerNames,
                         speakerOptions: TranscriptSegmentReassignment.availableSpeakers(in: recording.segments),
-                        onReassignSpeaker: reassignSegment
+                        onReassignSpeaker: reassignSegment,
+                        onReassignSpeakerGroup: reassignSegments
                     ) {
-                        SpeakerLabelStatusView(
-                            presentation: speakerLabelPresentation,
-                            retryAction: speakerLabelRetryAction
-                        )
-                        DiagnosticsDisclosureView(diagnostics: detailDiagnostics)
+                        recordingDetailScrollHeader
                     }
                 }
             }
@@ -642,7 +645,9 @@ struct RecordingDetailView: View {
                 .disabled(isAudioMissing)
             }
         }
-        .padding()
+        .padding(.horizontal)
+        .padding(.top, 4)
+        .padding(.bottom, 10)
         .background(Theme.background)
         .navigationTitle(recording.title)
 #if os(iOS)
@@ -670,6 +675,19 @@ struct RecordingDetailView: View {
         }
     }
 
+    private var recordingDetailScrollHeader: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            VStack(spacing: 6) {
+                        SpeakerLabelStatusView(
+                            presentation: speakerLabelPresentation,
+                            retryAction: speakerLabelRetryAction
+                        )
+                        DiagnosticsDisclosureView(diagnostics: detailDiagnostics)
+            }
+        }
+        .background(Theme.background)
+    }
+
     @ViewBuilder private var detailActionArea: some View {
         if case .processing = retrySession.state {
             CompactTranscriptActionBar {
@@ -682,12 +700,7 @@ struct RecordingDetailView: View {
                 }
             }
         } else {
-            VStack(spacing: 8) {
-                CompletedRecordingMiniPlayer(
-                    player: playback,
-                    audioURL: recording.audioURL,
-                    isDisabled: isAudioMissing
-                )
+            VStack(spacing: 6) {
                 CompactTranscriptActionBar {
                     detailControls
                 }
@@ -758,9 +771,13 @@ struct RecordingDetailView: View {
     }
 
     private func reassignSegment(_ segmentID: TranscriptSegment.ID, to speaker: String) {
+        reassignSegments([segmentID], to: speaker)
+    }
+
+    private func reassignSegments(_ segmentIDs: [TranscriptSegment.ID], to speaker: String) {
         let currentSegments = recording.segments
         let updatedSegments = TranscriptSegmentReassignment.reassign(
-            segmentID: segmentID,
+            segmentIDs: segmentIDs,
             to: speaker,
             in: currentSegments
         )
@@ -940,6 +957,7 @@ struct CompletedRecordingMiniPlayer: View {
     @ObservedObject var player: CompletedRecordingAudioPlayer
     let audioURL: URL
     var isDisabled: Bool
+    var isCompact: Bool = false
 
     private var progress: Double {
         guard player.duration > 0 else { return 0 }
@@ -947,8 +965,8 @@ struct CompletedRecordingMiniPlayer: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 12) {
+        VStack(alignment: .leading, spacing: isCompact ? 5 : 8) {
+            HStack(spacing: isCompact ? 8 : 12) {
                 playbackButton(systemImage: "gobackward.10", label: "Back 10 seconds", hint: "Moves playback back by 10 seconds.") {
                     player.seek(by: -10)
                 }
@@ -1001,11 +1019,11 @@ struct CompletedRecordingMiniPlayer: View {
                     .foregroundStyle(.yellow)
             }
         }
-        .padding(10)
+        .padding(isCompact ? 8 : 10)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Theme.surface)
-        .clipShape(RoundedRectangle(cornerRadius: 10))
-        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Theme.border))
+        .clipShape(RoundedRectangle(cornerRadius: isCompact ? 8 : 10))
+        .overlay(RoundedRectangle(cornerRadius: isCompact ? 8 : 10).stroke(Theme.border))
         .accessibilityElement(children: .contain)
     }
 
@@ -1017,8 +1035,8 @@ struct CompletedRecordingMiniPlayer: View {
     ) -> some View {
         Button(action: action) {
             Image(systemName: systemImage)
-                .font(.system(size: 22, weight: .semibold))
-                .frame(width: 44, height: 44)
+                .font(.system(size: isCompact ? 18 : 22, weight: .semibold))
+                .frame(width: isCompact ? 36 : 44, height: isCompact ? 36 : 44)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -1108,6 +1126,7 @@ struct TranscriptListWithNames: View {
     let segments: [TranscriptSegment]
     let names: [String: String]
     var onReassignSpeaker: ((TranscriptSegment.ID, String) -> Void)?
+    var onReassignSpeakerGroup: (([TranscriptSegment.ID], String) -> Void)?
 
     private var speakers: [String] {
         TranscriptSegmentReassignment.availableSpeakers(in: segments)
@@ -1117,13 +1136,22 @@ struct TranscriptListWithNames: View {
         TranscriptReviewScroll(
             segments: segments,
             speakerNames: names,
-            speakerOptions: onReassignSpeaker == nil ? [] : speakers,
-            onReassignSpeaker: { segmentID, speaker in
+            speakerOptions: canReassign ? speakers : [],
+            onReassignSpeaker: onReassignSpeaker == nil ? nil : { segmentID, speaker in
                 onReassignSpeaker?(segmentID, speaker)
+            },
+            onReassignSpeakerGroup: onReassignSpeakerGroup ?? { segmentIDs, speaker in
+                for segmentID in segmentIDs {
+                    onReassignSpeaker?(segmentID, speaker)
+                }
             }
         ) {
             EmptyView()
         }
+    }
+
+    private var canReassign: Bool {
+        onReassignSpeaker != nil || onReassignSpeakerGroup != nil
     }
 }
 
@@ -1131,44 +1159,82 @@ struct TranscriptReviewScroll<Header: View>: View {
     let segments: [TranscriptSegment]
     var speakerNames: [String: String] = [:]
     var speakerOptions: [String] = []
+    var stickyHeader: Bool = false
     let header: Header
     var onReassignSpeaker: ((TranscriptSegment.ID, String) -> Void)?
+    var onReassignSpeakerGroup: (([TranscriptSegment.ID], String) -> Void)?
+
+    private var turns: [TranscriptDisplayTurn] {
+        TranscriptTurnGrouping.group(segments)
+    }
 
     init(
         segments: [TranscriptSegment],
         speakerNames: [String: String] = [:],
         speakerOptions: [String] = [],
+        stickyHeader: Bool = false,
         onReassignSpeaker: ((TranscriptSegment.ID, String) -> Void)? = nil,
+        onReassignSpeakerGroup: (([TranscriptSegment.ID], String) -> Void)? = nil,
         @ViewBuilder header: () -> Header
     ) {
         self.segments = segments
         self.speakerNames = speakerNames
         self.speakerOptions = speakerOptions
+        self.stickyHeader = stickyHeader
         self.onReassignSpeaker = onReassignSpeaker
+        self.onReassignSpeakerGroup = onReassignSpeakerGroup
         self.header = header()
     }
 
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: 14) {
-                    header
-                    ForEach(segments) { segment in
-                        TranscriptCard(
-                            segment: segment,
-                            speakerNames: speakerNames,
-                            speakerOptions: onReassignSpeaker == nil ? [] : speakerOptions
-                        ) { speaker in
-                            onReassignSpeaker?(segment.id, speaker)
+                LazyVStack(
+                    alignment: .leading,
+                    spacing: 12,
+                    pinnedViews: stickyHeader ? [.sectionHeaders] : []
+                ) {
+                    if stickyHeader {
+                        Section {
+                            transcriptCards
+                        } header: {
+                            header
+                                .padding(.bottom, 4)
+                                .background(Theme.background)
                         }
-                        .id(segment.id)
+                    } else {
+                        header
+                        transcriptCards
                     }
                 }
             }
             .onChange(of: segments.count) { _, _ in
-                if let last = segments.last { proxy.scrollTo(last.id, anchor: .bottom) }
+                if let last = turns.last { proxy.scrollTo(last.id, anchor: .bottom) }
             }
         }
+    }
+
+    @ViewBuilder private var transcriptCards: some View {
+        ForEach(turns) { turn in
+            TranscriptTurnCard(
+                turn: turn,
+                speakerNames: speakerNames,
+                speakerOptions: canReassign ? speakerOptions : []
+            ) { speaker in
+                if let onReassignSpeakerGroup {
+                    onReassignSpeakerGroup(turn.segmentIDs, speaker)
+                } else {
+                    for segmentID in turn.segmentIDs {
+                        onReassignSpeaker?(segmentID, speaker)
+                    }
+                }
+            }
+            .id(turn.id)
+        }
+    }
+
+    private var canReassign: Bool {
+        onReassignSpeaker != nil || onReassignSpeakerGroup != nil
     }
 }
 

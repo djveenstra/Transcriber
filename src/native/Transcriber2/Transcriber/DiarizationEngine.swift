@@ -1,9 +1,55 @@
 @preconcurrency import AVFoundation
 import FluidAudio
 import Foundation
+import os
+
+nonisolated private let diarizationLogger = Logger(subsystem: "com.daniel.transcriber2", category: "Diarization")
 
 protocol DiarizationEngine: Actor {
-    func diarizeFile(_ url: URL, progress: @escaping @Sendable (Double) -> Void) async throws -> [DiarizationSegment]
+    func diarizeFile(
+        _ url: URL,
+        progress: @escaping @Sendable (Double) -> Void,
+        stage: @escaping @Sendable (DiarizationStageEvent) -> Void
+    ) async throws -> [DiarizationSegment]
+}
+
+nonisolated enum DiarizationDiagnosticStage: String, CaseIterable, Equatable, Sendable {
+    case starting
+    case audioInspection
+    case conversionPrep
+    case modelLoad
+    case process
+    case finalize
+    case finished
+
+    var displayText: String {
+        switch self {
+        case .starting: "Starting speaker labeling"
+        case .audioInspection: "Audio inspection"
+        case .conversionPrep: "Audio conversion/prep"
+        case .modelLoad: "Model/resource loading"
+        case .process: "Sortformer processing"
+        case .finalize: "Finalize speaker timeline"
+        case .finished: "Finished"
+        }
+    }
+}
+
+nonisolated enum DiarizationStageEventKind: Equatable, Sendable {
+    case started
+    case ended
+}
+
+nonisolated struct DiarizationStageEvent: Equatable, Sendable {
+    let stage: DiarizationDiagnosticStage
+    let kind: DiarizationStageEventKind
+    let detail: String?
+
+    init(_ kind: DiarizationStageEventKind, _ stage: DiarizationDiagnosticStage, detail: String? = nil) {
+        self.stage = stage
+        self.kind = kind
+        self.detail = detail
+    }
 }
 
 actor FluidDiarizationEngine: DiarizationEngine {
@@ -19,26 +65,51 @@ actor FluidDiarizationEngine: DiarizationEngine {
 
     func diarizeFile(
         _ url: URL,
-        progress: @escaping @Sendable (Double) -> Void
+        progress: @escaping @Sendable (Double) -> Void,
+        stage: @escaping @Sendable (DiarizationStageEvent) -> Void
     ) async throws -> [DiarizationSegment] {
-        let diarizer = try await loadDiarizer(progress: progress)
-        diarizer.reset()
-
+        diarizationLogger.info("diarization.audio_inspection.start file=\(url.lastPathComponent, privacy: .private)")
+        stage(DiarizationStageEvent(.started, .audioInspection))
         let audioFile = try AVAudioFile(forReading: url)
         let totalFrames = AVAudioFrameCount(audioFile.length)
+        let inputFormat = audioFile.processingFormat
+        let inputDuration = inputFormat.sampleRate > 0 ? Double(audioFile.length) / inputFormat.sampleRate : 0
+        diarizationLogger.info(
+            """
+            diarization.audio_inspection.end file=\(url.lastPathComponent, privacy: .private) \
+            sampleRate=\(inputFormat.sampleRate, privacy: .public) \
+            channels=\(inputFormat.channelCount, privacy: .public) \
+            format=\(String(describing: inputFormat.commonFormat), privacy: .public) \
+            interleaved=\(inputFormat.isInterleaved, privacy: .public) \
+            frames=\(audioFile.length, privacy: .public) \
+            duration=\(inputDuration, privacy: .public)
+            """
+        )
+        stage(DiarizationStageEvent(.ended, .audioInspection))
         guard totalFrames > 0 else { return [] }
 
+        diarizationLogger.info("diarization.conversion_prep.start targetSampleRate=\(Self.targetSampleRate, privacy: .public) targetChannels=1 targetFormat=Float32")
+        stage(DiarizationStageEvent(.started, .conversionPrep))
         let converter = try Self.makeConverter(from: audioFile.processingFormat)
         let outputBuffer = AVAudioPCMBuffer(
             pcmFormat: converter.outputFormat,
             frameCapacity: Self.chunkFrameCount
         )!
+        diarizationLogger.info("diarization.conversion_prep.end chunkFrames=\(Self.chunkFrameCount, privacy: .public)")
+        stage(DiarizationStageEvent(.ended, .conversionPrep))
+
+        stage(DiarizationStageEvent(.started, .modelLoad))
+        let diarizer = try await loadDiarizer(progress: progress)
+        stage(DiarizationStageEvent(.ended, .modelLoad))
+        diarizationLogger.info("diarization.model_load.ready config=\(String(describing: self.config), privacy: .public)")
+        diarizer.reset()
 
         var framesRead: AVAudioFrameCount = 0
         let inputBuffer = AVAudioPCMBuffer(
             pcmFormat: audioFile.processingFormat,
             frameCapacity: Self.chunkFrameCount
         )!
+        var chunkIndex = 0
 
         while framesRead < totalFrames {
             try Task.checkCancellation()
@@ -55,27 +126,45 @@ actor FluidDiarizationEngine: DiarizationEngine {
             let samples = try Self.convert(inputBuffer, using: converter, into: outputBuffer)
 
             try Task.checkCancellation()
+            diarizationLogger.info("diarization.process.start chunk=\(chunkIndex, privacy: .public) samples=\(samples.count, privacy: .public)")
+            stage(DiarizationStageEvent(.started, .process, detail: "chunk \(chunkIndex)"))
             _ = try diarizer.process(samples: samples, sourceSampleRate: Self.targetSampleRate)
+            stage(DiarizationStageEvent(.ended, .process, detail: "chunk \(chunkIndex)"))
+            diarizationLogger.info("diarization.process.end chunk=\(chunkIndex, privacy: .public)")
+            chunkIndex += 1
 
             let fileProgress = Double(framesRead) / Double(totalFrames)
             progress(0.15 + fileProgress * 0.80)
         }
 
         try Task.checkCancellation()
+        diarizationLogger.info("diarization.finalize.start chunks=\(chunkIndex, privacy: .public)")
+        stage(DiarizationStageEvent(.started, .finalize))
         _ = try diarizer.finalizeSession()
+        stage(DiarizationStageEvent(.ended, .finalize))
+        diarizationLogger.info("diarization.finalize.end")
         progress(1)
-        return Self.convertTimeline(diarizer.timeline.speakers.values.flatMap(\.finalizedSegments))
+        let segments = Self.convertTimeline(diarizer.timeline.speakers.values.flatMap(\.finalizedSegments))
+        diarizationLogger.info("diarization.result.success segments=\(segments.count, privacy: .public)")
+        stage(DiarizationStageEvent(.started, .finished))
+        return segments
     }
 
     private func loadDiarizer(
         progress: @escaping @Sendable (Double) -> Void
     ) async throws -> SortformerDiarizer {
-        if let existing = self.diarizer { return existing }
+        if let existing = self.diarizer {
+            diarizationLogger.info("diarization.model_load.reuse config=\(String(describing: self.config), privacy: .public)")
+            return existing
+        }
+        diarizationLogger.info("diarization.model_load.start config=\(String(describing: self.config), privacy: .public)")
         let created = SortformerDiarizer(config: config)
         let models = try await SortformerModels.loadFromHuggingFace(config: config) { download in
             progress(download.fractionCompleted * 0.15)
         }
+        diarizationLogger.info("diarization.model_load.resources_ready config=\(String(describing: self.config), privacy: .public)")
         created.initialize(models: models)
+        diarizationLogger.info("diarization.model_load.initialized config=\(String(describing: self.config), privacy: .public)")
         self.diarizer = created
         return created
     }

@@ -98,13 +98,15 @@ On-device acceptance (Human Reviewer, iPhone 17 Pro) covers: real mic capture, b
 
 - **OBJ-16 — Export hardening.** **DONE 2026-06-21 — Gate: PROCEED; evidence: [QA.md](QA.md#obj-16--export-hardening--2026-06-21), [completion report](docs/planning/objectives/OBJECTIVE-16.md#completion-report--2026-06-21).** JSON via `Codable`; verified speaker names in all formats; SRT timing tests; large/odd-format import checks.
 - **OBJ-17 — Accessibility pass.** **DONE 2026-06-23 — Gate: PROCEED; evidence: [QA.md](QA.md#obj-17--final-human-reviewer-pass-and-gate--2026-06-23), [completion report](docs/planning/objectives/OBJECTIVE-17.md#final-closeout-report--2026-06-23).** Dynamic Type, VoiceOver labels/traits, contrast audit, non-color status/speaker indicators, reachability, compact transcript actions, transcript/detail header cleanup, and accepted playback-safe M4A derivative path for completed-recording playback.
-- **OBJ-17.1 — FluidAudio Diarization Safety & Timeout Stabilization.** Diagnose current FluidAudio/Sortformer diarization hangs; add per-stage private diagnostics; fix timeout/cancel stuck-state behavior; preserve transcript and playback on timeout/failure/cancel; keep retry safe; prevent unsafe overlapping diarization attempts. No engine replacement, sherpa-onnx, server/cloud/off-device processing, new dependencies, OBJ-18 work, model-change/rerun backlog, or delete-downloaded-models backlog.
+- **OBJ-17.1 — FluidAudio Diarization Safety & Timeout Stabilization.** **DONE 2026-06-23 — Gate: PROCEED; evidence: [QA.md](QA.md#obj-171--final-human-reviewer-pass-and-gate--2026-06-23), [completion report](docs/planning/objectives/OBJECTIVE-17.1.md#final-closeout-report--2026-06-23).** Added per-stage private diagnostics, safe timeout/cancel state recovery, retry guard behavior, transcript/playback preservation, speaker-turn display grouping, and compact transcript detail layout tuning while keeping FluidAudio as the current diarization path.
 
-**Risk:** Low–Medium for OBJ-16/OBJ-17; Medium for OBJ-17.1 because it touches diarization state safety. **Rollback:** export/accessibility changes are mostly additive/cosmetic; OBJ-17.1 must remain narrow and reversible.
+**Deferred future feature/fine-tuning backlog:** launch readiness screen with default/Base English model preload and Skip loading; rerun transcription with a different model from transcript/detail; delete downloaded models; further speaker-turn grouping polish; further sticky/compact player polish; broader diarization engine evaluation if FluidAudio becomes limiting; background processing/job architecture improvements; and diarization resource/model preload or warmup only after explicit approval. These are not active OBJ-17.2/OBJ-17.3 objectives and should wait until the original 20 stated objectives are complete unless the Human Reviewer explicitly reopens sequencing.
+
+**Risk:** Low–Medium for OBJ-16/OBJ-17; Medium for OBJ-17.1 because it touched diarization state safety. **Rollback:** export/accessibility changes are mostly additive/cosmetic; OBJ-17.1 remains narrow and reversible.
 
 ## Phase 7 — Mac parity & hardening (PRD §4/§17; R6, R7, R9)
 
-- **OBJ-18 — Mac companion parity.** Open/import/play/share verified; Model Lab on Mac where feasible; document intentional iPhone-first gaps. **Blocked behind OBJ-17.1 unless the Human Reviewer explicitly re-gates diarization safety.**
+- **OBJ-18 — Mac companion parity.** Open/import/play/share verified; Model Lab on Mac where feasible; document intentional iPhone-first gaps. **Next original objective after accepted OBJ-17.1.**
 - **OBJ-19 — Cancellation & failure-injection hardening.** Full cancel matrix + forced model/mic/diarization failures; stress interleavings; verify model unload + UI recovery + data safety.
 
 **Risk:** Medium. **Rollback:** test-led; behavior fixes isolated.
@@ -127,7 +129,7 @@ OBJ-01
  │                         └ OBJ-11 (Model Lab tab; also needs OBJ-03 registry)
  ├─ OBJ-12 ─ OBJ-13                       (speaker workflow; OBJ-12 needs migration policy from OBJ-01)
  ├─ OBJ-14 ─ OBJ-15                       (progress + diagnostics)
- ├─ OBJ-16 ─ OBJ-17 ─ OBJ-17.1            (export, accessibility, diarization safety checkpoint)
+ ├─ OBJ-16 ─ OBJ-17 ─ OBJ-17.1            (export, accessibility, diarization safety)
  ├─ OBJ-18                                (Mac parity; after IA + diagnostics + OBJ-17.1)
  └─ OBJ-19 ─ OBJ-20                       (hardening + acceptance + tech debt; last)
 ```

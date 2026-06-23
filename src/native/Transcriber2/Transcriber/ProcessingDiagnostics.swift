@@ -37,6 +37,11 @@ nonisolated struct ProcessingDiagnostics: Equatable, Sendable {
     var diarizationFallbackUsed: Bool
     var speakerLabelStatus: SpeakerLabelDiagnosticStatus
     var failureMessage: String?
+    var diarizationCurrentStage: DiarizationDiagnosticStage?
+    var diarizationCurrentStageElapsed: TimeInterval?
+    var diarizationTimedOutStage: DiarizationDiagnosticStage?
+    var diarizationTimedOutAfter: TimeInterval?
+    var diarizationStageTimings: [DiarizationStageTiming]
     var isSessionOnly: Bool
 
     init(
@@ -51,6 +56,11 @@ nonisolated struct ProcessingDiagnostics: Equatable, Sendable {
         diarizationFallbackUsed: Bool = false,
         speakerLabelStatus: SpeakerLabelDiagnosticStatus = .notStarted,
         failureMessage: String? = nil,
+        diarizationCurrentStage: DiarizationDiagnosticStage? = nil,
+        diarizationCurrentStageElapsed: TimeInterval? = nil,
+        diarizationTimedOutStage: DiarizationDiagnosticStage? = nil,
+        diarizationTimedOutAfter: TimeInterval? = nil,
+        diarizationStageTimings: [DiarizationStageTiming] = [],
         isSessionOnly: Bool = true
     ) {
         self.audioFileName = audioFileName
@@ -64,6 +74,11 @@ nonisolated struct ProcessingDiagnostics: Equatable, Sendable {
         self.diarizationFallbackUsed = diarizationFallbackUsed
         self.speakerLabelStatus = speakerLabelStatus
         self.failureMessage = failureMessage
+        self.diarizationCurrentStage = diarizationCurrentStage
+        self.diarizationCurrentStageElapsed = diarizationCurrentStageElapsed
+        self.diarizationTimedOutStage = diarizationTimedOutStage
+        self.diarizationTimedOutAfter = diarizationTimedOutAfter
+        self.diarizationStageTimings = diarizationStageTimings
         self.isSessionOnly = isSessionOnly
     }
 
@@ -160,6 +175,24 @@ nonisolated struct DiagnosticsPresentation: Equatable, Sendable {
         if let diarizationTime = diagnostics.diarizationTime {
             rows.append(DiagnosticsRow(label: "Speaker labeling", value: DiagnosticsMetricFormatter.formatSeconds(diarizationTime)))
         }
+        if let currentStage = diagnostics.diarizationCurrentStage {
+            let value = diagnostics.diarizationCurrentStageElapsed.map {
+                "\(currentStage.displayText) · \(DiagnosticsMetricFormatter.formatSeconds($0))"
+            } ?? currentStage.displayText
+            rows.append(DiagnosticsRow(label: "Diarization stage", value: value))
+        }
+        if let timedOutStage = diagnostics.diarizationTimedOutStage {
+            let value = diagnostics.diarizationTimedOutAfter.map {
+                "\(timedOutStage.displayText) · \(DiagnosticsMetricFormatter.formatSeconds($0))"
+            } ?? timedOutStage.displayText
+            rows.append(DiagnosticsRow(label: "Timed out during", value: value))
+        }
+        for timing in diagnostics.diarizationStageTimings {
+            rows.append(DiagnosticsRow(
+                label: timing.stage.diagnosticRowLabel,
+                value: DiagnosticsMetricFormatter.formatSeconds(timing.duration)
+            ))
+        }
         rows.append(DiagnosticsRow(label: "Transcription fallback", value: DiagnosticsMetricFormatter.yesNo(diagnostics.transcriptionFallbackUsed)))
         rows.append(DiagnosticsRow(label: "Diarization fallback", value: DiagnosticsMetricFormatter.yesNo(diagnostics.diarizationFallbackUsed)))
         rows.append(DiagnosticsRow(label: "Speaker labels", value: diagnostics.speakerLabelStatus.displayText))
@@ -171,6 +204,25 @@ nonisolated struct DiagnosticsPresentation: Equatable, Sendable {
             ? "These details are kept for the current session and are not written into the recording database."
             : "Stored recordings keep stable details like model, audio length, and speaker status. Timing appears after a current processing run."
         return DiagnosticsPresentation(rows: rows, footer: footer)
+    }
+}
+
+nonisolated struct DiarizationStageTiming: Equatable, Sendable {
+    let stage: DiarizationDiagnosticStage
+    let duration: TimeInterval
+}
+
+private extension DiarizationDiagnosticStage {
+    nonisolated var diagnosticRowLabel: String {
+        switch self {
+        case .starting: "Diarization start"
+        case .audioInspection: "Audio inspection"
+        case .conversionPrep: "Audio conversion/prep"
+        case .modelLoad: "Diarization model load"
+        case .process: "Sortformer process"
+        case .finalize: "Diarization finalize"
+        case .finished: "Diarization finished"
+        }
     }
 }
 

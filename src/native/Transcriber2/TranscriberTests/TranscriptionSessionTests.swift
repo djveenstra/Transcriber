@@ -1,3 +1,4 @@
+import AVFoundation
 import Foundation
 import SwiftData
 import Testing
@@ -16,6 +17,8 @@ private actor FakeDiarizationEngine: DiarizationEngine {
         case succeed([DiarizationSegment])
         case fail(String)
         case hang
+        case ignoreCancellation
+        case stageHang(DiarizationDiagnosticStage)
     }
 
     private let behavior: Behavior
@@ -26,7 +29,8 @@ private actor FakeDiarizationEngine: DiarizationEngine {
 
     func diarizeFile(
         _ url: URL,
-        progress: @escaping @Sendable (Double) -> Void
+        progress: @escaping @Sendable (Double) -> Void,
+        stage: @escaping @Sendable (DiarizationStageEvent) -> Void
     ) async throws -> [DiarizationSegment] {
         switch behavior {
         case let .succeed(segments):
@@ -38,6 +42,15 @@ private actor FakeDiarizationEngine: DiarizationEngine {
                 try await Task.sleep(for: .seconds(60))
             }
             throw CancellationError()
+        case .ignoreCancellation:
+            while true {
+                try? await Task.sleep(for: .seconds(60))
+            }
+        case let .stageHang(hangingStage):
+            stage(DiarizationStageEvent(.started, hangingStage))
+            while true {
+                try? await Task.sleep(for: .seconds(60))
+            }
         }
     }
 }
@@ -56,11 +69,14 @@ private actor ChunkedFakeDiarizationEngine: DiarizationEngine {
 
     func diarizeFile(
         _ url: URL,
-        progress: @escaping @Sendable (Double) -> Void
+        progress: @escaping @Sendable (Double) -> Void,
+        stage: @escaping @Sendable (DiarizationStageEvent) -> Void
     ) async throws -> [DiarizationSegment] {
         for i in 0..<chunkCount {
             try Task.checkCancellation()
+            stage(DiarizationStageEvent(.started, .process, detail: "chunk \(i)"))
             try await Task.sleep(for: chunkDuration)
+            stage(DiarizationStageEvent(.ended, .process, detail: "chunk \(i)"))
             progress(Double(i + 1) / Double(chunkCount))
         }
         return [DiarizationSegment(startMs: 0, endMs: 1_000, speaker: "SPEAKER_00")]
@@ -71,8 +87,17 @@ private actor ChunkedFakeDiarizationEngine: DiarizationEngine {
 struct DiarizationFallbackTests {
     private let url = URL(fileURLWithPath: "/tmp/test.caf")
 
+    private func makeSession(attemptGuard: DiarizationAttemptGuard = DiarizationAttemptGuard()) -> TranscriptionSession {
+        let session = TranscriptionSession(diarizationAttemptGuard: attemptGuard)
+        session.diarizationInitialTimeout = 0.05
+        session.diarizationProgressTimeout = 0.05
+        session.diarizationStageTimeouts = .legacy(initialTimeout: 0.05, progressTimeout: 0.05)
+        session.diarizationPollInterval = .milliseconds(10)
+        return session
+    }
+
     @Test func succeedsOnFirstAttemptWithoutFallback() async throws {
-        let session = TranscriptionSession()
+        let session = makeSession()
         session.diarizer = FakeDiarizationEngine(.succeed([
             DiarizationSegment(startMs: 0, endMs: 1_000, speaker: "SPEAKER_00")
         ]))
@@ -89,7 +114,7 @@ struct DiarizationFallbackTests {
     }
 
     @Test func fallsBackToFastV2WhenPrimaryFails() async throws {
-        let session = TranscriptionSession()
+        let session = makeSession()
         session.diarizer = FakeDiarizationEngine(.fail("primary failed"))
 
         let outcome = try #require(await session.runDiarizationWithFallback(
@@ -106,7 +131,7 @@ struct DiarizationFallbackTests {
     }
 
     @Test func returnsNilAndRecordsFailureDetailWhenBothAttemptsFail() async {
-        let session = TranscriptionSession()
+        let session = makeSession()
         session.diarizer = FakeDiarizationEngine(.fail("primary failed"))
 
         let outcome = await session.runDiarizationWithFallback(
@@ -121,10 +146,10 @@ struct DiarizationFallbackTests {
     }
 
     @Test func watchdogTimesOutWhenDiarizationHangsWithoutProgress() async {
-        let session = TranscriptionSession()
-        let hangingEngine = FakeDiarizationEngine(.hang)
+        let session = makeSession()
+        let hangingEngine = FakeDiarizationEngine(.stageHang(.modelLoad))
 
-        let segments = await session.diarizeWithWatchdog(
+        let outcome = await session.diarizeWithWatchdog(
             using: hangingEngine,
             url: url,
             initialTimeout: 0.05,
@@ -132,36 +157,108 @@ struct DiarizationFallbackTests {
             pollInterval: .milliseconds(10)
         )
 
-        #expect(segments == nil)
-        #expect(session.diarizationFailureDetail == "Speaker labeling timed out while processing this recording.")
+        guard case .timedOut(let message) = outcome else {
+            Issue.record("Expected timeout, got \(String(describing: outcome))")
+            return
+        }
+        #expect(message.contains("timed out"))
+        #expect(message.contains("model/resource loading"))
+        #expect(session.diarizationFailureDetail?.contains("timed out") == true)
+        #expect(session.latestDiagnostics?.diarizationTimedOutStage == .modelLoad)
+        #expect(await session.hasUnsafeDiarizationAttemptForTesting())
     }
 
-    @Test func runDiarizationWithFallbackTimesOutBothAttemptsAndReturnsNil() async {
-        let session = TranscriptionSession()
-        session.diarizer = FakeDiarizationEngine(.hang)
+    @Test func retryGuardClearsWhenTimedOutAttemptCooperativelyEnds() async throws {
+        let attemptGuard = DiarizationAttemptGuard()
+        let firstSession = makeSession(attemptGuard: attemptGuard)
+        firstSession.diarizer = FakeDiarizationEngine(.hang)
+
+        let timedOut = await firstSession.runDiarizationWithFallback(
+            url,
+            initialTimeout: 0.05,
+            progressTimeout: 0.05,
+            pollInterval: .milliseconds(10),
+            fallbackEngine: FakeDiarizationEngine(.succeed([]))
+        )
+        #expect(timedOut == nil)
+
+        for _ in 0..<100 {
+            if !(await firstSession.hasUnsafeDiarizationAttemptForTesting()) {
+                break
+            }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(!(await firstSession.hasUnsafeDiarizationAttemptForTesting()))
+
+        let retrySession = makeSession(attemptGuard: attemptGuard)
+        retrySession.diarizer = FakeDiarizationEngine(.succeed([
+            DiarizationSegment(startMs: 0, endMs: 1_000, speaker: "SPEAKER_00")
+        ]))
+        let retry = await retrySession.runDiarizationWithFallback(
+            url,
+            fallbackEngine: FakeDiarizationEngine(.fail("fallback should not run"))
+        )
+        #expect(retry != nil)
+    }
+
+    @Test func timeoutDoesNotStartFallbackWhilePriorAttemptMayStillBeAlive() async {
+        let session = makeSession()
+        session.diarizer = FakeDiarizationEngine(.ignoreCancellation)
 
         let outcome = await session.runDiarizationWithFallback(
             url,
             initialTimeout: 0.05,
             progressTimeout: 0.05,
             pollInterval: .milliseconds(10),
-            fallbackEngine: FakeDiarizationEngine(.hang)
+            fallbackEngine: FakeDiarizationEngine(.succeed([
+                DiarizationSegment(startMs: 0, endMs: 1_000, speaker: "SPEAKER_99")
+            ]))
         )
 
         #expect(outcome == nil)
-        #expect(session.diarizationFailureDetail == "Speaker labeling timed out while processing this recording.")
+        #expect(session.diarizationFailureDetail?.contains("timed out") == true)
+        #expect(session.latestDiagnostics?.speakerLabelStatus == .retryNeeded)
     }
 
-    @Test func chunkedPrimaryTimesOutAndFallbackSucceeds() async throws {
-        let session = TranscriptionSession()
+    @Test func unsafePriorAttemptBlocksOverlappingRetry() async {
+        let attemptGuard = DiarizationAttemptGuard()
+        let firstSession = makeSession(attemptGuard: attemptGuard)
+        firstSession.diarizer = FakeDiarizationEngine(.ignoreCancellation)
+
+        let timedOut = await firstSession.runDiarizationWithFallback(
+            url,
+            initialTimeout: 0.05,
+            progressTimeout: 0.05,
+            pollInterval: .milliseconds(10),
+            fallbackEngine: FakeDiarizationEngine(.succeed([]))
+        )
+        #expect(timedOut == nil)
+
+        let secondSession = makeSession(attemptGuard: attemptGuard)
+        secondSession.diarizer = FakeDiarizationEngine(.succeed([
+            DiarizationSegment(startMs: 0, endMs: 1_000, speaker: "SPEAKER_00")
+        ]))
+
+        let blocked = await secondSession.runDiarizationWithFallback(
+            url,
+            fallbackEngine: FakeDiarizationEngine(.succeed([]))
+        )
+
+        #expect(blocked == nil)
+        #expect(secondSession.diarizationFailureDetail?.contains("previous speaker-labeling attempt") == true)
+    }
+
+    @Test func chunkedPrimaryTimesOutWithoutStartingFallback() async {
+        let session = makeSession()
         // Primary: 100 chunks of 200ms each — won't report progress quickly enough
-        // for the 50ms timeout, so the watchdog cancels it between chunks.
+        // for the 50ms timeout. The app returns control without starting fallback
+        // because the primary attempt may still be inside FluidAudio/Core ML.
         session.diarizer = ChunkedFakeDiarizationEngine(
             chunkCount: 100,
             chunkDuration: .milliseconds(200)
         )
 
-        let outcome = try #require(await session.runDiarizationWithFallback(
+        let outcome = await session.runDiarizationWithFallback(
             url,
             initialTimeout: 0.05,
             progressTimeout: 0.05,
@@ -169,14 +266,14 @@ struct DiarizationFallbackTests {
             fallbackEngine: FakeDiarizationEngine(.succeed([
                 DiarizationSegment(startMs: 0, endMs: 1_000, speaker: "SPEAKER_00")
             ]))
-        ))
+        )
 
-        #expect(outcome.isApproximate == true)
-        #expect(outcome.segments.count == 1)
+        #expect(outcome == nil)
+        #expect(session.diarizationFailureDetail?.contains("timed out") == true)
     }
 
     @Test func chunkedBothTimeOutAndReturnsNil() async {
-        let session = TranscriptionSession()
+        let session = makeSession()
         session.diarizer = ChunkedFakeDiarizationEngine(
             chunkCount: 100,
             chunkDuration: .milliseconds(200)
@@ -216,7 +313,7 @@ struct DiarizationFallbackTests {
             diarizationNeedsRetry: true
         )
         context.insert(recording)
-        let session = TranscriptionSession()
+        let session = makeSession()
         session.diarizer = FakeDiarizationEngine(.succeed([
             DiarizationSegment(startMs: 0, endMs: 1_000, speaker: "SPEAKER_02")
         ]))
@@ -229,6 +326,100 @@ struct DiarizationFallbackTests {
         #expect(!recording.transcriptionNeedsRetry)
         #expect(!recording.diarizationNeedsRetry)
         #expect(session.speakerLabelStatusPresentation.kind == .complete)
+    }
+
+    @Test func retrySpeakerLabelsTimeoutClearsActivityAndPreservesTranscriptAndAudio() async throws {
+        let container = try ModelContainer(
+            for: Recording.self,
+            configurations: ModelConfiguration(isStoredInMemoryOnly: true)
+        )
+        let context = ModelContext(container)
+        let recording = try makeRetryableRecording(audioFileName: "timeout-\(UUID().uuidString).caf")
+        defer { try? FileManager.default.removeItem(at: recording.audioURL) }
+        context.insert(recording)
+
+        let originalSegments = recording.segments
+        let originalRaw = recording.rawTranscription
+        let session = makeSession()
+        session.diarizer = FakeDiarizationEngine(.ignoreCancellation)
+
+        await session.retrySpeakerLabels(for: recording, in: context)
+
+        #expect(session.state == .completed)
+        #expect(session.currentProcessingPhase == nil)
+        #expect(!session.isIdentifyingSpeakers)
+        #expect(recording.segments == originalSegments)
+        #expect(recording.rawTranscription == originalRaw)
+        #expect(recording.diarizationNeedsRetry)
+        #expect(session.speakerLabelStatusPresentation.showsRetry)
+        #expect(AudioPlaybackFileInspector.duration(for: recording.audioURL) ?? 0 > 0)
+    }
+
+    @Test func cancelDuringSpeakerLabelingClearsActivityAndPreservesTranscript() async throws {
+        let container = try ModelContainer(
+            for: Recording.self,
+            configurations: ModelConfiguration(isStoredInMemoryOnly: true)
+        )
+        let context = ModelContext(container)
+        let recording = try makeRetryableRecording(audioFileName: "cancel-\(UUID().uuidString).caf")
+        defer { try? FileManager.default.removeItem(at: recording.audioURL) }
+        context.insert(recording)
+
+        let originalSegments = recording.segments
+        let originalRaw = recording.rawTranscription
+        let session = makeSession()
+        session.diarizationInitialTimeout = 10
+        session.diarizationProgressTimeout = 10
+        session.diarizer = FakeDiarizationEngine(.ignoreCancellation)
+
+        let retryTask = Task {
+            await session.retrySpeakerLabels(for: recording, in: context)
+        }
+        for _ in 0..<100 where !session.canCancelProcessing {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(session.canCancelProcessing)
+        await session.cancelProcessing()
+        await retryTask.value
+
+        #expect(session.state == .completed)
+        #expect(session.currentProcessingPhase == nil)
+        #expect(!session.isIdentifyingSpeakers)
+        #expect(recording.segments == originalSegments)
+        #expect(recording.rawTranscription == originalRaw)
+        #expect(recording.diarizationNeedsRetry)
+        #expect(session.latestDiagnostics?.speakerLabelStatus == .canceled)
+        #expect(session.completionNote?.contains("canceled") == true)
+        #expect(AudioPlaybackFileInspector.duration(for: recording.audioURL) ?? 0 > 0)
+    }
+
+    private func makeRetryableRecording(audioFileName: String) throws -> Recording {
+        let url = AppStoragePaths.recordingsDirectory.appendingPathComponent(audioFileName)
+        try writeSilentCAF(to: url)
+        return Recording(
+            title: "Needs Labels",
+            durationSeconds: 1,
+            audioFileName: audioFileName,
+            segments: [
+                TranscriptSegment(startMs: 0, endMs: 1_000, speaker: "SPEAKER_00", text: "Stored transcript")
+            ],
+            rawTranscription: [
+                TranscriptionSegment(startMs: 0, endMs: 1_000, text: "Stored transcript")
+            ],
+            diarizationNeedsRetry: true
+        )
+    }
+
+    private func writeSilentCAF(to url: URL) throws {
+        try FileManager.default.createDirectory(
+            at: url.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        let format = try #require(AVAudioFormat(standardFormatWithSampleRate: 16_000, channels: 1))
+        let file = try AVAudioFile(forWriting: url, settings: format.settings)
+        let buffer = try #require(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 16_000))
+        buffer.frameLength = 16_000
+        try file.write(from: buffer)
     }
 }
 

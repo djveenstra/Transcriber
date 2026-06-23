@@ -170,3 +170,125 @@ Per [AGENTS.md §4](../../../AGENTS.md), plus the Safety Requirements above.
 
 ## Rollback Considerations
 Expected changes are diagnostics and narrow state/timeout/cancel handling. Revert should restore prior diarization behavior without affecting preserved audio, transcripts, or the accepted playback derivative.
+
+## Implementation Report — 2026-06-23
+
+### Manager
+- Gate recommendation: **ASK USER**. Agent-verifiable Phase 1 safety work is implemented, validated, installed, and ready for Human device testing. The remaining gate is real-device diarization behavior/timing/quality on Daniel's iPhone.
+- OBJ-17.1 Phase 1 readiness: ready for Human device testing.
+- Human product decision needed: none at this point. If device testing still shows unacceptable FluidAudio reliability, a later Human decision is needed before any replacement engine, off-device processing, broader job architecture, or OBJ-18 re-gating.
+
+### Worker
+- Files touched: `Transcriber/DiarizationEngine.swift`, `Transcriber/TranscriptionSession.swift`, `TranscriberTests/TranscriptionSessionTests.swift`, `QA.md`, and this objective report.
+- Root cause fixed: the prior watchdog used structured task-group cancellation semantics, so a timeout winner could still be held hostage while the stuck FluidAudio/Core ML child ignored cancellation inside model load, prediction/process, or finalization.
+- Timeout/cancel architecture: diarization now runs behind an unstructured task and a result-box actor. The session polls for result/progress/timeout/cancel and returns control without awaiting the stuck FluidAudio task after timeout or cancel.
+- Stuck-attempt guard: timed-out or canceled attempts are marked abandoned so immediate overlapping retries are blocked instead of starting another unsafe FluidAudio/Core ML call while the old one may still be alive.
+- Data preservation: timeout/cancel/failure paths clear `isIdentifyingSpeakers` and processing phase, preserve raw transcription and existing transcript segments, mark speaker labels retryable, and only replace speaker labels atomically on success.
+- Playback: no playback implementation or cache-only M4A derivative code was changed.
+
+### Auditor
+- Alignment: **ALIGNED**.
+- Transcript preservation was not weakened; tests cover failure, timeout, and cancel preservation.
+- Playback and the accepted M4A derivative path were not disturbed.
+- No new dependency, new diarization engine, server/cloud/off-device implementation, pyannote, sherpa-onnx, schema change, project-structure change, or OBJ-18 work was added.
+- Timeout/cancel/failure paths should no longer leave the app permanently stuck on "Identifying speakers" because session-visible state is cleared independently of FluidAudio cooperation.
+
+### QA
+- macOS build: PASS.
+- iOS simulator build: PASS.
+- Physical iPhone build/install/launch: PASS on `iPhone 14 Pro` (`00008150-000909261440401C`), bundle `com.daniel.transcriber2.beta`.
+- Full `TranscriberTests`: PASS.
+- Focused diarization/session-state tests: PASS.
+- Focused completed-recording playback regression tests: PASS.
+- `git diff --check`: PASS.
+- Human device checklist: short one-speaker recording; short two-speaker recording if available; cancel during speaker labeling; timeout/stuck path if reproducible; retry speaker labels; playback after cancel/timeout.
+
+## FIX FIRST Follow-Up Report — 2026-06-23
+
+### Manager
+- Gate recommendation: **FIX FIRST** until the Human Reviewer verifies this updated installed build. The prior short-recording timeout was not precisely diagnosable from persisted diagnostics; this pass makes the next run stage-diagnosable and gives model/resource loading a longer first-run allowance.
+- FluidAudio beta suitability: still unproven. If short real recordings continue to time out and the new diagnostics identify a recurring FluidAudio/Core ML stage, a Human architecture decision is needed before beta/OBJ-18.
+- Human product decision needed: not yet. Run this build first; decide only if the new stage evidence still shows current FluidAudio is not viable.
+
+### Worker
+- Files touched: `DiarizationEngine.swift`, `TranscriptionSession.swift`, `ProcessingDiagnostics.swift`, `LibraryView.swift`, `RecordingView.swift`, `TranscriptionSessionTests.swift`, `ProcessingDiagnosticsTests.swift`, `QA.md`, and this objective report.
+- Layout changes: completed recording detail uses a compact pinned transcript header containing playback progress/player, speaker-label status, and diagnostics; Record screen top spacing/status typography was tightened.
+- Diarization changes: stage events now track audio inspection, conversion/prep, model/resource loading, Sortformer process, finalize, and finished. Timeout messages and Diagnostics identify the stage and elapsed/limit timing.
+- Timeout/retry changes: production model/resource-load timeout is longer for first-run Core ML work; process/finalize have separate limits. Retry remains blocked for an unsafe abandoned attempt, but tests verify the guard clears when a timed-out attempt later exits cooperatively.
+- Playback: playback implementation and the accepted cache-only M4A derivative path were not changed.
+
+### Auditor
+- Transcript preservation was not weakened.
+- Playback/M4A derivative was not disturbed.
+- No new dependency, new engine, server/cloud/off-device work, sherpa-onnx, pyannote, OBJ-17.2 implementation, or OBJ-18 work was added.
+- UI top spacing is now compacted, with the compact sticky player/status reserving scroll space instead of covering transcript text or bottom actions.
+
+### QA
+- `git diff --check`: PASS.
+- macOS build: PASS.
+- iOS simulator build: PASS.
+- Full `TranscriberTests`: PASS.
+- Focused diarization/session-state tests: PASS.
+- Focused playback regression tests: PASS.
+- Physical iPhone build/install/launch: PASS on `iPhone 14 Pro` (`00008150-000909261440401C`).
+- Human device checklist: short one-speaker recording; short two-speaker recording; retry speaker labels after timeout; playback after timeout; scroll transcript and confirm compact sticky player/progress remains present; confirm compact top header/status spacing.
+
+## FIX FIRST Tuning Report — 2026-06-23
+
+### Manager
+- Gate recommendation: **FIX FIRST** until the Human Reviewer verifies this installed tuning build.
+- Speaker labeling now appears functionally viable enough for tuning: Human device testing confirmed completed speaker labels, 2 speaker labels detected, transcript preserved, and playback preserved.
+- Future model-rerun feature was logged only. It was not implemented.
+
+### Worker
+- Files touched: `Models.swift`, `RecordingView.swift`, `LibraryView.swift`, `TranscriptSegmentReassignmentTests.swift`, `QA.md`, and this objective report, in addition to earlier OBJ-17.1 files already modified in this branch.
+- Speaker grouping approach: display-layer `TranscriptTurnGrouping` creates `TranscriptDisplayTurn` values from saved transcript segments. Underlying `Recording.segments`, raw transcription, and export data are not rewritten.
+- Grouping rules: same non-empty/non-unknown speaker only; adjacent gap must be <= 2 seconds; grouped turn duration must be <= 60 seconds; group must contain <= 12 segments; never group across speaker changes or large pauses.
+- Edit semantics: a grouped card stores the underlying segment IDs. Reassigning a grouped turn updates only those underlying segments' speaker labels, preserving timing and text.
+- Layout changes: the large status/Diagnostics block scrolls away with transcript content. The compact mini-player remains outside the scroll as a small persistent playback control. Bottom Rename/Share actions remain separate.
+- Playback implementation and the accepted M4A playback derivative were not changed.
+- Future model-rerun note: logged in `QA.md` as "Model Selection & Rerun Transcription" for a later 17.x objective; not implemented.
+
+### Auditor
+- Raw transcript data was not destructively rewritten.
+- Transcript preservation was not weakened.
+- Playback/M4A derivative was not disturbed.
+- No new dependency, new engine, server/cloud/off-device work, sherpa-onnx, pyannote, OBJ-17.2 implementation, model-rerun implementation, or OBJ-18 work was added.
+
+### QA
+- `git diff --check`: PASS.
+- macOS build: PASS.
+- iOS simulator build: PASS.
+- Full `TranscriberTests`: PASS.
+- Focused diarization/session-state tests: PASS.
+- Focused speaker grouping tests: PASS.
+- Focused playback regression tests: PASS.
+- Physical iPhone build/install: PASS. Command-line launch was blocked because the device was locked.
+- Human device checklist: verify same-speaker adjacent segments are visually grouped; verify speaker change starts a new card; verify playback works; verify scrolling causes the large header/status area to move away; verify compact playback behavior is acceptable; verify Rename/Share actions remain usable; verify Diagnostics still accessible.
+
+## Final Closeout Report — 2026-06-23
+
+### Manager
+- Gate recommendation: **PROCEED**.
+- OBJ-17.1 is complete. Human Reviewer device testing accepted diarization safety, completed speaker labels, usable speaker-turn grouping, compact header/player/status behavior, transcript preservation, playback preservation, and timeout/cancel recovery.
+- New feature ideas are deferred backlog only. OBJ-17.2 and OBJ-17.3 were not created as active objectives, and OBJ-18 Mac companion parity is the next original objective.
+- Human product decision needed: none for OBJ-17.1 closeout.
+
+### Worker
+- Files touched for closeout: `PLAN.md`, `OBJECTIVE.md`, `DECISIONS.md`, `QA.md`, and this objective report, plus removal of the inactive planning artifact `docs/planning/objectives/OBJECTIVE-17.2.md`.
+- PLAN update: OBJ-17.1 is marked DONE 2026-06-23 with QA/completion-report evidence; OBJ-18 is restored as the next original objective; launch preload, model rerun, delete-downloaded-models, further speaker/player polish, diarization evaluation, background-job architecture, and diarization warmup are backlog only.
+- OBJECTIVE update: active objective now points to `OBJECTIVE-18.md`.
+- QA update: final Human Reviewer PASS was recorded for OBJ-17.1.
+- Runtime code changed only as part of the already accepted OBJ-17.1 implementation. No OBJ-18 implementation started during closeout.
+- No new dependencies, new engines, server/cloud/off-device processing, or feature implementations were added.
+
+### Auditor
+- Transcript preservation was not weakened.
+- Playback and the accepted cache-only M4A derivative were not disturbed.
+- FluidAudio remains the current diarization path.
+- No sherpa-onnx, pyannote, server/cloud/off-device implementation, dependency change, active OBJ-17.2/OBJ-17.3 objective, or OBJ-18 implementation was added.
+
+### QA
+- Validation retained from the accepted OBJ-17.1 branch: `git diff --check` PASS; macOS build PASS; iOS simulator build PASS; full `TranscriberTests` PASS; focused diarization/session-state tests PASS; focused speaker grouping tests PASS; focused playback regression tests PASS; physical iPhone build/install PASS.
+- Closeout doc validation: `git diff --check` rerun after planning updates before commit.
+- Working tree status checked before commit.

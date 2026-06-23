@@ -73,6 +73,62 @@ struct TranscriptSegmentReassignmentTests {
         #expect(speakers == ["SPEAKER_01", "SPEAKER_00"])
     }
 
+    @Test func adjacentSameSpeakerSegmentsGroupIntoDisplayTurn() {
+        let turns = TranscriptTurnGrouping.group([
+            TranscriptSegment(startMs: 0, endMs: 8_000, speaker: "SPEAKER_00", text: "Okay, I am testing."),
+            TranscriptSegment(startMs: 8_400, endMs: 10_000, speaker: "SPEAKER_00", text: "Hey, Jimmy."),
+            TranscriptSegment(startMs: 10_500, endMs: 14_000, speaker: "SPEAKER_00", text: "Can you say something?"),
+        ])
+
+        #expect(turns.count == 1)
+        #expect(turns[0].speaker == "SPEAKER_00")
+        #expect(turns[0].timestamp == "0:00")
+        #expect(turns[0].text == "Okay, I am testing.\nHey, Jimmy.\nCan you say something?")
+        #expect(turns[0].segmentCount == 3)
+    }
+
+    @Test func differentSpeakersDoNotGroupIntoDisplayTurn() {
+        let turns = TranscriptTurnGrouping.group([
+            TranscriptSegment(startMs: 0, endMs: 1_000, speaker: "SPEAKER_00", text: "One"),
+            TranscriptSegment(startMs: 1_100, endMs: 2_000, speaker: "SPEAKER_01", text: "Two"),
+            TranscriptSegment(startMs: 2_100, endMs: 3_000, speaker: "SPEAKER_00", text: "Three"),
+        ])
+
+        #expect(turns.count == 3)
+        #expect(turns.map(\.speaker) == ["SPEAKER_00", "SPEAKER_01", "SPEAKER_00"])
+    }
+
+    @Test func largeGapsDoNotGroupIntoDisplayTurn() {
+        let turns = TranscriptTurnGrouping.group([
+            TranscriptSegment(startMs: 0, endMs: 1_000, speaker: "SPEAKER_00", text: "One"),
+            TranscriptSegment(startMs: 4_500, endMs: 6_000, speaker: "SPEAKER_00", text: "Two"),
+        ])
+
+        #expect(turns.count == 2)
+    }
+
+    @Test func groupedDisplayTurnReassignmentUpdatesUnderlyingSegmentsOnly() {
+        let firstID = UUID()
+        let secondID = UUID()
+        let thirdID = UUID()
+        let segments = [
+            TranscriptSegment(id: firstID, startMs: 0, endMs: 1_000, speaker: "SPEAKER_00", text: "One"),
+            TranscriptSegment(id: secondID, startMs: 1_100, endMs: 2_000, speaker: "SPEAKER_00", text: "Two"),
+            TranscriptSegment(id: thirdID, startMs: 2_100, endMs: 3_000, speaker: "SPEAKER_01", text: "Three"),
+        ]
+        let groupedTurn = TranscriptTurnGrouping.group(segments)[0]
+
+        let updated = TranscriptSegmentReassignment.reassign(
+            segmentIDs: groupedTurn.segmentIDs,
+            to: "SPEAKER_02",
+            in: segments
+        )
+
+        #expect(updated.map(\.speaker) == ["SPEAKER_02", "SPEAKER_02", "SPEAKER_01"])
+        #expect(updated.map(\.text) == ["One", "Two", "Three"])
+        #expect(updated.map(\.startMs) == [0, 1_100, 2_100])
+    }
+
     @Test func transcriptAccessibilityLabelReadsSpeakerTimeTextAndEditState() {
         let segment = TranscriptSegment(
             startMs: 1_500,

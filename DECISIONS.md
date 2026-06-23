@@ -54,6 +54,18 @@ Format per entry: **ID · Date · Decision · Why · Implications · Reversibili
 **Implications:** OBJ-17.1 stabilizes the current FluidAudio/Sortformer path first: diagnostics, timeout, cancellation, transcript preservation, playback preservation, retry safety, and overlapping-attempt protection. Future local/on-device alternatives may be researched, but not implemented without a scoped approval. Original/master audio remains preserved, and cache derivatives can be regenerated.
 **Reversibility:** Policy/documentation only. Any future engine, dependency, or pipeline replacement requires its own approved objective and validation.
 
+### D-009 · 2026-06-23 · Launch preload is approved for the default transcription model only
+**Why:** The app should feel ready and intentional at launch, but model preparation must not trap the user or block core workflows.
+**Decision:** OBJ-17.2 may add a skippable launch/readiness flow that begins preparing the default/Base English transcription model when the app opens. If the user skips, the app must enter Dashboard/Home and continue loading the transcription model in the background. Transcription model readiness must be visible, retryable on failure, and must not block recording, Library access, playback, or basic navigation. Diarization/FluidAudio preload is not approved yet.
+**Implications:** OBJ-17.2 is limited to default transcription model readiness/preload and related status surfaces. Any diarization warmup, FluidAudio resource preload, new dependency, server/off-device processing, model-change/rerun backlog, or delete-downloaded-models backlog requires a separate approved objective.
+**Reversibility:** Planning/product decision only until OBJ-17.2 implementation begins. Runtime changes must remain narrow and reversible when implemented.
+
+### D-010 · 2026-06-23 · Finish original 20 objectives before new 17.x feature objectives
+**Why:** The Human Reviewer accepted OBJ-17.1 and wants to finish the original 20 stated objectives before returning to a future feature/fine-tuning phase.
+**Decision:** Launch readiness/default model preload, Skip loading with background preload, rerun transcription with a different model from transcript/detail, delete downloaded models, further speaker-turn/player polish, broader diarization engine evaluation, background processing/job architecture, and diarization resource/model preload are deferred backlog items only. Do not create active OBJ-17.2 or OBJ-17.3 objective files right now. OBJ-18 Mac companion parity is the next active original objective.
+**Implications:** D-009 remains a product-direction note for a future phase, but it is no longer active sequencing before OBJ-18. Any future preload, model-rerun, model-delete, diarization-warmup, or broader engine/job work requires explicit Human approval and its own active objective.
+**Reversibility:** Planning/product decision only. No runtime behavior changes are implied.
+
 ---
 
 ## Decisions awaiting the Human Reviewer (open questions)

@@ -2,11 +2,11 @@
 
 _This file holds the **single active objective** the Worker is currently implementing. The Manager sets it from the roadmap and advances it only when the current objective is gated `PROCEED`. Full details for every objective live in [docs/planning/objectives/](docs/planning/objectives/)._
 
-## ▶ Active objective: **OBJ-17.1 — FluidAudio Diarization Safety & Timeout Stabilization**
+## ▶ Active objective: **OBJ-18 — Mac Companion Parity**
 
-Read the full spec: [docs/planning/objectives/OBJECTIVE-17.1.md](docs/planning/objectives/OBJECTIVE-17.1.md).
+Read the full spec: [docs/planning/objectives/OBJECTIVE-18.md](docs/planning/objectives/OBJECTIVE-18.md).
 
-**One-line mission:** Stabilize the current FluidAudio/Sortformer diarization path so hangs, failures, cancellation, and retry states are safe while transcripts and playback remain usable.
+**One-line mission:** Verify and complete the Mac companion experience for open/import, playback, transcript review, share/export, and feasible Model Lab parity while documenting intentional iPhone-first gaps.
 
 **Before starting, read:** [PRD.md](PRD.md) → [PLAN.md](PLAN.md) → this file → [AGENTS.md](AGENTS.md).
 
@@ -33,12 +33,12 @@ Read the full spec: [docs/planning/objectives/OBJECTIVE-17.1.md](docs/planning/o
 | 15 | [Diagnostics on normal screens + data model](docs/planning/objectives/OBJECTIVE-15.md) | 5 | Done — PROCEED 2026-06-20 |
 | 16 | [Export hardening](docs/planning/objectives/OBJECTIVE-16.md) | 6 | Done — PROCEED 2026-06-21 |
 | 17 | [Accessibility pass](docs/planning/objectives/OBJECTIVE-17.md) | 6 | Done — PROCEED 2026-06-23 |
-| 17.1 | [FluidAudio diarization safety & timeout stabilization](docs/planning/objectives/OBJECTIVE-17.1.md) | 6 | ▶ Active |
-| 18 | [Mac companion parity](docs/planning/objectives/OBJECTIVE-18.md) | 7 | Pending |
+| 17.1 | [FluidAudio diarization safety & timeout stabilization](docs/planning/objectives/OBJECTIVE-17.1.md) | 6 | Done — PROCEED 2026-06-23 |
+| 18 | [Mac companion parity](docs/planning/objectives/OBJECTIVE-18.md) | 7 | ▶ Active |
 | 19 | [Cancellation & failure-injection hardening](docs/planning/objectives/OBJECTIVE-19.md) | 7 | Pending |
 | 20 | [Beta acceptance + decomposition + tech debt](docs/planning/objectives/OBJECTIVE-20.md) | 8 | Pending |
 
-> **Sequencing reminders:** `RecordingStatus` (OBJ-09) lands before the Dashboard (OBJ-10) consumes it; the model registry (OBJ-03) lands before OBJ-04 and before OBJ-11's Model Lab columns; the migration policy (OBJ-01) precedes any `Recording` schema change (OBJ-09 if stored, OBJ-12, OBJ-15). OBJ-17.1 is the approved diarization safety checkpoint before OBJ-18 Mac parity. The Manager may reorder within a phase only with Human approval and only when dependencies are satisfied.
+> **Sequencing reminders:** `RecordingStatus` (OBJ-09) lands before the Dashboard (OBJ-10) consumes it; the model registry (OBJ-03) lands before OBJ-04 and before OBJ-11's Model Lab columns; the migration policy (OBJ-01) precedes any `Recording` schema change (OBJ-09 if stored, OBJ-12, OBJ-15). OBJ-17.1 is accepted as the diarization safety checkpoint before OBJ-18 Mac parity. Launch preload, model rerun, delete-downloaded-models, and additional tuning ideas are deferred backlog items, not active 17.x objectives. The Manager may reorder within a phase only with Human approval and only when dependencies are satisfied.
 
 ## How the Manager advances this file
 When the active objective is gated `PROCEED`: mark it done in the table, link its completion report, update [PLAN.md](PLAN.md), then set the next objective as ▶ Active and restate its mission here. Never advance while the current objective is `FIX FIRST` / `ASK USER` / `BLOCKED`. See [docs/planning/MULTI_AGENT_WORKFLOW.md](docs/planning/MULTI_AGENT_WORKFLOW.md).

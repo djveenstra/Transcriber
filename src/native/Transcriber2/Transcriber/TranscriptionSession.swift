@@ -7,6 +7,7 @@ import SwiftData
 import SwiftUI
 
 private let persistenceLogger = Logger(subsystem: "com.daniel.transcriber2", category: "Persistence")
+nonisolated private let diarizationSessionLogger = Logger(subsystem: "com.daniel.transcriber2", category: "Diarization")
 
 enum RecordingInterruptionRecovery {
     static func makeRetryableRecording(
@@ -107,6 +108,17 @@ final class TranscriptionSession: ObservableObject {
     private var modelFallbackNote: String?
     private let statusActivityStore = RecordingStatusActivityStore.shared
     private let diagnosticsStore = ProcessingDiagnosticsStore.shared
+    private let diarizationAttemptGuard: DiarizationAttemptGuard
+    private var activeDiarizationWorkTask: Task<Void, Never>?
+    private var activeDiarizationAttemptID: UUID?
+    var diarizationInitialTimeout: TimeInterval = 120
+    var diarizationProgressTimeout: TimeInterval = 30
+    var diarizationStageTimeouts: DiarizationStageTimeouts? = .production
+    var diarizationPollInterval: Duration = .seconds(5)
+
+    init(diarizationAttemptGuard: DiarizationAttemptGuard = .shared) {
+        self.diarizationAttemptGuard = diarizationAttemptGuard
+    }
 
     var liveSegments: [TranscriptSegment] {
         TranscriptMerger.merge(transcription: liveTranscription, diarization: liveDiarization)
@@ -440,6 +452,9 @@ final class TranscriptionSession: ObservableObject {
         liveConsumerTask = nil
         livePreparationTask?.cancel()
         livePreparationTask = nil
+        activeDiarizationWorkTask?.cancel()
+        activeDiarizationWorkTask = nil
+        activeDiarizationAttemptID = nil
         recorder.onSystemEvent = nil
     }
 
@@ -465,7 +480,13 @@ final class TranscriptionSession: ObservableObject {
         )
         setProcessingPhase(.identifyingSpeakers, progress: 0.65)
         let diarizationStarted = Date()
-        if let outcome = await runDiarizationWithFallback(recording.audioURL) {
+        if let outcome = await runDiarizationWithFallback(
+            recording.audioURL,
+            initialTimeout: diarizationInitialTimeout,
+            progressTimeout: diarizationProgressTimeout,
+            stageTimeouts: diarizationStageTimeouts,
+            pollInterval: diarizationPollInterval
+        ) {
             let diarizationTime = Date().timeIntervalSince(diarizationStarted)
             guard !processingWasCancelled, !Task.isCancelled else {
                 await handleProcessingCancellation(
@@ -487,16 +508,25 @@ final class TranscriptionSession: ObservableObject {
             )
             progress = 1
             clearProcessingPhase()
+            diarizationSessionLogger.info("diarization.result.success state=complete")
             state = .completed
             persistChanges(
                 in: context,
                 failureMessage: "The updated speaker labels could not be saved. They remain visible here, but it will be lost if you leave this screen."
             )
         } else {
+            guard !processingWasCancelled, !Task.isCancelled else {
+                await handleProcessingCancellation(
+                    savedMessage: "Speaker labeling was canceled. Your transcript remains saved.",
+                    unsavedMessage: "Speaker labeling was canceled."
+                )
+                return
+            }
             let diarizationTime = Date().timeIntervalSince(diarizationStarted)
             completionNote = speakerLabelFailureMessage(saved: true)
             recording.diarizationNeedsRetry = true
             diarizationNeedsRetry = true
+            diarizationSessionLogger.info("diarization.retry_state_set reason=failure")
             updateDiagnostics(
                 diarizationTime: diarizationTime,
                 diarizationFallbackUsed: false,
@@ -527,7 +557,13 @@ final class TranscriptionSession: ObservableObject {
         }
         setProcessingPhase(.identifyingSpeakers, progress: 0.6)
         let diarizationStarted = Date()
-        if let outcome = await runDiarizationWithFallback(audioURL) {
+        if let outcome = await runDiarizationWithFallback(
+            audioURL,
+            initialTimeout: diarizationInitialTimeout,
+            progressTimeout: diarizationProgressTimeout,
+            stageTimeouts: diarizationStageTimeouts,
+            pollInterval: diarizationPollInterval
+        ) {
             let diarizationTime = Date().timeIntervalSince(diarizationStarted)
             guard !processingWasCancelled, !Task.isCancelled else {
                 await handleProcessingCancellation(
@@ -545,6 +581,13 @@ final class TranscriptionSession: ObservableObject {
                 speakerLabelStatus: outcome.isApproximate ? .approximate : .complete
             )
         } else {
+            guard !processingWasCancelled, !Task.isCancelled else {
+                await handleProcessingCancellation(
+                    savedMessage: "Speaker labeling was canceled. Your transcript remains saved.",
+                    unsavedMessage: "Speaker labeling was canceled. You can retry speaker labels later."
+                )
+                return
+            }
             let diarizationTime = Date().timeIntervalSince(diarizationStarted)
             completionNote = speakerLabelFailureMessage(saved: false)
             diarizationNeedsRetry = true
@@ -559,12 +602,19 @@ final class TranscriptionSession: ObservableObject {
         savedRecording?.diarizationNeedsRetry = diarizationNeedsRetry
         progress = 1
         clearProcessingPhase()
+        if diarizationNeedsRetry {
+            diarizationSessionLogger.info("diarization.retry_state_set reason=failure")
+        } else {
+            diarizationSessionLogger.info("diarization.result.success state=complete")
+        }
         state = .completed
     }
 
     func cancelProcessing() async {
         guard canCancelProcessing else { return }
+        diarizationSessionLogger.info("diarization.cancel_requested")
         processingWasCancelled = true
+        activeDiarizationWorkTask?.cancel()
         livePreparationTask?.cancel()
         liveAudioContinuation?.finish()
         liveAudioContinuation = nil
@@ -611,7 +661,12 @@ final class TranscriptionSession: ObservableObject {
         transcriptionFallbackUsed: Bool? = nil,
         diarizationFallbackUsed: Bool? = nil,
         speakerLabelStatus: SpeakerLabelDiagnosticStatus? = nil,
-        failureMessage: String? = nil
+        failureMessage: String? = nil,
+        diarizationCurrentStage: DiarizationDiagnosticStage? = nil,
+        diarizationCurrentStageElapsed: TimeInterval? = nil,
+        diarizationTimedOutStage: DiarizationDiagnosticStage? = nil,
+        diarizationTimedOutAfter: TimeInterval? = nil,
+        diarizationStageTimings: [DiarizationStageTiming]? = nil
     ) {
         var diagnostics = latestDiagnostics ?? ProcessingDiagnostics(audioFileName: audioURL?.lastPathComponent)
         if let model {
@@ -639,7 +694,26 @@ final class TranscriptionSession: ObservableObject {
         if let failureMessage {
             diagnostics.failureMessage = failureMessage
         }
+        if let diarizationCurrentStage {
+            diagnostics.diarizationCurrentStage = diarizationCurrentStage
+            diagnostics.diarizationCurrentStageElapsed = diarizationCurrentStageElapsed
+        }
+        if let diarizationTimedOutStage {
+            diagnostics.diarizationTimedOutStage = diarizationTimedOutStage
+            diagnostics.diarizationTimedOutAfter = diarizationTimedOutAfter
+        }
+        if let diarizationStageTimings {
+            diagnostics.diarizationStageTimings = diarizationStageTimings
+        }
         publishDiagnostics(diagnostics)
+    }
+
+    private func recordDiarizationStage(_ snapshot: DiarizationStageSnapshot) {
+        updateDiagnostics(
+            diarizationCurrentStage: snapshot.currentStage,
+            diarizationCurrentStageElapsed: snapshot.currentStageElapsed,
+            diarizationStageTimings: snapshot.completedTimings
+        )
     }
 
     private func recordDiagnosticsFailure(_ message: String) {
@@ -747,7 +821,13 @@ final class TranscriptionSession: ObservableObject {
             try Task.checkCancellation()
             guard !processingWasCancelled else { throw CancellationError() }
             let diarizationStarted = Date()
-            let outcome = await runDiarizationWithFallback(url)
+            let outcome = await runDiarizationWithFallback(
+                url,
+                initialTimeout: diarizationInitialTimeout,
+                progressTimeout: diarizationProgressTimeout,
+                stageTimeouts: diarizationStageTimeouts,
+                pollInterval: diarizationPollInterval
+            )
             let diarizationTime = Date().timeIntervalSince(diarizationStarted)
             try Task.checkCancellation()
             guard !processingWasCancelled else { throw CancellationError() }
@@ -767,6 +847,7 @@ final class TranscriptionSession: ObservableObject {
                 let failureMessage = speakerLabelFailureMessage(saved: false)
                 completionNote = combinedCompletionNote(failureMessage)
                 diarizationNeedsRetry = true
+                diarizationSessionLogger.info("diarization.retry_state_set reason=failure")
                 updateDiagnostics(
                     diarizationTime: diarizationTime,
                     diarizationFallbackUsed: false,
@@ -781,6 +862,7 @@ final class TranscriptionSession: ObservableObject {
             setProcessingPhase(.savingSpeakerLabels, progress: 0.98, updateState: !isIdentifyingSpeakers)
             progress = 1
             clearProcessingPhase()
+            diarizationSessionLogger.info("diarization.state_cleared reason=finished")
             state = .completed
         } catch {
             recordDiagnosticsFailure(error.localizedDescription)
@@ -791,9 +873,16 @@ final class TranscriptionSession: ObservableObject {
     private func handleProcessingCancellation(savedMessage: String, unsavedMessage: String) async {
         isIdentifyingSpeakers = false
         progress = 0
+        activeDiarizationAttemptID = nil
+        activeDiarizationWorkTask = nil
         clearProcessingPhase()
+        if let audioURL {
+            statusActivityStore.clear(audioFileName: audioURL.lastPathComponent)
+        }
+        diarizationSessionLogger.info("diarization.state_cleared reason=cancel")
         livePreviewState = .inactive
         if !rawTranscription.isEmpty {
+            diarizationSessionLogger.info("diarization.retry_state_set reason=cancel")
             updateDiagnostics(
                 speakerLabelStatus: .canceled,
                 failureMessage: "Speaker labeling was canceled. Your transcript is available and speaker labels can be retried later."
@@ -1079,8 +1168,9 @@ final class TranscriptionSession: ObservableObject {
     }
 
     /// Runs diarization with Balanced V2, automatically retrying once with the faster
-    /// (less accurate) Fast V2 config if Balanced V2 fails or times out. Returns `nil`
-    /// only if both attempts fail.
+    /// (less accurate) Fast V2 config only after a normal failure. A timeout/cancel
+    /// can mean FluidAudio/Core ML is still running underneath, so starting fallback
+    /// immediately would create the unsafe overlap this objective is guarding.
     ///
     /// The timeout/poll parameters and `fallbackEngine` default to production values
     /// and are only overridden by tests to keep the watchdog race fast and deterministic.
@@ -1088,17 +1178,20 @@ final class TranscriptionSession: ObservableObject {
         _ url: URL,
         initialTimeout: TimeInterval = 120,
         progressTimeout: TimeInterval = 30,
+        stageTimeouts: DiarizationStageTimeouts? = nil,
         pollInterval: Duration = .seconds(5),
         fallbackEngine: any DiarizationEngine = FluidDiarizationEngine(config: .fastV2)
     ) async -> DiarizationAttemptOutcome? {
         diarizationFailureDetail = nil
-        if let segments = await diarizeWithWatchdog(
+        let primaryOutcome = await diarizeWithWatchdog(
             using: diarizer,
             url: url,
             initialTimeout: initialTimeout,
             progressTimeout: progressTimeout,
+            stageTimeouts: stageTimeouts,
             pollInterval: pollInterval
-        ) {
+        )
+        if case let .finished(segments) = primaryOutcome {
             diarizer = FluidDiarizationEngine(config: .balancedV2)
             updateDiagnostics(
                 diarizationFallbackUsed: false,
@@ -1106,15 +1199,26 @@ final class TranscriptionSession: ObservableObject {
             )
             return DiarizationAttemptOutcome(segments: segments, isApproximate: false)
         }
+        if primaryOutcome.preventsFallback {
+            diarizer = FluidDiarizationEngine(config: .balancedV2)
+            updateDiagnostics(
+                diarizationFallbackUsed: false,
+                speakerLabelStatus: .retryNeeded,
+                failureMessage: diarizationFailureDetail
+            )
+            return nil
+        }
 
         diarizationFailureDetail = nil
-        if let segments = await diarizeWithWatchdog(
+        let fallbackOutcome = await diarizeWithWatchdog(
             using: fallbackEngine,
             url: url,
             initialTimeout: initialTimeout,
             progressTimeout: progressTimeout,
+            stageTimeouts: stageTimeouts,
             pollInterval: pollInterval
-        ) {
+        )
+        if case let .finished(segments) = fallbackOutcome {
             diarizer = FluidDiarizationEngine(config: .balancedV2)
             updateDiagnostics(
                 diarizationFallbackUsed: true,
@@ -1132,55 +1236,148 @@ final class TranscriptionSession: ObservableObject {
         return nil
     }
 
-    /// Races a diarization attempt against a watchdog that allows up to
-    /// `initialTimeout` seconds before the first progress update, then
-    /// `progressTimeout` seconds without further progress. Cancels whichever task
-    /// doesn't finish first.
+    /// Runs diarization beside an unstructured watchdog. This intentionally avoids
+    /// `withTaskGroup`: leaving a structured task group waits for every child to
+    /// finish, so a FluidAudio/Core ML call that ignores cancellation can still hold
+    /// the UI hostage after the watchdog has technically "won."
     func diarizeWithWatchdog(
         using diarizer: any DiarizationEngine,
         url: URL,
         initialTimeout: TimeInterval = 120,
         progressTimeout: TimeInterval = 30,
+        stageTimeouts: DiarizationStageTimeouts? = nil,
         pollInterval: Duration = .seconds(5)
-    ) async -> [DiarizationSegment]? {
-        let progressGate = DiarizationProgressGate(initialTimeout: initialTimeout, progressTimeout: progressTimeout)
-        let outcome = await withTaskGroup(of: DiarizationRaceOutcome.self) { group -> DiarizationRaceOutcome in
-            group.addTask {
-                do {
-                    let result = try await diarizer.diarizeFile(url) { [weak self] value in
-                        Task { await progressGate.reportProgress() }
-                        Task { @MainActor in
-                            self?.progress = 0.6 + min(max(value, 0), 1) * 0.35
-                        }
-                    }
-                    return .finished(result)
-                } catch {
-                    return .failed(error.localizedDescription)
-                }
-            }
-            group.addTask {
-                while !Task.isCancelled {
-                    try? await Task.sleep(for: pollInterval)
-                    if await progressGate.hasTimedOut() {
-                        return .timedOut
-                    }
-                }
-                return .timedOut
-            }
-            defer { group.cancelAll() }
-            return await group.next() ?? .timedOut
+    ) async -> DiarizationRaceOutcome {
+        let beginResult = await diarizationAttemptGuard.begin(audioFileName: url.lastPathComponent)
+        guard case let .started(attemptID) = beginResult else {
+            let message = beginResult.blockedMessage ?? "Speaker labeling cannot start safely yet."
+            diarizationFailureDetail = message
+            diarizationSessionLogger.error("diarization.result.blocked reason=\(message, privacy: .public)")
+            return .blocked(message)
         }
 
-        switch outcome {
-        case .finished(let segments):
-            return segments
-        case .failed(let description):
-            diarizationFailureDetail = description
-            return nil
-        case .timedOut:
-            diarizationFailureDetail = "Speaker labeling timed out while processing this recording."
-            return nil
+        let progressGate = DiarizationProgressGate(
+            timeouts: stageTimeouts ?? DiarizationStageTimeouts.legacy(
+                initialTimeout: initialTimeout,
+                progressTimeout: progressTimeout
+            )
+        )
+        let resultBox = DiarizationAttemptResultBox()
+        activeDiarizationAttemptID = attemptID
+        diarizationSessionLogger.info("diarization.attempt.start id=\(attemptID.uuidString, privacy: .public) file=\(url.lastPathComponent, privacy: .private)")
+
+        let workTask = Task {
+            do {
+                let result = try await diarizer.diarizeFile(
+                    url,
+                    progress: { [weak self] value in
+                        Task { await progressGate.reportProgress() }
+                        Task { @MainActor in
+                            guard self?.activeDiarizationAttemptID == attemptID,
+                                  self?.processingWasCancelled == false else {
+                                return
+                            }
+                            self?.progress = 0.6 + min(max(value, 0), 1) * 0.35
+                        }
+                    },
+                    stage: { [weak self] event in
+                        Task {
+                            let snapshot = await progressGate.reportStage(event)
+                            await MainActor.run {
+                                guard self?.activeDiarizationAttemptID == attemptID,
+                                      self?.processingWasCancelled == false else {
+                                    return
+                                }
+                                self?.recordDiarizationStage(snapshot)
+                            }
+                        }
+                    }
+                )
+                await resultBox.complete(.finished(result))
+                await diarizationAttemptGuard.finish(attemptID)
+                diarizationSessionLogger.info("diarization.result.success id=\(attemptID.uuidString, privacy: .public) segments=\(result.count, privacy: .public)")
+            } catch is CancellationError {
+                await resultBox.complete(.canceled("Speaker labeling was canceled."))
+                await diarizationAttemptGuard.finish(attemptID)
+                diarizationSessionLogger.info("diarization.result.canceled id=\(attemptID.uuidString, privacy: .public)")
+            } catch {
+                let message = error.localizedDescription
+                await resultBox.complete(.failed(message))
+                await diarizationAttemptGuard.finish(attemptID)
+                diarizationSessionLogger.error("diarization.result.failure id=\(attemptID.uuidString, privacy: .public) error=\(message, privacy: .public)")
+            }
         }
+        activeDiarizationWorkTask = workTask
+
+        while true {
+            if let outcome = await resultBox.result {
+                activeDiarizationWorkTask = nil
+                activeDiarizationAttemptID = nil
+                return applyDiarizationOutcome(outcome)
+            }
+
+            try? await Task.sleep(for: pollInterval)
+
+            if let outcome = await resultBox.result {
+                activeDiarizationWorkTask = nil
+                activeDiarizationAttemptID = nil
+                return applyDiarizationOutcome(outcome)
+            }
+
+            if Task.isCancelled || processingWasCancelled {
+                let message = "Speaker labeling was canceled. Your transcript is available and speaker labels can be retried later."
+                workTask.cancel()
+                activeDiarizationWorkTask = nil
+                activeDiarizationAttemptID = nil
+                await diarizationAttemptGuard.markAbandoned(attemptID, reason: .canceled)
+                diarizationFailureDetail = message
+                diarizationSessionLogger.info("diarization.cancel_requested id=\(attemptID.uuidString, privacy: .public)")
+                diarizationSessionLogger.info("diarization.state_cleared reason=cancel")
+                return .canceled(message)
+            }
+
+            if let timeout = await progressGate.timeoutInfo() {
+                let message = Self.diarizationTimeoutMessage(timeout)
+                workTask.cancel()
+                activeDiarizationWorkTask = nil
+                activeDiarizationAttemptID = nil
+                await diarizationAttemptGuard.markAbandoned(attemptID, reason: .timedOut)
+                diarizationFailureDetail = message
+                updateDiagnostics(
+                    speakerLabelStatus: .retryNeeded,
+                    failureMessage: message,
+                    diarizationCurrentStage: timeout.stage,
+                    diarizationCurrentStageElapsed: timeout.elapsed,
+                    diarizationTimedOutStage: timeout.stage,
+                    diarizationTimedOutAfter: timeout.elapsed,
+                    diarizationStageTimings: timeout.completedTimings
+                )
+                diarizationSessionLogger.error(
+                    "diarization.timeout_fired id=\(attemptID.uuidString, privacy: .public) stage=\(timeout.stage.displayText, privacy: .public) elapsed=\(timeout.elapsed, privacy: .public) limit=\(timeout.limit, privacy: .public)"
+                )
+                diarizationSessionLogger.info("diarization.state_cleared reason=timeout")
+                diarizationSessionLogger.info("diarization.retry_state_set reason=timeout guarded=true")
+                return .timedOut(message)
+            }
+        }
+    }
+
+    private func applyDiarizationOutcome(_ outcome: DiarizationRaceOutcome) -> DiarizationRaceOutcome {
+        switch outcome {
+        case .finished:
+            diarizationFailureDetail = nil
+        case .failed(let description), .timedOut(let description), .canceled(let description), .blocked(let description):
+            diarizationFailureDetail = description
+        }
+        return outcome
+    }
+
+    func hasUnsafeDiarizationAttemptForTesting() async -> Bool {
+        await diarizationAttemptGuard.hasUnsafeAttempt
+    }
+
+    func clearUnsafeDiarizationAttemptForTesting() async {
+        await diarizationAttemptGuard.clearForTesting()
     }
 
     private func approximateSpeakerLabelNote() -> String {
@@ -1193,6 +1390,12 @@ final class TranscriptionSession: ObservableObject {
             : "The transcript finished, but speaker labeling could not finish. You can retry speaker labels later."
         guard let diarizationFailureDetail, !diarizationFailureDetail.isEmpty else { return base }
         return "\(base) \(diarizationFailureDetail)"
+    }
+
+    private static func diarizationTimeoutMessage(_ timeout: DiarizationTimeoutInfo) -> String {
+        let elapsed = DiagnosticsMetricFormatter.formatSeconds(timeout.elapsed)
+        let limit = DiagnosticsMetricFormatter.formatSeconds(timeout.limit)
+        return "Speaker labeling timed out during \(timeout.stage.displayText.lowercased()) after \(elapsed) (limit \(limit)). The transcript is available, and Transcriber is guarding against an unsafe overlapping retry while the previous speaker-labeling call finishes."
     }
 
     private func combinedCompletionNote(_ note: String?) -> String? {
@@ -1236,35 +1439,239 @@ nonisolated struct DiarizationAttemptOutcome {
 }
 
 /// The outcome of racing a diarization attempt against its watchdog.
-private enum DiarizationRaceOutcome: Sendable {
+nonisolated enum DiarizationRaceOutcome: Equatable, Sendable {
     case finished([DiarizationSegment])
     case failed(String)
-    case timedOut
+    case timedOut(String)
+    case canceled(String)
+    case blocked(String)
+
+    var preventsFallback: Bool {
+        switch self {
+        case .timedOut, .canceled, .blocked:
+            true
+        case .finished, .failed:
+            false
+        }
+    }
 }
 
-/// Tracks elapsed time for the diarization watchdog: allows up to
-/// `initialTimeout` seconds before the first progress update, then
-/// `progressTimeout` seconds without further progress.
+nonisolated struct DiarizationStageTimeouts: Equatable, Sendable {
+    var starting: TimeInterval
+    var audioInspection: TimeInterval
+    var conversionPrep: TimeInterval
+    var modelLoad: TimeInterval
+    var process: TimeInterval
+    var finalize: TimeInterval
+
+    static let production = DiarizationStageTimeouts(
+        starting: 30,
+        audioInspection: 15,
+        conversionPrep: 20,
+        modelLoad: 300,
+        process: 90,
+        finalize: 60
+    )
+
+    static func legacy(initialTimeout: TimeInterval, progressTimeout: TimeInterval) -> DiarizationStageTimeouts {
+        DiarizationStageTimeouts(
+            starting: initialTimeout,
+            audioInspection: initialTimeout,
+            conversionPrep: initialTimeout,
+            modelLoad: initialTimeout,
+            process: progressTimeout,
+            finalize: progressTimeout
+        )
+    }
+
+    func limit(for stage: DiarizationDiagnosticStage) -> TimeInterval? {
+        switch stage {
+        case .starting:
+            starting
+        case .audioInspection:
+            audioInspection
+        case .conversionPrep:
+            conversionPrep
+        case .modelLoad:
+            modelLoad
+        case .process:
+            process
+        case .finalize:
+            finalize
+        case .finished:
+            nil
+        }
+    }
+}
+
+nonisolated struct DiarizationStageSnapshot: Equatable, Sendable {
+    let currentStage: DiarizationDiagnosticStage
+    let currentStageElapsed: TimeInterval
+    let completedTimings: [DiarizationStageTiming]
+}
+
+nonisolated struct DiarizationTimeoutInfo: Equatable, Sendable {
+    let stage: DiarizationDiagnosticStage
+    let elapsed: TimeInterval
+    let limit: TimeInterval
+    let completedTimings: [DiarizationStageTiming]
+}
+
+actor DiarizationAttemptResultBox {
+    private(set) var result: DiarizationRaceOutcome?
+
+    func complete(_ result: DiarizationRaceOutcome) {
+        guard self.result == nil else { return }
+        self.result = result
+    }
+}
+
+actor DiarizationAttemptGuard {
+    enum BeginResult: Equatable, Sendable {
+        case started(UUID)
+        case blocked(String)
+
+        var blockedMessage: String? {
+            if case let .blocked(message) = self { return message }
+            return nil
+        }
+    }
+
+    enum AbandonedReason: String, Sendable {
+        case timedOut
+        case canceled
+    }
+
+    struct Attempt: Sendable {
+        let id: UUID
+        let audioFileName: String
+        let startedAt: Date
+        var abandonedReason: AbandonedReason?
+    }
+
+    static let shared = DiarizationAttemptGuard()
+
+    private var activeAttempt: Attempt?
+    private var abandonedAttempt: Attempt?
+
+    var hasUnsafeAttempt: Bool {
+        activeAttempt != nil || abandonedAttempt != nil
+    }
+
+    func begin(audioFileName: String) -> BeginResult {
+        if activeAttempt != nil {
+            return .blocked("Speaker labeling is already running. Wait for it to finish before retrying.")
+        }
+        if abandonedAttempt != nil {
+            return .blocked("A previous speaker-labeling attempt is still cleaning up. Wait a moment and try again; if it remains unavailable, close and reopen Transcriber before retrying speaker labels.")
+        }
+        let attempt = Attempt(id: UUID(), audioFileName: audioFileName, startedAt: .now)
+        activeAttempt = attempt
+        return .started(attempt.id)
+    }
+
+    func finish(_ id: UUID) {
+        if activeAttempt?.id == id {
+            activeAttempt = nil
+        }
+        if abandonedAttempt?.id == id {
+            abandonedAttempt = nil
+        }
+    }
+
+    func markAbandoned(_ id: UUID, reason: AbandonedReason) {
+        guard var attempt = activeAttempt, attempt.id == id else { return }
+        attempt.abandonedReason = reason
+        activeAttempt = nil
+        abandonedAttempt = attempt
+    }
+
+    func clearForTesting() {
+        activeAttempt = nil
+        abandonedAttempt = nil
+    }
+}
+
+/// Tracks elapsed time for the diarization watchdog by stage. The model-load
+/// stage intentionally has a longer production limit because first-run Core ML
+/// compilation can take much longer than steady-state processing.
 private actor DiarizationProgressGate {
     private let startedAt = Date.now
     private var lastProgressAt: Date?
-    private let initialTimeout: TimeInterval
-    private let progressTimeout: TimeInterval
+    private var currentStage = DiarizationDiagnosticStage.starting
+    private var currentStageStartedAt = Date.now
+    private var completedTimings: [DiarizationStageTiming] = []
+    private let timeouts: DiarizationStageTimeouts
 
-    init(initialTimeout: TimeInterval, progressTimeout: TimeInterval) {
-        self.initialTimeout = initialTimeout
-        self.progressTimeout = progressTimeout
+    init(timeouts: DiarizationStageTimeouts) {
+        self.timeouts = timeouts
     }
 
     func reportProgress() {
         lastProgressAt = .now
     }
 
-    func hasTimedOut() -> Bool {
-        if let lastProgressAt {
-            return Date.now.timeIntervalSince(lastProgressAt) >= progressTimeout
+    func reportStage(_ event: DiarizationStageEvent) -> DiarizationStageSnapshot {
+        let now = Date.now
+        switch event.kind {
+        case .started:
+            if currentStage != event.stage {
+                currentStage = event.stage
+                currentStageStartedAt = now
+                if event.stage != .process {
+                    lastProgressAt = nil
+                }
+            }
+        case .ended:
+            let duration = max(0, now.timeIntervalSince(currentStageStartedAt))
+            recordCompletedTiming(stage: event.stage, duration: duration)
+            if event.stage == .process {
+                lastProgressAt = now
+            }
         }
-        return Date.now.timeIntervalSince(startedAt) >= initialTimeout
+        return snapshot(at: now)
+    }
+
+    func timeoutInfo() -> DiarizationTimeoutInfo? {
+        let now = Date.now
+        let baseDate: Date
+        if currentStage == .process, let lastProgressAt {
+            baseDate = lastProgressAt
+        } else if currentStage == .starting {
+            baseDate = startedAt
+        } else {
+            baseDate = currentStageStartedAt
+        }
+        let elapsed = now.timeIntervalSince(baseDate)
+        guard let limit = timeouts.limit(for: currentStage), elapsed >= limit else {
+            return nil
+        }
+        return DiarizationTimeoutInfo(
+            stage: currentStage,
+            elapsed: elapsed,
+            limit: limit,
+            completedTimings: completedTimings
+        )
+    }
+
+    private func snapshot(at date: Date) -> DiarizationStageSnapshot {
+        DiarizationStageSnapshot(
+            currentStage: currentStage,
+            currentStageElapsed: max(0, date.timeIntervalSince(currentStageStartedAt)),
+            completedTimings: completedTimings
+        )
+    }
+
+    private func recordCompletedTiming(stage: DiarizationDiagnosticStage, duration: TimeInterval) {
+        guard let index = completedTimings.firstIndex(where: { $0.stage == stage }) else {
+            completedTimings.append(DiarizationStageTiming(stage: stage, duration: duration))
+            return
+        }
+        let existing = completedTimings[index]
+        completedTimings[index] = DiarizationStageTiming(
+            stage: stage,
+            duration: existing.duration + duration
+        )
     }
 }
 

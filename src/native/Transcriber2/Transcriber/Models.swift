@@ -102,6 +102,107 @@ nonisolated enum TranscriptAccessibility {
     }
 }
 
+nonisolated struct TranscriptDisplayTurn: Identifiable, Equatable, Sendable {
+    let id: TranscriptSegment.ID
+    let segmentIDs: [TranscriptSegment.ID]
+    let startMs: Int
+    let endMs: Int
+    let speaker: String
+    let text: String
+
+    init(segment: TranscriptSegment) {
+        self.id = segment.id
+        self.segmentIDs = [segment.id]
+        self.startMs = segment.startMs
+        self.endMs = segment.endMs
+        self.speaker = segment.speaker
+        self.text = segment.text
+    }
+
+    init(segments: [TranscriptSegment]) {
+        let first = segments.first ?? TranscriptSegment(startMs: 0, endMs: 0, speaker: "", text: "")
+        self.id = first.id
+        self.segmentIDs = segments.map(\.id)
+        self.startMs = first.startMs
+        self.endMs = segments.map(\.endMs).max() ?? first.endMs
+        self.speaker = first.speaker
+        self.text = segments
+            .map { $0.text.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .joined(separator: "\n")
+    }
+
+    var timestamp: String {
+        TranscriptSegment(startMs: startMs, endMs: endMs, speaker: speaker, text: text).timestamp
+    }
+
+    var segmentCount: Int {
+        segmentIDs.count
+    }
+
+    var displaySegment: TranscriptSegment {
+        TranscriptSegment(id: id, startMs: startMs, endMs: endMs, speaker: speaker, text: text)
+    }
+}
+
+nonisolated enum TranscriptTurnGrouping {
+    static let defaultMaximumGapMs = 2_000
+    static let defaultMaximumTurnDurationMs = 60_000
+    static let defaultMaximumSegmentsPerTurn = 12
+
+    static func group(
+        _ segments: [TranscriptSegment],
+        maximumGapMs: Int = defaultMaximumGapMs,
+        maximumTurnDurationMs: Int = defaultMaximumTurnDurationMs,
+        maximumSegmentsPerTurn: Int = defaultMaximumSegmentsPerTurn
+    ) -> [TranscriptDisplayTurn] {
+        var groups: [[TranscriptSegment]] = []
+        for segment in segments {
+            guard var currentGroup = groups.popLast() else {
+                groups.append([segment])
+                continue
+            }
+
+            if shouldAppend(
+                segment,
+                to: currentGroup,
+                maximumGapMs: maximumGapMs,
+                maximumTurnDurationMs: maximumTurnDurationMs,
+                maximumSegmentsPerTurn: maximumSegmentsPerTurn
+            ) {
+                currentGroup.append(segment)
+                groups.append(currentGroup)
+            } else {
+                groups.append(currentGroup)
+                groups.append([segment])
+            }
+        }
+        return groups.map(TranscriptDisplayTurn.init(segments:))
+    }
+
+    private static func shouldAppend(
+        _ segment: TranscriptSegment,
+        to group: [TranscriptSegment],
+        maximumGapMs: Int,
+        maximumTurnDurationMs: Int,
+        maximumSegmentsPerTurn: Int
+    ) -> Bool {
+        guard let first = group.first, let previous = group.last else { return false }
+        guard isCertainSpeaker(first.speaker), isCertainSpeaker(segment.speaker) else { return false }
+        guard previous.speaker == segment.speaker else { return false }
+        guard segment.startMs - previous.endMs <= maximumGapMs else { return false }
+        guard segment.endMs - first.startMs <= maximumTurnDurationMs else { return false }
+        guard group.count < maximumSegmentsPerTurn else { return false }
+        return true
+    }
+
+    private static func isCertainSpeaker(_ speaker: String) -> Bool {
+        let normalized = speaker.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalized.isEmpty else { return false }
+        return normalized.localizedCaseInsensitiveCompare("unknown") != .orderedSame
+    }
+}
+
 nonisolated enum TranscriptSegmentReassignment {
     static func availableSpeakers(in segments: [TranscriptSegment]) -> [String] {
         var seen: Set<String> = []
@@ -120,6 +221,20 @@ nonisolated enum TranscriptSegmentReassignment {
     ) -> [TranscriptSegment] {
         segments.map { segment in
             guard segment.id == segmentID else { return segment }
+            var updated = segment
+            updated.speaker = speaker
+            return updated
+        }
+    }
+
+    static func reassign(
+        segmentIDs: [TranscriptSegment.ID],
+        to speaker: String,
+        in segments: [TranscriptSegment]
+    ) -> [TranscriptSegment] {
+        let ids = Set(segmentIDs)
+        return segments.map { segment in
+            guard ids.contains(segment.id) else { return segment }
             var updated = segment
             updated.speaker = speaker
             return updated

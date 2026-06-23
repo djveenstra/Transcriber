@@ -15,13 +15,15 @@ struct RecordingView: View {
 
     var body: some View {
         NavigationStack {
-            VStack(spacing: 16) {
+            VStack(spacing: 10) {
                 statusHeader
                 content
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 controls
             }
-            .padding()
+            .padding(.horizontal)
+            .padding(.top, 4)
+            .padding(.bottom, 10)
             .background(Theme.background.ignoresSafeArea())
             .navigationTitle("Transcriber 2.0")
 #if os(iOS)
@@ -122,7 +124,7 @@ struct RecordingView: View {
     private var statusHeader: some View {
         HStack {
             Label(statusText, systemImage: statusIcon)
-                .font(.subheadline.weight(.semibold))
+                .font(.caption.weight(.semibold))
                 .foregroundStyle(session.state == .recording ? .red : Theme.muted)
             Spacer()
             if session.state == .recording {
@@ -130,6 +132,7 @@ struct RecordingView: View {
                     .font(.caption.weight(.semibold))
             }
             modelStatus
+                .font(.caption2.weight(.semibold))
             if session.state == .recording {
                 TimelineView(.periodic(from: .now, by: 1)) { _ in
                     Text(formatDuration(session.recorder.elapsedDuration))
@@ -691,18 +694,22 @@ struct SystemShareSheet: View {
 struct TranscriptList: View {
     let segments: [TranscriptSegment]
 
+    private var turns: [TranscriptDisplayTurn] {
+        TranscriptTurnGrouping.group(segments)
+    }
+
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 14) {
-                    ForEach(segments) { segment in
-                        TranscriptCard(segment: segment)
-                            .id(segment.id)
+                    ForEach(turns) { turn in
+                        TranscriptTurnCard(turn: turn)
+                            .id(turn.id)
                     }
                 }
             }
             .onChange(of: segments.count) { _, _ in
-                if let last = segments.last { proxy.scrollTo(last.id, anchor: .bottom) }
+                if let last = turns.last { proxy.scrollTo(last.id, anchor: .bottom) }
             }
         }
     }
@@ -715,6 +722,22 @@ struct TranscriptCard: View {
     var onReassignSpeaker: ((String) -> Void)?
 
     var body: some View {
+        TranscriptTurnCard(
+            turn: TranscriptDisplayTurn(segment: segment),
+            speakerNames: speakerNames,
+            speakerOptions: speakerOptions,
+            onReassignSpeaker: onReassignSpeaker
+        )
+    }
+}
+
+struct TranscriptTurnCard: View {
+    let turn: TranscriptDisplayTurn
+    var speakerNames: [String: String] = [:]
+    var speakerOptions: [String] = []
+    var onReassignSpeaker: ((String) -> Void)?
+
+    var body: some View {
         HStack(alignment: .top, spacing: 8) {
             VStack(alignment: .leading, spacing: 8) {
                 HStack(spacing: 8) {
@@ -722,7 +745,7 @@ struct TranscriptCard: View {
                         Text(displayName)
                             .font(.caption.bold())
                     } icon: {
-                        Text(TranscriptAccessibility.speakerCue(for: segment.speaker, names: speakerNames))
+                        Text(TranscriptAccessibility.speakerCue(for: turn.speaker, names: speakerNames))
                             .font(.caption2.bold())
                             .padding(.horizontal, 6)
                             .padding(.vertical, 3)
@@ -731,12 +754,12 @@ struct TranscriptCard: View {
                             .clipShape(Capsule())
                     }
                     .foregroundStyle(.white)
-                    Text(segment.timestamp)
+                    Text(turn.timestamp)
                         .font(.caption.monospacedDigit())
                         .foregroundStyle(Theme.muted)
                     Spacer(minLength: 8)
                 }
-                Text(segment.text)
+                Text(turn.text)
                     .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
@@ -752,10 +775,10 @@ struct TranscriptCard: View {
                         } label: {
                             Label(
                                 speakerMenuTitle(for: speaker),
-                                systemImage: speaker == segment.speaker ? "checkmark" : "person"
+                                systemImage: speaker == turn.speaker ? "checkmark" : "person"
                             )
                         }
-                        .disabled(speaker == segment.speaker)
+                        .disabled(speaker == turn.speaker)
                     }
                 } label: {
                     Image(systemName: "ellipsis.circle")
@@ -775,25 +798,28 @@ struct TranscriptCard: View {
     }
 
     private var displayName: String {
-        TranscriptExporter.displayName(segment.speaker, names: speakerNames)
+        TranscriptExporter.displayName(turn.speaker, names: speakerNames)
     }
 
     private var accessibilityLabel: String {
         TranscriptAccessibility.label(
-            for: segment,
+            for: turn.displaySegment,
             speakerNames: speakerNames,
             canReassignSpeaker: onReassignSpeaker != nil && !speakerOptions.isEmpty
         )
     }
 
     private var accessibilityHint: String {
-        onReassignSpeaker == nil || speakerOptions.isEmpty
-            ? "Transcript segment."
-            : "Use the change speaker button to reassign the speaker."
+        if onReassignSpeaker == nil || speakerOptions.isEmpty {
+            return turn.segmentCount == 1 ? "Transcript segment." : "Grouped speaker turn."
+        }
+        return turn.segmentCount == 1
+            ? "Use the change speaker button to reassign the speaker."
+            : "Use the change speaker button to reassign every segment in this grouped speaker turn."
     }
 
     private var speakerColor: Color {
-        let digits = segment.speaker.filter(\.isNumber)
+        let digits = turn.speaker.filter(\.isNumber)
         return Theme.speakerColors[(Int(digits) ?? 0) % Theme.speakerColors.count]
     }
 

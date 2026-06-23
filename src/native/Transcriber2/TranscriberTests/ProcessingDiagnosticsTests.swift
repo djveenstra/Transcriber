@@ -22,7 +22,15 @@ struct ProcessingDiagnosticsTests {
             transcriptionFallbackUsed: true,
             diarizationFallbackUsed: false,
             speakerLabelStatus: .complete,
-            failureMessage: nil
+            failureMessage: nil,
+            diarizationCurrentStage: .process,
+            diarizationCurrentStageElapsed: 0.4,
+            diarizationTimedOutStage: .modelLoad,
+            diarizationTimedOutAfter: 300,
+            diarizationStageTimings: [
+                DiarizationStageTiming(stage: .audioInspection, duration: 0.1),
+                DiarizationStageTiming(stage: .conversionPrep, duration: 0.2),
+            ]
         )
 
         let presentation = DiagnosticsPresentation.make(for: diagnostics)
@@ -35,6 +43,10 @@ struct ProcessingDiagnosticsTests {
         #expect(rows["Audio length"] == "9.0 seconds")
         #expect(rows["Speed"] == "2.0× real time")
         #expect(rows["Speaker labeling"] == "0.8 seconds")
+        #expect(rows["Diarization stage"] == "Sortformer processing · 0.4 seconds")
+        #expect(rows["Timed out during"] == "Model/resource loading · 300.0 seconds")
+        #expect(rows["Audio inspection"] == "0.1 seconds")
+        #expect(rows["Audio conversion/prep"] == "0.2 seconds")
         #expect(rows["Transcription fallback"] == "Yes")
         #expect(rows["Diarization fallback"] == "No")
         #expect(rows["Speaker labels"] == "Complete")
