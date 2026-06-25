@@ -32,6 +32,23 @@ struct DashboardTests {
         #expect(attention.map(\.title) == ["New", "Middle"])
     }
 
+    @Test func manyRecordingsRemainBoundedSortedAndFiltered() {
+        let items = (0..<2_000).map { index in
+            item(
+                title: "Recording \(index)",
+                date: Date(timeIntervalSinceReferenceDate: TimeInterval(index)),
+                status: index.isMultiple(of: 4) ? .complete : .needsTranscription
+            )
+        }
+
+        let attention = DashboardRecordingAttention.recentNeedingAttention(from: items, limit: 25)
+
+        #expect(attention.count == 25)
+        #expect(attention.allSatisfy { $0.status == .needsTranscription })
+        #expect(attention.map(\.createdAt) == attention.map(\.createdAt).sorted(by: >))
+        #expect(attention.first?.title == "Recording 1999")
+    }
+
     @Test func modelWarningsCoverMissingDownloadingRepairingAndFailedStates() throws {
         #expect(DashboardModelStatus.warning(for: .ready, modelName: "Base English Default") == nil)
 

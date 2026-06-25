@@ -83,6 +83,9 @@ struct FinalTranscriptionModelChoice: Identifiable, Equatable, Sendable {
 
 @MainActor
 final class FinalModelDownloader: ObservableObject {
+    typealias DownloadOperation = @MainActor (FinalTranscriptionModelChoice) async throws -> Void
+    typealias CacheRemovalOperation = @MainActor (FinalTranscriptionModelChoice) throws -> Void
+
     enum State: Equatable, Sendable {
         case idle
         case downloading(String, Double, String)
@@ -94,24 +97,26 @@ final class FinalModelDownloader: ObservableObject {
 
     @Published private(set) var state: State = .idle
     private var defaultPreloadTask: Task<Void, Never>?
+    private let downloadOperation: DownloadOperation?
+    private let cacheRemovalOperation: CacheRemovalOperation
+
+    init(
+        downloadOperation: DownloadOperation? = nil,
+        cacheRemovalOperation: @escaping CacheRemovalOperation = {
+            try TranscriptionModelReadiness.removeCache(for: $0)
+        }
+    ) {
+        self.downloadOperation = downloadOperation
+        self.cacheRemovalOperation = cacheRemovalOperation
+    }
 
     func download(_ model: FinalTranscriptionModelChoice) async {
         state = .downloading(model.id, 0, Self.initialStatus(for: model))
         do {
-            switch model.provider {
-            case .whisper:
-                await WhisperModelDownloader.shared.download(model.id)
-                if case let .failed(message) = WhisperModelDownloader.shared.state {
-                    throw FinalModelDownloadError.failed(message)
-                }
-            case .parakeet:
-                guard let version = model.parakeetVersion else { throw FinalModelDownloadError.invalidModel }
-                _ = try await AsrModels.download(version: version) { [weak self] progress in
-                    let status = Self.status(for: model, progress: progress)
-                    Task { @MainActor in
-                        self?.state = .downloading(model.id, progress.fractionCompleted, status)
-                    }
-                }
+            if let downloadOperation {
+                try await downloadOperation(model)
+            } else {
+                try await downloadUsingProductionProviders(model)
             }
             ModelRegistry.rememberDownloaded(model.id)
             state = .ready(model.id)
@@ -123,7 +128,7 @@ final class FinalModelDownloader: ObservableObject {
     func repair(_ model: FinalTranscriptionModelChoice) async {
         state = .downloading(model.id, 0, "Repairing model files.")
         do {
-            try TranscriptionModelReadiness.removeCache(for: model)
+            try cacheRemovalOperation(model)
             await download(model)
         } catch {
             state = .failed(model.id, error.localizedDescription)
@@ -152,7 +157,7 @@ final class FinalModelDownloader: ObservableObject {
         _ = ModelRegistry.refreshFileStatusHints(download: downloadSnapshot)
     }
 
-    private var downloadSnapshot: ModelDownloadSnapshot {
+    var downloadSnapshot: ModelDownloadSnapshot {
         switch state {
         case .idle:
             return .idle
@@ -162,6 +167,24 @@ final class FinalModelDownloader: ObservableObject {
             return .ready(modelID: id)
         case let .failed(id, message):
             return .failed(modelID: id, message: message)
+        }
+    }
+
+    private func downloadUsingProductionProviders(_ model: FinalTranscriptionModelChoice) async throws {
+        switch model.provider {
+        case .whisper:
+            await WhisperModelDownloader.shared.download(model.id)
+            if case let .failed(message) = WhisperModelDownloader.shared.state {
+                throw FinalModelDownloadError.failed(message)
+            }
+        case .parakeet:
+            guard let version = model.parakeetVersion else { throw FinalModelDownloadError.invalidModel }
+            _ = try await AsrModels.download(version: version) { [weak self] progress in
+                let status = Self.status(for: model, progress: progress)
+                Task { @MainActor in
+                    self?.state = .downloading(model.id, progress.fractionCompleted, status)
+                }
+            }
         }
     }
 

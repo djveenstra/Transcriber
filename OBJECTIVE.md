@@ -2,11 +2,13 @@
 
 _This file holds the **single active objective** the Worker is currently implementing. The Manager sets it from the roadmap and advances it only when the current objective is gated `PROCEED`. Full details for every objective live in [docs/planning/objectives/](docs/planning/objectives/)._
 
-## ▶ Active objective: **OBJ-19 — Cancellation & Failure-Injection Hardening**
+## ▶ Active objective: **OBJ-20 — Beta Acceptance Pass + `TranscriptionSession` Decomposition + Tech Debt**
 
-Read the full spec: [docs/planning/objectives/OBJECTIVE-19.md](docs/planning/objectives/OBJECTIVE-19.md).
+Read the full spec: [docs/planning/objectives/OBJECTIVE-20.md](docs/planning/objectives/OBJECTIVE-20.md).
 
-**One-line mission:** Prove the app preserves audio, transcripts, retry state, and usable UI recovery across cancellation, forced failures, and stressed processing interleavings.
+**One-line mission:** Run the full beta acceptance matrix, then complete the approved behavior-preserving session decomposition, English-default language setting, and speaker-color parsing fix.
+
+**Closeout boundary:** This pointer and the new branch prepare OBJ-20 only. No OBJ-20 implementation was started during OBJ-19 closeout.
 
 **Before starting, read:** [PRD.md](PRD.md) → [PLAN.md](PLAN.md) → this file → [AGENTS.md](AGENTS.md).
 
@@ -35,10 +37,10 @@ Read the full spec: [docs/planning/objectives/OBJECTIVE-19.md](docs/planning/obj
 | 17 | [Accessibility pass](docs/planning/objectives/OBJECTIVE-17.md) | 6 | Done — PROCEED 2026-06-23 |
 | 17.1 | [FluidAudio diarization safety & timeout stabilization](docs/planning/objectives/OBJECTIVE-17.1.md) | 6 | Done — PROCEED 2026-06-23 |
 | 18 | [Mac companion parity](docs/planning/objectives/OBJECTIVE-18.md) | 7 | Done — PROCEED 2026-06-25 (limited baseline accepted) |
-| 19 | [Cancellation & failure-injection hardening](docs/planning/objectives/OBJECTIVE-19.md) | 7 | ▶ Active |
-| 20 | [Beta acceptance + decomposition + tech debt](docs/planning/objectives/OBJECTIVE-20.md) | 8 | Pending |
+| 19 | [Cancellation & failure-injection hardening](docs/planning/objectives/OBJECTIVE-19.md) | 7 | Done — PROCEED 2026-06-25 |
+| 20 | [Beta acceptance + decomposition + tech debt](docs/planning/objectives/OBJECTIVE-20.md) | 8 | ▶ Active — implementation not started |
 
-> **Sequencing reminders:** `RecordingStatus` (OBJ-09) lands before the Dashboard (OBJ-10) consumes it; the model registry (OBJ-03) lands before OBJ-04 and before OBJ-11's Model Lab columns; the migration policy (OBJ-01) precedes any `Recording` schema change (OBJ-09 if stored, OBJ-12, OBJ-15). OBJ-18 is accepted as a limited Mac companion baseline; further Mac GUI validation/polish is deferred while mobile-first beta work proceeds. Launch-screen work, model rerun, delete-downloaded-models, and additional tuning ideas remain deferred backlog items, not active 17.x objectives. The Manager may reorder within a phase only with Human approval and only when dependencies are satisfied.
+> **Sequencing reminders:** OBJ-19 is complete. OBJ-20 is the active original objective, but implementation begins only with its own Human Reviewer kickoff. Launch-screen work, model rerun, delete-downloaded-models, and additional tuning ideas remain deferred until after the original 20 objectives are complete.
 
 ## How the Manager advances this file
 When the active objective is gated `PROCEED`: mark it done in the table, link its completion report, update [PLAN.md](PLAN.md), then set the next objective as ▶ Active and restate its mission here. Never advance while the current objective is `FIX FIRST` / `ASK USER` / `BLOCKED`. See [docs/planning/MULTI_AGENT_WORKFLOW.md](docs/planning/MULTI_AGENT_WORKFLOW.md).

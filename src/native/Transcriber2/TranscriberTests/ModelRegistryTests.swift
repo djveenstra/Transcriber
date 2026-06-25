@@ -62,6 +62,56 @@ struct ModelRegistryTests {
         #expect(status == .ready)
     }
 
+    @Test func completedDownloadDoesNotClaimReadyWhenFilesAreMissing() {
+        let missing = ModelFileSnapshot(
+            isPresent: false,
+            hasCacheFootprint: false,
+            wasPreviouslyDownloaded: false,
+            sizeBytes: nil
+        )
+
+        let status = ModelRegistry.status(
+            for: descriptor,
+            download: .ready(modelID: descriptor.id),
+            file: missing,
+            verification: .ready
+        )
+
+        #expect(status == .notDownloaded)
+    }
+
+    @Test func backToBackModelStatesStayScopedToTheSelectedModel() throws {
+        let firstChoice = FinalTranscriptionModelChoice.choice(for: WhisperModelChoice.defaultID)
+        let secondChoice = try #require(
+            FinalTranscriptionModelChoice.whisper.first { $0.id != firstChoice.id }
+        )
+        let first = ModelRegistry.descriptor(for: firstChoice)
+        let second = ModelRegistry.descriptor(for: secondChoice)
+        let present = ModelFileSnapshot(
+            isPresent: true,
+            hasCacheFootprint: true,
+            wasPreviouslyDownloaded: true,
+            sizeBytes: nil
+        )
+        let snapshots = [first.id: present, second.id: present]
+
+        var statuses = ModelRegistry.statuses(
+            for: [first, second],
+            download: .downloading(modelID: first.id, progress: 0.25, message: "First model."),
+            fileSnapshots: snapshots
+        )
+        #expect(statuses[first.id] == .downloading(progress: 0.25, message: "First model."))
+        #expect(statuses[second.id] == .ready)
+
+        statuses = ModelRegistry.statuses(
+            for: [first, second],
+            download: .downloading(modelID: second.id, progress: 0.75, message: "Second model."),
+            fileSnapshots: snapshots
+        )
+        #expect(statuses[first.id] == .ready)
+        #expect(statuses[second.id] == .downloading(progress: 0.75, message: "Second model."))
+    }
+
     @Test func removingWhisperCacheLeavesSiblingUserDataUntouched() throws {
         let fileManager = FileManager.default
         let root = fileManager.temporaryDirectory
@@ -241,5 +291,85 @@ struct LaunchModelReadinessTests {
         #expect(attempts == 2)
         #expect(readiness.state == .livePreviewReady)
         #expect(defaultModelStarts == 1)
+    }
+}
+
+@MainActor
+@Suite(.serialized)
+struct FinalModelDownloaderTests {
+    private enum TestFailure: LocalizedError {
+        case download
+
+        var errorDescription: String? {
+            "Injected download failure."
+        }
+    }
+
+    private let model = FinalTranscriptionModelChoice.choice(
+        for: FinalTranscriptionModelChoice.defaultID
+    )
+
+    @Test func downloadFailureIsReportedAndDoesNotClaimRegistryReadiness() async {
+        let downloader = FinalModelDownloader(
+            downloadOperation: { _ in throw TestFailure.download }
+        )
+
+        await downloader.download(model)
+
+        #expect(downloader.state == .failed(model.id, "Injected download failure."))
+
+        let missing = ModelFileSnapshot(
+            isPresent: false,
+            hasCacheFootprint: false,
+            wasPreviouslyDownloaded: false,
+            sizeBytes: nil
+        )
+        let registryStatus = ModelRegistry.status(
+            for: ModelRegistry.descriptor(for: model),
+            download: downloader.downloadSnapshot,
+            file: missing,
+            verification: .notChecked
+        )
+        #expect(registryStatus == .failed("Injected download failure."))
+    }
+
+    @Test func repairRemovesCacheAndRecoversAfterDownloadFailure() async {
+        var downloadAttempts = 0
+        var removedModelIDs: [String] = []
+        let downloader = FinalModelDownloader(
+            downloadOperation: { _ in
+                downloadAttempts += 1
+                if downloadAttempts == 1 {
+                    throw TestFailure.download
+                }
+            },
+            cacheRemovalOperation: {
+                removedModelIDs.append($0.id)
+            }
+        )
+
+        await downloader.download(model)
+        #expect(downloader.state == .failed(model.id, "Injected download failure."))
+
+        await downloader.repair(model)
+
+        #expect(downloadAttempts == 2)
+        #expect(removedModelIDs == [model.id])
+        #expect(downloader.state == .ready(model.id))
+    }
+
+    @Test func redownloadUsesRepairPathAndRecovers() async {
+        var removedModelIDs: [String] = []
+        let downloader = FinalModelDownloader(
+            downloadOperation: { _ in },
+            cacheRemovalOperation: {
+                removedModelIDs.append($0.id)
+            }
+        )
+
+        await downloader.redownload(model)
+
+        #expect(removedModelIDs == [model.id])
+        #expect(downloader.state == .ready(model.id))
     }
 }

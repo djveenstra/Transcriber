@@ -573,3 +573,30 @@ Use an iPhone 17 Pro or equivalent beta test device. Install the current OBJ-08 
 - Product priority: the mobile app remains the primary beta target, and mobile-first beta work proceeds to OBJ-19.
 - Scope confirmation: no additional Mac feature work, full launch readiness screen, deferred 17.x feature objective, OBJ-19 implementation, dependency, engine, server/cloud/off-device path, or prohibited-path change was added during closeout.
 - Final Manager gate: **PROCEED** for the accepted limited Mac companion baseline.
+
+## OBJ-19 — Cancellation & Failure-Injection Hardening — 2026-06-25
+- Tier: agent-verifiable cancellation/failure matrix completed; real iPhone framework/hardware realism remains Human-owned for OBJ-20.
+- Build: macOS PASS / iOS-simulator PASS.
+- Unit/integration tests: full `TranscriberTests` PASS, 163/163. Focused cancel/failure, diarization/session-state, model readiness/download, microphone fallback, import/persistence/save, write-error, playback, export, and stress suites PASS, 112/112.
+- `git diff --check`: PASS.
+- Cancellation coverage: imported initial final transcription; retry transcription; initial post-transcription speaker labeling; saved-recording label retry; current-session label retry; copied import processing; rapid cancel/retry; and superseding work on different audio.
+- Preservation assertions: existing audio remains on disk; copied imports are inserted immediately as retryable Library records; completed transcript/raw timing survives label cancellation/timeout/failure; retry flags match the saved work; and stale attempts cannot overwrite newer results.
+- UI/activity recovery: processing phases clear, speaker-label activity clears, Dashboard/Library activity entries do not remain stale, and canceled label work lands in completed/retryable state rather than a permanent “Identifying speakers” state.
+- Failure injection: selected model verification failure; fallback model notice; microphone unavailable fallback/notice; diarization primary/fallback error, timeout, ignored cancellation, and overlap guard; download failure plus Repair/Redownload; persistence save failure plus later save retry; low-level audio write failure; and missing-file readiness reconciliation.
+- Stress/regression: serialized rapid cancel/retry prevents stale publication; different-audio supersession clears the old activity without clearing the new one; 2,000-recording Dashboard filtering remains bounded/sorted; back-to-back model lifecycle states remain scoped; happy-path transcription/labeling remains green.
+- Model cleanup: cancellation now calls unload for the injected transcription engine and, on iOS, both Whisper and any active Parakeet final engine; model state returns to not loaded.
+- Playback/export regression: accepted M4A derivative implementation was not changed; playback/cache and TXT/SRT/JSON tests pass.
+- Auditor: final **ALIGNED** after FIX FIRST. Initial audit found incomplete initial-path evidence, stale-activity assertions, and provider cleanup evidence. Follow-up added initial transcription/label cancellation, current-label cancellation, serialized overlap coverage, and activity cleanup. No data-loss path discovered remains unfixed.
+- Scope audit: no prohibited paths, dependency revisions, server/cloud/off-device processing, new diarization engine, schema change, strict-concurrency weakening, accepted playback/M4A change, deferred feature, or OBJ-20 implementation.
+- Device install: not attempted because the connected iPhone was unavailable to CoreDevice during QA.
+- Remaining Human/device checks for OBJ-20: cancel a real recorded final transcription with Whisper and Parakeet where available; cancel and retry real speaker labeling; verify playback/export after cancellation; confirm immediate retry/model switching does not leave resources stuck; exercise unavailable microphone routing; stress rapid record/stop/cancel/retry; inspect a large real Library; and verify interruption/write-error messaging and audio preservation when a reproducible hardware/framework failure can be induced.
+- Known limitation: deterministic unit tests can prove the app’s state and persistence contracts, but cannot prove Core ML/FluidAudio/AVAudioEngine physically release device resources or manufacture a genuine recorder write failure.
+- Verdict: PASS. Manager gate: **PROCEED**. OBJ-19 is complete; OBJ-20 remains pending and was not started.
+
+## OBJ-19 — Final Human Reviewer PASS and Gate — 2026-06-25
+- Human decision: **PROCEED**. OBJ-19 is accepted.
+- Confirmed: imported audio persists before processing; cancellation unloads final transcription models; stale attempts cannot overwrite newer results; UI activity/retry state recovers; deterministic failure seams and cancellation-matrix tests are present.
+- Accepted validation: `git diff --check` PASS; macOS build PASS; iOS Simulator build PASS; full `TranscriberTests` PASS 163/163; focused OBJ-19 tests PASS 112/112; Auditor ALIGNED.
+- Device-owned checks queued for OBJ-20: real provider resource release, genuine recorder write failure, microphone hardware fallback, rapid real-device interleavings, and physical iPhone install/device validation.
+- Scope confirmation: no OBJ-20 implementation was included in OBJ-19. Deferred feature/fine-tuning ideas remain deferred until after the original 20 objectives are complete.
+- Final Manager gate: **PROCEED**. Advance the planning pointer and branch to OBJ-20 without starting implementation.

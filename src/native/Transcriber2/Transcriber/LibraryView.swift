@@ -340,7 +340,7 @@ struct SharedAudioDetailView: View {
             Button {
                 playback.stop()
                 processingTask = Task {
-                    await session.importAudio(item.url)
+                    await session.importAudio(item.url, in: modelContext)
                     if !Task.isCancelled {
                         saveTranscriptIfCompleted()
                     }

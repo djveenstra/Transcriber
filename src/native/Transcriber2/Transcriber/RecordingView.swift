@@ -65,7 +65,7 @@ struct RecordingView: View {
             ) { result in
                 if case let .success(urls) = result, let url = urls.first {
                     processingTask = Task {
-                        await session.importAudio(url)
+                        await session.importAudio(url, in: modelContext)
                         if !Task.isCancelled {
                             session.saveCompletedRecording(in: modelContext)
                         }

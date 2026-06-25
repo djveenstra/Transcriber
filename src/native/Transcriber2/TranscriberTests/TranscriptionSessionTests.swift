@@ -9,6 +9,117 @@ private struct FakeDiarizationError: Error, LocalizedError {
     var errorDescription: String? { message }
 }
 
+private struct FakeTranscriptionError: Error, LocalizedError {
+    let message: String
+    var errorDescription: String? { message }
+}
+
+private actor ScriptedTranscriptionEngine: TranscriptionEngine {
+    enum Step: Sendable {
+        case succeed([TranscriptionSegment])
+        case fail(String)
+        case waitForUnload
+        case waitForRelease([TranscriptionSegment])
+    }
+
+    private let steps: [Step]
+    private let serializesTranscriptionCalls: Bool
+    private var callCount = 0
+    private var unloadCount = 0
+    private var activeCallCount = 0
+    private var maxConcurrentCallCount = 0
+    private var transcriptionSlotIsOccupied = false
+    private var transcriptionSlotWaiters: [CheckedContinuation<Void, Never>] = []
+    private var releasedCalls: Set<Int> = []
+    private var callsReleasedByUnload: Set<Int> = []
+
+    init(_ steps: [Step], serializesTranscriptionCalls: Bool = false) {
+        self.steps = steps
+        self.serializesTranscriptionCalls = serializesTranscriptionCalls
+    }
+
+    func prepare() async throws {}
+    func beginLive(onSegment: @escaping @Sendable (TranscriptionSegment) -> Void) {}
+    func prepareLive(audioFormat: AVAudioFormat) async throws {}
+    func append(_ chunk: CapturedAudioChunk) async throws {}
+    func finishLive() async throws {}
+
+    func transcribeFile(
+        _ url: URL,
+        progress: @escaping @Sendable (Double) -> Void
+    ) async throws -> [TranscriptionSegment] {
+        if serializesTranscriptionCalls {
+            await acquireTranscriptionSlot()
+        }
+        activeCallCount += 1
+        maxConcurrentCallCount = max(maxConcurrentCallCount, activeCallCount)
+        defer {
+            activeCallCount -= 1
+            if serializesTranscriptionCalls {
+                releaseTranscriptionSlot()
+            }
+        }
+        let call = callCount
+        callCount += 1
+        let step = steps[min(call, steps.count - 1)]
+        progress(0.25)
+        switch step {
+        case let .succeed(segments):
+            progress(1)
+            return segments
+        case let .fail(message):
+            throw FakeTranscriptionError(message: message)
+        case .waitForUnload:
+            callsReleasedByUnload.insert(call)
+            while !releasedCalls.contains(call) {
+                try? await Task.sleep(for: .milliseconds(10))
+            }
+            throw CancellationError()
+        case let .waitForRelease(segments):
+            while !releasedCalls.contains(call) {
+                try? await Task.sleep(for: .milliseconds(10))
+            }
+            progress(1)
+            return segments
+        }
+    }
+
+    func currentLoadedModelID() -> String? { "fake-model" }
+
+    func unload() async {
+        unloadCount += 1
+        for call in callsReleasedByUnload {
+            releasedCalls.insert(call)
+        }
+    }
+
+    func release(call: Int) {
+        releasedCalls.insert(call)
+    }
+
+    func observedCallCount() -> Int { callCount }
+    func observedUnloadCount() -> Int { unloadCount }
+    func observedMaxConcurrentCallCount() -> Int { maxConcurrentCallCount }
+
+    private func acquireTranscriptionSlot() async {
+        if !transcriptionSlotIsOccupied {
+            transcriptionSlotIsOccupied = true
+            return
+        }
+        await withCheckedContinuation { continuation in
+            transcriptionSlotWaiters.append(continuation)
+        }
+    }
+
+    private func releaseTranscriptionSlot() {
+        if transcriptionSlotWaiters.isEmpty {
+            transcriptionSlotIsOccupied = false
+        } else {
+            transcriptionSlotWaiters.removeFirst().resume()
+        }
+    }
+}
+
 /// Test double for `DiarizationEngine` used to exercise
 /// `TranscriptionSession.runDiarizationWithFallback` / `diarizeWithWatchdog`
 /// without needing real Sortformer models.
@@ -353,6 +464,7 @@ struct DiarizationFallbackTests {
         #expect(recording.diarizationNeedsRetry)
         #expect(session.speakerLabelStatusPresentation.showsRetry)
         #expect(AudioPlaybackFileInspector.duration(for: recording.audioURL) ?? 0 > 0)
+        #expect(RecordingStatusActivityStore.shared.activity(for: recording) == nil)
     }
 
     @Test func cancelDuringSpeakerLabelingClearsActivityAndPreservesTranscript() async throws {
@@ -391,6 +503,7 @@ struct DiarizationFallbackTests {
         #expect(session.latestDiagnostics?.speakerLabelStatus == .canceled)
         #expect(session.completionNote?.contains("canceled") == true)
         #expect(AudioPlaybackFileInspector.duration(for: recording.audioURL) ?? 0 > 0)
+        #expect(RecordingStatusActivityStore.shared.activity(for: recording) == nil)
     }
 
     private func makeRetryableRecording(audioFileName: String) throws -> Recording {
@@ -408,6 +521,439 @@ struct DiarizationFallbackTests {
             ],
             diarizationNeedsRetry: true
         )
+    }
+
+    private func writeSilentCAF(to url: URL) throws {
+        try FileManager.default.createDirectory(
+            at: url.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        let format = try #require(AVAudioFormat(standardFormatWithSampleRate: 16_000, channels: 1))
+        let file = try AVAudioFile(forWriting: url, settings: format.settings)
+        let buffer = try #require(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 16_000))
+        buffer.frameLength = 16_000
+        try file.write(from: buffer)
+    }
+}
+
+@MainActor
+struct TranscriptionSessionFailureInjectionTests {
+    @Test func cancelDuringRetryTranscriptionPreservesAudioAndRetryStateAndUnloadsModel() async throws {
+        let (context, recording) = try makeRecording(
+            audioFileName: "cancel-transcription-\(UUID().uuidString).caf",
+            transcriptionNeedsRetry: true
+        )
+        defer { try? FileManager.default.removeItem(at: recording.audioURL) }
+        let engine = ScriptedTranscriptionEngine([.waitForUnload])
+        let session = makeSession(engine: engine)
+
+        let task = Task {
+            await session.retryTranscription(for: recording, in: context)
+        }
+        try await waitUntil { await engine.observedCallCount() == 1 }
+        await session.cancelProcessing()
+        await task.value
+
+        #expect(recording.transcriptionNeedsRetry)
+        #expect(recording.segments.isEmpty)
+        #expect(FileManager.default.fileExists(atPath: recording.audioURL.path))
+        #expect(session.currentProcessingPhase == nil)
+        #expect(session.state == .failed("Processing was canceled. Your recording is saved and can be retried from the library."))
+        #expect(await engine.observedUnloadCount() == 1)
+        #expect(RecordingStatusActivityStore.shared.activity(for: recording) == nil)
+    }
+
+    @Test func retryTranscriptionRunsInitialSpeakerLabelsAndPersistsHappyPath() async throws {
+        let (context, recording) = try makeRecording(
+            audioFileName: "retry-happy-\(UUID().uuidString).caf",
+            transcriptionNeedsRetry: true
+        )
+        defer { try? FileManager.default.removeItem(at: recording.audioURL) }
+        let transcript = [
+            TranscriptionSegment(startMs: 0, endMs: 1_000, text: "Fresh transcript")
+        ]
+        let engine = ScriptedTranscriptionEngine([.succeed(transcript)])
+        let session = makeSession(engine: engine)
+        session.diarizer = FakeDiarizationEngine(.succeed([
+            DiarizationSegment(startMs: 0, endMs: 1_000, speaker: "SPEAKER_03")
+        ]))
+
+        await session.retryTranscription(for: recording, in: context)
+
+        #expect(session.state == .completed)
+        #expect(recording.rawTranscription == transcript)
+        #expect(recording.segments.map(\.text) == ["Fresh transcript"])
+        #expect(recording.segments.map(\.speaker) == ["SPEAKER_03"])
+        #expect(!recording.transcriptionNeedsRetry)
+        #expect(!recording.diarizationNeedsRetry)
+        #expect(session.currentProcessingPhase == nil)
+        #expect(RecordingStatusActivityStore.shared.activity(for: recording) == nil)
+    }
+
+    @Test func cancelDuringImportedInitialFinalTranscriptionKeepsCopiedAudioRetryable() async throws {
+        let container = try makeContainer()
+        let context = ModelContext(container)
+        let sourceURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("import-source-\(UUID().uuidString).caf")
+        try writeSilentCAF(to: sourceURL)
+        defer { try? FileManager.default.removeItem(at: sourceURL) }
+        let engine = ScriptedTranscriptionEngine([.waitForUnload])
+        let session = makeSession(engine: engine)
+
+        let task = Task {
+            await session.importAudio(sourceURL, in: context)
+        }
+        try await waitUntil {
+            let recordings = (try? context.fetch(FetchDescriptor<Recording>())) ?? []
+            guard recordings.count == 1 else { return false }
+            return await engine.observedCallCount() == 1
+        }
+        let imported = try #require(try context.fetch(FetchDescriptor<Recording>()).first)
+        #expect(imported.transcriptionNeedsRetry)
+        #expect(FileManager.default.fileExists(atPath: imported.audioURL.path))
+
+        await session.cancelProcessing()
+        await task.value
+
+        #expect(imported.transcriptionNeedsRetry)
+        #expect(imported.segments.isEmpty)
+        #expect(FileManager.default.fileExists(atPath: imported.audioURL.path))
+        #expect(RecordingStatusActivityStore.shared.activity(for: imported) == nil)
+        #expect(await engine.observedUnloadCount() == 1)
+        try? FileManager.default.removeItem(at: imported.audioURL)
+    }
+
+    @Test func cancelDuringInitialPostTranscriptionSpeakerLabelsPreservesTranscriptAndAudio() async throws {
+        let container = try makeContainer()
+        let context = ModelContext(container)
+        let sourceURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("initial-label-cancel-\(UUID().uuidString).caf")
+        try writeSilentCAF(to: sourceURL)
+        defer { try? FileManager.default.removeItem(at: sourceURL) }
+        let transcript = [
+            TranscriptionSegment(startMs: 0, endMs: 1_000, text: "Transcript before labels")
+        ]
+        let session = makeSession(engine: ScriptedTranscriptionEngine([.succeed(transcript)]))
+        session.diarizationInitialTimeout = 10
+        session.diarizationProgressTimeout = 10
+        session.diarizer = FakeDiarizationEngine(.ignoreCancellation)
+
+        let task = Task {
+            await session.importAudio(sourceURL, in: context)
+        }
+        try await waitUntil {
+            guard session.currentProcessingPhase == .identifyingSpeakers else { return false }
+            return session.canCancelProcessing
+        }
+        let imported = try #require(try context.fetch(FetchDescriptor<Recording>()).first)
+        #expect(imported.rawTranscription == transcript)
+        #expect(imported.segments.map(\.text) == ["Transcript before labels"])
+
+        await session.cancelProcessing()
+        await task.value
+
+        #expect(session.state == .completed)
+        #expect(session.currentProcessingPhase == nil)
+        #expect(session.latestDiagnostics?.speakerLabelStatus == .canceled)
+        #expect(imported.rawTranscription == transcript)
+        #expect(imported.segments.map(\.text) == ["Transcript before labels"])
+        #expect(!imported.transcriptionNeedsRetry)
+        #expect(imported.diarizationNeedsRetry)
+        #expect(FileManager.default.fileExists(atPath: imported.audioURL.path))
+        #expect(RecordingStatusActivityStore.shared.activity(for: imported) == nil)
+        try? FileManager.default.removeItem(at: imported.audioURL)
+    }
+
+    @Test func currentSpeakerLabelRetryReusesTranscriptAndUpdatesOnlyLabels() async throws {
+        let container = try makeContainer()
+        let context = ModelContext(container)
+        let sourceURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("current-labels-\(UUID().uuidString).caf")
+        try writeSilentCAF(to: sourceURL)
+        defer { try? FileManager.default.removeItem(at: sourceURL) }
+        let transcript = [
+            TranscriptionSegment(startMs: 0, endMs: 1_000, text: "Keep this text")
+        ]
+        let session = makeSession(engine: ScriptedTranscriptionEngine([.succeed(transcript)]))
+        session.diarizer = FakeDiarizationEngine(.succeed([
+            DiarizationSegment(startMs: 0, endMs: 1_000, speaker: "SPEAKER_00")
+        ]))
+
+        await session.importAudio(sourceURL, in: context)
+        #expect(session.state == .completed)
+        session.diarizer = FakeDiarizationEngine(.succeed([
+            DiarizationSegment(startMs: 0, endMs: 1_000, speaker: "SPEAKER_02")
+        ]))
+
+        await session.retryCurrentSpeakerLabels()
+
+        #expect(session.state == .completed)
+        #expect(session.rawTranscription == transcript)
+        #expect(session.finalSegments.map(\.text) == ["Keep this text"])
+        #expect(session.finalSegments.map(\.speaker) == ["SPEAKER_02"])
+        #expect(!session.diarizationNeedsRetry)
+        if let imported = try context.fetch(FetchDescriptor<Recording>()).first {
+            try? FileManager.default.removeItem(at: imported.audioURL)
+        }
+    }
+
+    @Test func cancelDuringCurrentSpeakerLabelRetryPreservesCurrentTranscriptAndClearsActivity() async throws {
+        let container = try makeContainer()
+        let context = ModelContext(container)
+        let sourceURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("current-label-cancel-\(UUID().uuidString).caf")
+        try writeSilentCAF(to: sourceURL)
+        defer { try? FileManager.default.removeItem(at: sourceURL) }
+        let transcript = [
+            TranscriptionSegment(startMs: 0, endMs: 1_000, text: "Current transcript")
+        ]
+        let session = makeSession(engine: ScriptedTranscriptionEngine([.succeed(transcript)]))
+        session.diarizer = FakeDiarizationEngine(.succeed([
+            DiarizationSegment(startMs: 0, endMs: 1_000, speaker: "SPEAKER_00")
+        ]))
+        await session.importAudio(sourceURL, in: context)
+        let imported = try #require(try context.fetch(FetchDescriptor<Recording>()).first)
+        let originalSegments = imported.segments
+
+        session.diarizationInitialTimeout = 10
+        session.diarizationProgressTimeout = 10
+        session.diarizer = FakeDiarizationEngine(.ignoreCancellation)
+        let retryTask = Task {
+            await session.retryCurrentSpeakerLabels()
+        }
+        try await waitUntil {
+            session.currentProcessingPhase == .identifyingSpeakers && session.canCancelProcessing
+        }
+        await session.cancelProcessing()
+        await retryTask.value
+
+        #expect(session.state == .completed)
+        #expect(session.currentProcessingPhase == nil)
+        #expect(session.rawTranscription == transcript)
+        #expect(session.finalSegments == originalSegments)
+        #expect(session.diarizationNeedsRetry)
+        #expect(session.latestDiagnostics?.speakerLabelStatus == .canceled)
+        #expect(imported.rawTranscription == transcript)
+        #expect(imported.segments == originalSegments)
+        #expect(RecordingStatusActivityStore.shared.activity(for: imported) == nil)
+        try? FileManager.default.removeItem(at: imported.audioURL)
+    }
+
+    @Test func saveFailureShowsStorageAlertAndLaterCancellationRetriesSave() async throws {
+        let container = try makeContainer()
+        let context = ModelContext(container)
+        let sourceURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("save-failure-\(UUID().uuidString).caf")
+        try writeSilentCAF(to: sourceURL)
+        defer { try? FileManager.default.removeItem(at: sourceURL) }
+        var saveAttempts = 0
+        let engine = ScriptedTranscriptionEngine([.waitForUnload])
+        let session = makeSession(
+            engine: engine,
+            persistenceSave: { context in
+                saveAttempts += 1
+                if saveAttempts == 1 {
+                    throw FakeTranscriptionError(message: "forced save failure")
+                }
+                try context.save()
+            }
+        )
+
+        let task = Task {
+            await session.importAudio(sourceURL, in: context)
+        }
+        try await waitUntil {
+            guard session.storageErrorMessage != nil else { return false }
+            return await engine.observedCallCount() == 1
+        }
+        #expect(session.storageErrorMessage?.contains("could not be saved") == true)
+
+        await session.cancelProcessing()
+        await task.value
+
+        #expect(saveAttempts >= 2)
+        #expect(session.storageErrorMessage == nil)
+        let imported = try #require(try context.fetch(FetchDescriptor<Recording>()).first)
+        #expect(imported.transcriptionNeedsRetry)
+        #expect(FileManager.default.fileExists(atPath: imported.audioURL.path))
+        try? FileManager.default.removeItem(at: imported.audioURL)
+    }
+
+    @Test func modelVerificationFailureLeavesRecordingRetryableAndClearsActivity() async throws {
+        let (context, recording) = try makeRecording(
+            audioFileName: "verification-failure-\(UUID().uuidString).caf",
+            transcriptionNeedsRetry: true
+        )
+        defer { try? FileManager.default.removeItem(at: recording.audioURL) }
+        let session = makeSession(
+            engine: ScriptedTranscriptionEngine([.fail("transcriber should not run")]),
+            verification: { _ in .failed("forced verification failure") }
+        )
+
+        await session.retryTranscription(for: recording, in: context)
+
+        guard case let .failed(message) = session.state else {
+            Issue.record("Expected failed state")
+            return
+        }
+        #expect(message.contains("forced verification failure"))
+        #expect(recording.transcriptionNeedsRetry)
+        #expect(FileManager.default.fileExists(atPath: recording.audioURL.path))
+        #expect(session.currentProcessingPhase == nil)
+        #expect(RecordingStatusActivityStore.shared.activity(for: recording) == nil)
+    }
+
+    @Test func rapidCancelThenRetryCannotBeOverwrittenByLateOlderAttempt() async throws {
+        let (context, recording) = try makeRecording(
+            audioFileName: "overlap-\(UUID().uuidString).caf",
+            transcriptionNeedsRetry: true
+        )
+        defer { try? FileManager.default.removeItem(at: recording.audioURL) }
+        let oldTranscript = [
+            TranscriptionSegment(startMs: 0, endMs: 1_000, text: "Stale transcript")
+        ]
+        let newTranscript = [
+            TranscriptionSegment(startMs: 0, endMs: 1_000, text: "Newest transcript")
+        ]
+        let engine = ScriptedTranscriptionEngine([
+            .waitForRelease(oldTranscript),
+            .succeed(newTranscript),
+        ], serializesTranscriptionCalls: true)
+        let session = makeSession(engine: engine)
+        session.diarizer = FakeDiarizationEngine(.succeed([
+            DiarizationSegment(startMs: 0, endMs: 1_000, speaker: "SPEAKER_01")
+        ]))
+
+        let oldTask = Task {
+            await session.retryTranscription(for: recording, in: context)
+        }
+        try await waitUntil { await engine.observedCallCount() == 1 }
+        await session.cancelProcessing()
+
+        let retryTask = Task {
+            await session.retryTranscription(for: recording, in: context)
+        }
+        try await Task.sleep(for: .milliseconds(50))
+        #expect(await engine.observedCallCount() == 1)
+        #expect(await engine.observedMaxConcurrentCallCount() == 1)
+
+        await engine.release(call: 0)
+        await retryTask.value
+        #expect(recording.segments.map(\.text) == ["Newest transcript"])
+        await oldTask.value
+
+        #expect(session.state == .completed)
+        #expect(recording.rawTranscription == newTranscript)
+        #expect(recording.segments.map(\.text) == ["Newest transcript"])
+        #expect(!recording.transcriptionNeedsRetry)
+        #expect(session.currentProcessingPhase == nil)
+        #expect(await engine.observedMaxConcurrentCallCount() == 1)
+        #expect(RecordingStatusActivityStore.shared.activity(for: recording) == nil)
+    }
+
+    @Test func supersedingAttemptOnDifferentAudioClearsPriorActivityWithoutClearingNewActivity() async throws {
+        let (firstContext, firstRecording) = try makeRecording(
+            audioFileName: "superseded-first-\(UUID().uuidString).caf",
+            transcriptionNeedsRetry: true
+        )
+        let (secondContext, secondRecording) = try makeRecording(
+            audioFileName: "superseded-second-\(UUID().uuidString).caf",
+            transcriptionNeedsRetry: true
+        )
+        defer {
+            try? FileManager.default.removeItem(at: firstRecording.audioURL)
+            try? FileManager.default.removeItem(at: secondRecording.audioURL)
+        }
+        let engine = ScriptedTranscriptionEngine([
+            .waitForRelease([TranscriptionSegment(startMs: 0, endMs: 1_000, text: "Old")]),
+            .waitForRelease([TranscriptionSegment(startMs: 0, endMs: 1_000, text: "New")]),
+        ])
+        let session = makeSession(engine: engine)
+
+        let firstTask = Task {
+            await session.retryTranscription(for: firstRecording, in: firstContext)
+        }
+        try await waitUntil {
+            RecordingStatusActivityStore.shared.activity(for: firstRecording) == .transcribing
+        }
+
+        let secondTask = Task {
+            await session.retryTranscription(for: secondRecording, in: secondContext)
+        }
+        try await waitUntil {
+            RecordingStatusActivityStore.shared.activity(for: secondRecording) == .transcribing
+        }
+
+        #expect(RecordingStatusActivityStore.shared.activity(for: firstRecording) == nil)
+        #expect(RecordingStatusActivityStore.shared.activity(for: secondRecording) == .transcribing)
+
+        await session.cancelProcessing()
+        await engine.release(call: 0)
+        await engine.release(call: 1)
+        await firstTask.value
+        await secondTask.value
+
+        #expect(RecordingStatusActivityStore.shared.activity(for: firstRecording) == nil)
+        #expect(RecordingStatusActivityStore.shared.activity(for: secondRecording) == nil)
+    }
+
+    private func makeSession(
+        engine: ScriptedTranscriptionEngine,
+        verification: @escaping TranscriptionSession.FinalModelVerification = { _ in .ready },
+        persistenceSave: @escaping TranscriptionSession.PersistenceSave = { try $0.save() }
+    ) -> TranscriptionSession {
+        let session = TranscriptionSession(
+            transcriber: engine,
+            finalModelVerification: verification,
+            persistenceSave: persistenceSave,
+            diarizationAttemptGuard: DiarizationAttemptGuard()
+        )
+        session.diarizationInitialTimeout = 0.2
+        session.diarizationProgressTimeout = 0.2
+        session.diarizationStageTimeouts = .legacy(initialTimeout: 0.2, progressTimeout: 0.2)
+        session.diarizationPollInterval = .milliseconds(10)
+        return session
+    }
+
+    private func makeRecording(
+        audioFileName: String,
+        transcriptionNeedsRetry: Bool
+    ) throws -> (ModelContext, Recording) {
+        let container = try makeContainer()
+        let context = ModelContext(container)
+        let url = AppStoragePaths.recordingsDirectory.appendingPathComponent(audioFileName)
+        try writeSilentCAF(to: url)
+        let recording = Recording(
+            title: "Failure Injection",
+            durationSeconds: 1,
+            audioFileName: audioFileName,
+            segments: [],
+            transcriptionNeedsRetry: transcriptionNeedsRetry
+        )
+        context.insert(recording)
+        try context.save()
+        return (context, recording)
+    }
+
+    private func makeContainer() throws -> ModelContainer {
+        try ModelContainer(
+            for: Recording.self,
+            configurations: ModelConfiguration(isStoredInMemoryOnly: true)
+        )
+    }
+
+    private func waitUntil(
+        timeout: Duration = .seconds(2),
+        condition: @escaping @MainActor () async -> Bool
+    ) async throws {
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: timeout)
+        while !(await condition()) {
+            if clock.now >= deadline {
+                throw FakeTranscriptionError(message: "Timed out waiting for deterministic test state.")
+            }
+            try await Task.sleep(for: .milliseconds(10))
+        }
     }
 
     private func writeSilentCAF(to url: URL) throws {
