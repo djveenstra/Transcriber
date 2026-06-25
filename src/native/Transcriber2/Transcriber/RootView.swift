@@ -20,13 +20,11 @@ struct RootView: View {
             LibraryView()
                 .tabItem { Label("Library", systemImage: "waveform") }
                 .tag(RootTab.library)
-#if os(iOS)
             NavigationStack {
                 ModelLabView()
             }
                 .tabItem { Label("Model Lab", systemImage: "speedometer") }
                 .tag(RootTab.modelLab)
-#endif
             SettingsView()
                 .tabItem { Label("Settings", systemImage: "gearshape.fill") }
                 .tag(RootTab.settings)
@@ -42,11 +40,7 @@ struct RootView: View {
     }
 
     private var modelLabAction: (() -> Void)? {
-#if os(iOS)
         { selectedTab = .modelLab }
-#else
-        nil
-#endif
     }
 }
 
@@ -57,7 +51,7 @@ enum RootTab: Hashable, Sendable {
     case settings
 
     static let iOSPrimaryTabs: [RootTab] = [.dashboard, .library, .modelLab, .settings]
-    static let macPrimaryTabs: [RootTab] = [.dashboard, .library, .settings]
+    static let macPrimaryTabs: [RootTab] = [.dashboard, .library, .modelLab, .settings]
 }
 
 private enum RecordingFlow: Identifiable {

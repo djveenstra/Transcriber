@@ -44,7 +44,7 @@ enum RecordingInterruptionRecovery {
 
 @MainActor
 final class TranscriptionSession: ObservableObject {
-    enum State: Equatable {
+    enum State: Equatable, Sendable {
         case idle
         case preparing
         case recording
@@ -101,11 +101,13 @@ final class TranscriptionSession: ObservableObject {
     private var savedRecording: Recording?
     private var persistenceContext: ModelContext?
     private var livePreparationTask: Task<Void, Never>?
+    private var liveAudioFormat: AVAudioFormat?
     private var liveAudioContinuation: AsyncStream<CapturedAudioChunk>.Continuation?
     private var liveConsumerTask: Task<Void, Never>?
     private var processingWasCancelled = false
     private var processingFinalModelChoice: FinalTranscriptionModelChoice?
     private var modelFallbackNote: String?
+    private var dismissalNeedsPersistenceRetry = false
     private let statusActivityStore = RecordingStatusActivityStore.shared
     private let diagnosticsStore = ProcessingDiagnosticsStore.shared
     private let diarizationAttemptGuard: DiarizationAttemptGuard
@@ -128,6 +130,29 @@ final class TranscriptionSession: ObservableObject {
         if isIdentifyingSpeakers { return true }
         if case .processing = state { return true }
         return false
+    }
+
+    var requiresCloseConfirmation: Bool {
+        if dismissalNeedsPersistenceRetry { return true }
+        return Self.requiresCloseConfirmation(for: state, isIdentifyingSpeakers: isIdentifyingSpeakers)
+    }
+
+    var needsDismissalSaveRetry: Bool {
+        dismissalNeedsPersistenceRetry
+    }
+
+    static func requiresCloseConfirmation(
+        for state: State,
+        isIdentifyingSpeakers: Bool
+    ) -> Bool {
+        switch state {
+        case .preparing, .recording, .processing:
+            true
+        case .completed:
+            isIdentifyingSpeakers
+        case .idle, .failed:
+            false
+        }
     }
 
     var selectedModelName: String {
@@ -180,6 +205,7 @@ final class TranscriptionSession: ObservableObject {
         processingWasCancelled = false
         processingFinalModelChoice = nil
         modelFallbackNote = nil
+        dismissalNeedsPersistenceRetry = false
         latestDiagnostics = nil
         persistenceContext = context
 
@@ -189,7 +215,9 @@ final class TranscriptionSession: ObservableObject {
         }
 
         do {
+            try Task.checkCancellation()
             let microphoneFormat = try recorder.prepareForRecording()
+            liveAudioFormat = microphoneFormat
             activeMicrophoneName = recorder.activeMicrophoneName
             microphoneFallbackNotice = recorder.microphoneFallbackNotice
 #if os(iOS)
@@ -242,29 +270,16 @@ final class TranscriptionSession: ObservableObject {
                 }
             }
 
+            try Task.checkCancellation()
             try recorder.start(at: url)
             state = .recording
             livePreviewState = .loading
-            livePreparationTask = Task { [weak self] in
-                guard let self else { return }
-                do {
-#if os(iOS)
-                    try await self.liveParakeet.prepare()
-                    guard !Task.isCancelled, self.state == .recording else { return }
-                    self.livePreviewState = .ready
-#else
-                    try await self.transcriber.prepareLive(audioFormat: microphoneFormat)
-                    guard !Task.isCancelled, self.state == .recording else { return }
-                    self.livePreviewState = .ready
-                    let loaded = await self.transcriber.currentLoadedModelID()
-                    self.modelState = .ready(WhisperModelChoice.choice(for: loaded ?? "").name)
-#endif
-                } catch {
-                    guard !Task.isCancelled, self.state == .recording else { return }
-                    self.livePreviewState = .unavailable
-                    self.livePreviewNote = "Live preview unavailable: \(error.localizedDescription)"
-                }
-            }
+            startLivePreparation(audioFormat: microphoneFormat)
+        } catch is CancellationError {
+            recorder.stop()
+            recorder.onSystemEvent = nil
+            await stopLiveCaptureTasks()
+            state = .idle
         } catch {
             recorder.stop()
             recorder.onSystemEvent = nil
@@ -340,6 +355,7 @@ final class TranscriptionSession: ObservableObject {
         processingWasCancelled = false
         processingFinalModelChoice = nil
         modelFallbackNote = nil
+        dismissalNeedsPersistenceRetry = false
         latestDiagnostics = nil
 
         let destination = AppStoragePaths.recordingsDirectory
@@ -452,10 +468,77 @@ final class TranscriptionSession: ObservableObject {
         liveConsumerTask = nil
         livePreparationTask?.cancel()
         livePreparationTask = nil
+        liveAudioFormat = nil
         activeDiarizationWorkTask?.cancel()
         activeDiarizationWorkTask = nil
         activeDiarizationAttemptID = nil
         recorder.onSystemEvent = nil
+    }
+
+    func retryLivePreview() {
+        guard state == .recording, let liveAudioFormat else { return }
+        livePreparationTask?.cancel()
+        livePreviewState = .loading
+        livePreviewNote = nil
+        startLivePreparation(audioFormat: liveAudioFormat)
+    }
+
+    func prepareForDismissal(in context: ModelContext) async -> Bool {
+        if dismissalNeedsPersistenceRetry {
+            let saved = persistChanges(
+                in: context,
+                failureMessage: "Your recording is still on disk, but its Library entry could not be saved. Retry before closing."
+            )
+            dismissalNeedsPersistenceRetry = !saved
+            return saved
+        }
+
+        // Import cancellation can race this method and move `.processing` to
+        // `.failed` first. Preserve any copied, unsaved audio independently of
+        // that presentation state so the Library entry cannot be orphaned.
+        if !saved, audioURL != nil, state != .recording, state != .preparing {
+            preserveRecording(in: context)
+            savedRecording?.transcriptionNeedsRetry = true
+            let saved = persistChanges(
+                in: context,
+                failureMessage: "Your imported audio is still on disk, but its Library entry could not be saved. Retry before closing."
+            )
+            dismissalNeedsPersistenceRetry = !saved
+        }
+
+        switch state {
+        case .recording:
+            let writeError = recorder.stop()
+            recorder.onSystemEvent = nil
+            await stopLiveCaptureTasks()
+            preserveRecording(in: context)
+            savedRecording?.transcriptionNeedsRetry = true
+            let saved = persistChanges(
+                in: context,
+                failureMessage: "Your recording was captured, but its retry status could not be saved."
+            )
+            dismissalNeedsPersistenceRetry = !saved
+            if let writeError {
+                storageErrorMessage = "The recording was saved for retry, but the audio file may be incomplete: \(writeError.localizedDescription)"
+            }
+#if os(macOS)
+            await transcriber.unload()
+            modelState = .notLoaded
+#endif
+            state = .idle
+        case .processing:
+            await cancelProcessing()
+        case .completed where isIdentifyingSpeakers:
+            await cancelProcessing()
+        case .preparing:
+            recorder.stop()
+            recorder.onSystemEvent = nil
+            await stopLiveCaptureTasks()
+            state = .idle
+        case .idle, .completed, .failed:
+            break
+        }
+        return !dismissalNeedsPersistenceRetry && storageErrorMessage == nil
     }
 
     func retrySpeakerLabels(for recording: Recording, in context: ModelContext) async {
@@ -974,9 +1057,35 @@ final class TranscriptionSession: ObservableObject {
         await liveConsumerTask?.value
         liveConsumerTask = nil
         livePreparationTask = nil
+        liveAudioFormat = nil
 #if os(iOS)
         await liveParakeet.finish()
 #endif
+    }
+
+    private func startLivePreparation(audioFormat: AVAudioFormat) {
+        livePreparationTask = Task { [weak self] in
+            guard let self else { return }
+            do {
+#if os(iOS)
+                try await self.liveParakeet.prepare()
+                guard !Task.isCancelled, self.state == .recording else { return }
+                self.livePreviewState = .ready
+#else
+                await LaunchModelReadiness.shared.waitForLivePreviewAttempt()
+                try Task.checkCancellation()
+                try await self.transcriber.prepareLive(audioFormat: audioFormat)
+                guard !Task.isCancelled, self.state == .recording else { return }
+                self.livePreviewState = .ready
+                let loaded = await self.transcriber.currentLoadedModelID()
+                self.modelState = .ready(WhisperModelChoice.choice(for: loaded ?? "").name)
+#endif
+            } catch {
+                guard !Task.isCancelled, self.state == .recording else { return }
+                self.livePreviewState = .unavailable
+                self.livePreviewNote = "Live preview could not finish preparing: \(error.localizedDescription)"
+            }
+        }
     }
 
     private func preserveRecording(in context: ModelContext) {
@@ -1006,13 +1115,16 @@ final class TranscriptionSession: ObservableObject {
     /// Saves the context, surfacing failures via `storageErrorMessage` instead of
     /// silently discarding them. `failureMessage` should tell the user what remains
     /// safe (e.g. "still visible here") so they know whether to wait or take action.
-    private func persistChanges(in context: ModelContext, failureMessage: String) {
+    @discardableResult
+    private func persistChanges(in context: ModelContext, failureMessage: String) -> Bool {
         do {
             try context.save()
             storageErrorMessage = nil
+            return true
         } catch {
             persistenceLogger.error("Failed to save model context: \(error.localizedDescription, privacy: .public)")
             storageErrorMessage = failureMessage
+            return false
         }
     }
 

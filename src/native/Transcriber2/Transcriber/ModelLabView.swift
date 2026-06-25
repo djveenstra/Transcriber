@@ -1,12 +1,9 @@
 import Foundation
-
-#if os(iOS)
 import AVFoundation
 import Combine
 import SwiftData
 import SwiftUI
 import UniformTypeIdentifiers
-#endif
 
 struct ModelLabResult: Identifiable, Sendable {
     let id = UUID()
@@ -85,7 +82,29 @@ enum ModelLabReport {
     }
 }
 
+@MainActor
+enum ModelLabPlatformSupport {
+    static var supportedChoices: [FinalTranscriptionModelChoice] {
 #if os(iOS)
+        FinalTranscriptionModelChoice.all
+#else
+        FinalTranscriptionModelChoice.whisper
+#endif
+    }
+
+    static var supportedDescriptors: [ModelDescriptor] {
+        supportedChoices.map(ModelRegistry.descriptor(for:))
+    }
+
+    static var runGuidance: String {
+#if os(iOS)
+        "Download models in Settings first. Model Lab runs selections one at a time to protect iPhone memory."
+#else
+        "Download Whisper models in Settings first. Model Lab runs selections one at a time to protect system memory."
+#endif
+    }
+}
+
 @MainActor
 final class ModelLabRunner: ObservableObject {
     @Published private(set) var results: [ModelLabResult] = []
@@ -103,7 +122,7 @@ final class ModelLabRunner: ObservableObject {
         isRunning = true
         results = []
         progress = 0
-        let choices = FinalTranscriptionModelChoice.all.filter { modelIDs.contains($0.id) }
+        let choices = ModelLabPlatformSupport.supportedChoices.filter { modelIDs.contains($0.id) }
         let duration = (try? AVAudioFile(forReading: audioURL)).map {
             Double($0.length) / $0.processingFormat.sampleRate
         } ?? 0
@@ -123,6 +142,7 @@ final class ModelLabRunner: ObservableObject {
                 let segments: [TranscriptionSegment]
                 switch choice.provider {
                 case .parakeet:
+#if os(iOS)
                     let engine = ParakeetFinalTranscriptionEngine(model: choice)
                     do {
                         try await engine.prepare { [weak self] value in
@@ -145,6 +165,9 @@ final class ModelLabRunner: ObservableObject {
                         await engine.unload()
                         throw error
                     }
+#else
+                    throw ModelLabRunnerError.unsupportedModel
+#endif
                 case .whisper:
                     UserDefaults.standard.set(choice.id, forKey: "whisperModel")
                     let engine = WhisperKitTranscriptionEngine()
@@ -228,6 +251,14 @@ final class ModelLabRunner: ObservableObject {
     }
 }
 
+private enum ModelLabRunnerError: LocalizedError {
+    case unsupportedModel
+
+    var errorDescription: String? {
+        "This model is not available on Mac."
+    }
+}
+
 struct ModelLabView: View {
     @Query(sort: \Recording.createdAt, order: .reverse) private var recordings: [Recording]
     @StateObject private var runner = ModelLabRunner()
@@ -256,10 +287,10 @@ struct ModelLabView: View {
             }
 
             Section("Models") {
-                Text("Download models in Settings first. Model Lab runs selections one at a time to protect iPhone memory.")
+                Text(ModelLabPlatformSupport.runGuidance)
                     .font(.footnote)
                     .foregroundStyle(Theme.muted)
-                ForEach(ModelRegistry.models) { descriptor in
+                ForEach(ModelLabPlatformSupport.supportedDescriptors) { descriptor in
                     modelToggle(descriptor)
                 }
             }
@@ -426,4 +457,3 @@ struct ModelLabView: View {
         }
     }
 }
-#endif

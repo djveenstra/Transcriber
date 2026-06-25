@@ -7,8 +7,13 @@ struct RecordingView: View {
     var importRequestID: UUID?
 
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.dismiss) private var dismiss
     @StateObject private var session = TranscriptionSession()
+#if os(macOS)
+    @StateObject private var launchReadiness = LaunchModelReadiness.shared
+#endif
     @State private var showingImporter = false
+    @State private var showingCloseConfirmation = false
     @State private var processingTask: Task<Void, Never>?
     @State private var handledStartRequestID: UUID?
     @State private var handledImportRequestID: UUID?
@@ -28,10 +33,18 @@ struct RecordingView: View {
             .navigationTitle("Transcriber 2.0")
 #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
+#else
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Close", action: requestClose)
+                        .keyboardShortcut(.cancelAction)
+                }
+            }
 #endif
             .storageErrorAlert(session)
             .task {
 #if os(macOS)
+                await launchReadiness.waitForLivePreviewAttempt()
                 await session.prepareSelectedModel()
 #endif
             }
@@ -60,6 +73,15 @@ struct RecordingView: View {
                     }
                 }
             }
+            .interactiveDismissDisabled(session.requiresCloseConfirmation)
+            .alert(closeConfirmationTitle, isPresented: $showingCloseConfirmation) {
+                Button("Keep Open", role: .cancel) {}
+                Button(closeConfirmationActionTitle, role: .destructive) {
+                    closeActiveWork()
+                }
+            } message: {
+                Text(closeConfirmationMessage)
+            }
         }
     }
 
@@ -83,6 +105,9 @@ struct RecordingView: View {
                 Label("Sortformer identifies up to four speakers.", systemImage: "person.3.fill")
                     .font(.footnote)
                     .foregroundStyle(Theme.muted)
+#if os(macOS)
+                launchReadinessStatus
+#endif
                 Spacer()
             }
         case .recording:
@@ -97,11 +122,24 @@ struct RecordingView: View {
                         .clipShape(RoundedRectangle(cornerRadius: 12))
                 }
                 if session.liveSegments.isEmpty {
-                    ContentUnavailableView(
-                        livePreviewTitle,
-                        systemImage: "waveform",
-                        description: Text(livePreviewDescription)
-                    )
+                    VStack(spacing: 12) {
+                        ContentUnavailableView(
+                            livePreviewTitle,
+                            systemImage: "waveform",
+                            description: Text(livePreviewDescription)
+                        )
+                        if session.livePreviewState == .unavailable {
+                            Button {
+#if os(macOS)
+                                launchReadiness.retry()
+#endif
+                                session.retryLivePreview()
+                            } label: {
+                                Label("Retry Live Preview", systemImage: "arrow.clockwise")
+                            }
+                            .buttonStyle(SecondaryButtonStyle())
+                        }
+                    }
                 } else {
                     TranscriptList(segments: session.liveSegments)
                 }
@@ -249,7 +287,10 @@ struct RecordingView: View {
             }
         } else {
             Button {
-                Task { await session.startRecording(in: modelContext) }
+                processingTask = Task {
+                    await session.startRecording(in: modelContext)
+                    processingTask = nil
+                }
             } label: {
                 Label("Record", systemImage: "mic.fill")
             }
@@ -423,7 +464,10 @@ struct RecordingView: View {
         guard let startRequestID, handledStartRequestID != startRequestID else { return }
         handledStartRequestID = startRequestID
         guard canStartNewAudio else { return }
-        Task { await session.startRecording(in: modelContext) }
+        processingTask = Task {
+            await session.startRecording(in: modelContext)
+            processingTask = nil
+        }
     }
 
     private func handleExternalImportRequest() {
@@ -440,6 +484,79 @@ struct RecordingView: View {
         case .recording, .processing, .completed:
             false
         }
+    }
+
+#if os(macOS)
+    @ViewBuilder private var launchReadinessStatus: some View {
+        switch launchReadiness.state {
+        case .idle, .preparingLivePreview:
+            Label("Preparing Live Preview", systemImage: "hourglass")
+                .font(.footnote)
+                .foregroundStyle(Theme.muted)
+        case .livePreviewReady:
+            Label("Live Preview prepared", systemImage: "checkmark.circle.fill")
+                .font(.footnote)
+                .foregroundStyle(Theme.muted)
+        case let .failed(message):
+            VStack(spacing: 8) {
+                Text("Live Preview preparation failed. \(message)")
+                    .font(.footnote)
+                    .foregroundStyle(Theme.muted)
+                    .multilineTextAlignment(.center)
+                Button {
+                    launchReadiness.retry()
+                } label: {
+                    Label("Retry Preparation", systemImage: "arrow.clockwise")
+                }
+                .buttonStyle(SecondaryButtonStyle())
+            }
+        }
+    }
+#endif
+
+    private func requestClose() {
+        if session.requiresCloseConfirmation {
+            showingCloseConfirmation = true
+        } else {
+            processingTask?.cancel()
+            processingTask = nil
+            dismiss()
+        }
+    }
+
+    private func closeActiveWork() {
+        processingTask?.cancel()
+        processingTask = Task {
+            let canDismiss = await session.prepareForDismissal(in: modelContext)
+            processingTask = nil
+            if canDismiss {
+                dismiss()
+            }
+        }
+    }
+
+    private var closeConfirmationTitle: String {
+        if session.needsDismissalSaveRetry {
+            return "Retry saving before closing?"
+        }
+        return session.state == .recording ? "Stop recording and close?" : "Cancel current work and close?"
+    }
+
+    private var closeConfirmationActionTitle: String {
+        if session.needsDismissalSaveRetry {
+            return "Retry Save and Close"
+        }
+        return session.state == .recording ? "Stop, Save, and Close" : "Cancel and Close"
+    }
+
+    private var closeConfirmationMessage: String {
+        if session.needsDismissalSaveRetry {
+            return "The audio remains on disk, but its Library entry has not been saved yet."
+        }
+        if session.state == .recording {
+            return "The captured audio will be saved in the Library and marked ready for transcription."
+        }
+        return "Transcriber will cancel the active preparation or processing step while preserving any audio and transcript already saved."
     }
 }
 

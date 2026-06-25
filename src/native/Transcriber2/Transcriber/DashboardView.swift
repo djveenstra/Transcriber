@@ -237,7 +237,6 @@ struct DashboardView: View {
         .buttonStyle(SecondaryButtonStyle())
         .accessibilityHint("Imports an audio file from Files.")
 
-#if os(iOS)
         if let onModelLab {
             Button(action: onModelLab) {
                 Label("Open Model Lab", systemImage: "speedometer")
@@ -245,14 +244,6 @@ struct DashboardView: View {
             .buttonStyle(SecondaryButtonStyle())
             .accessibilityHint("Opens model comparison tools.")
         }
-#else
-        Button {} label: {
-            Label("Open Model Lab", systemImage: "speedometer")
-        }
-        .buttonStyle(SecondaryButtonStyle())
-        .disabled(true)
-        .accessibilityHint("Model Lab is available on iPhone in this beta.")
-#endif
     }
 
     private var statusGrid: some View {

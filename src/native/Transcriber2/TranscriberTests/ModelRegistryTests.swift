@@ -187,3 +187,59 @@ struct ModelRegistryTests {
         )
     }
 }
+
+@MainActor
+struct LaunchModelReadinessTests {
+    private enum TestFailure: Error {
+        case expected
+    }
+
+    @Test func launchReadinessPreparesLivePreviewBeforeDefaultModel() async {
+        var events: [String] = []
+        let readiness = LaunchModelReadiness(
+            prepareLivePreview: {
+                events.append("live-preview")
+            },
+            prepareDefaultModel: {
+                events.append("default-model")
+            }
+        )
+
+        await readiness.waitForLivePreviewAttempt()
+
+        #expect(events == ["live-preview", "default-model"])
+        #expect(readiness.state == .livePreviewReady)
+    }
+
+    @Test func failedLaunchReadinessCanRetry() async {
+        var shouldFail = true
+        var attempts = 0
+        var defaultModelStarts = 0
+        let readiness = LaunchModelReadiness(
+            prepareLivePreview: {
+                attempts += 1
+                if shouldFail {
+                    throw TestFailure.expected
+                }
+            },
+            prepareDefaultModel: {
+                defaultModelStarts += 1
+            }
+        )
+
+        await readiness.waitForLivePreviewAttempt()
+        guard case .failed = readiness.state else {
+            Issue.record("Expected launch readiness to report a retryable failure")
+            return
+        }
+        #expect(defaultModelStarts == 0)
+
+        shouldFail = false
+        readiness.retry()
+        await readiness.waitForLivePreviewAttempt()
+
+        #expect(attempts == 2)
+        #expect(readiness.state == .livePreviewReady)
+        #expect(defaultModelStarts == 1)
+    }
+}

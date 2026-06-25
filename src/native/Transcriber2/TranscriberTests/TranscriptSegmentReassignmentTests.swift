@@ -82,7 +82,7 @@ struct TranscriptSegmentReassignmentTests {
 
         #expect(turns.count == 1)
         #expect(turns[0].speaker == "SPEAKER_00")
-        #expect(turns[0].timestamp == "0:00")
+        #expect(turns[0].timestamp == "0:00 - 0:14")
         #expect(turns[0].text == "Okay, I am testing.\nHey, Jimmy.\nCan you say something?")
         #expect(turns[0].segmentCount == 3)
     }
@@ -105,6 +105,24 @@ struct TranscriptSegmentReassignmentTests {
         ])
 
         #expect(turns.count == 2)
+    }
+
+    @Test func continuousLongSpeakerTurnDoesNotSplitAtOldDisplayCaps() {
+        let segments = (0..<20).map { index in
+            let start = index * 4_000
+            return TranscriptSegment(
+                startMs: start,
+                endMs: start + 3_500,
+                speaker: "SPEAKER_00",
+                text: "Part \(index)"
+            )
+        }
+
+        let turns = TranscriptTurnGrouping.group(segments)
+
+        #expect(turns.count == 1)
+        #expect(turns[0].segmentCount == 20)
+        #expect(turns[0].timestamp == "0:00 - 1:19")
     }
 
     @Test func groupedDisplayTurnReassignmentUpdatesUnderlyingSegmentsOnly() {

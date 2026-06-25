@@ -106,7 +106,7 @@ On-device acceptance (Human Reviewer, iPhone 17 Pro) covers: real mic capture, b
 
 ## Phase 7 — Mac parity & hardening (PRD §4/§17; R6, R7, R9)
 
-- **OBJ-18 — Mac companion parity.** Open/import/play/share verified; Model Lab on Mac where feasible; document intentional iPhone-first gaps. **Next original objective after accepted OBJ-17.1.**
+- **OBJ-18 — Mac companion parity.** **DONE 2026-06-25 — Gate: PROCEED; accepted as a limited Mac companion baseline; evidence: [QA.md](QA.md#obj-18--final-human-reviewer-acceptance--2026-06-25), [completion report](docs/planning/objectives/OBJECTIVE-18.md#final-human-reviewer-acceptance--2026-06-25).** Open/import/play/share paths, Mac Model Lab availability, launch readiness, recording-sheet dismissal, and display-only speaker grouping received agent validation. Further Mac GUI validation/polish is deferred; the mobile app remains the primary beta target.
 - **OBJ-19 — Cancellation & failure-injection hardening.** Full cancel matrix + forced model/mic/diarization failures; stress interleavings; verify model unload + UI recovery + data safety.
 
 **Risk:** Medium. **Rollback:** test-led; behavior fixes isolated.

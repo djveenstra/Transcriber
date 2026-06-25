@@ -133,7 +133,9 @@ nonisolated struct TranscriptDisplayTurn: Identifiable, Equatable, Sendable {
     }
 
     var timestamp: String {
-        TranscriptSegment(startMs: startMs, endMs: endMs, speaker: speaker, text: text).timestamp
+        let start = Self.timestamp(milliseconds: startMs)
+        let end = Self.timestamp(milliseconds: endMs)
+        return start == end ? start : "\(start) - \(end)"
     }
 
     var segmentCount: Int {
@@ -143,18 +145,18 @@ nonisolated struct TranscriptDisplayTurn: Identifiable, Equatable, Sendable {
     var displaySegment: TranscriptSegment {
         TranscriptSegment(id: id, startMs: startMs, endMs: endMs, speaker: speaker, text: text)
     }
+
+    private static func timestamp(milliseconds: Int) -> String {
+        TranscriptSegment(startMs: milliseconds, endMs: milliseconds, speaker: "", text: "").timestamp
+    }
 }
 
 nonisolated enum TranscriptTurnGrouping {
     static let defaultMaximumGapMs = 2_000
-    static let defaultMaximumTurnDurationMs = 60_000
-    static let defaultMaximumSegmentsPerTurn = 12
 
     static func group(
         _ segments: [TranscriptSegment],
-        maximumGapMs: Int = defaultMaximumGapMs,
-        maximumTurnDurationMs: Int = defaultMaximumTurnDurationMs,
-        maximumSegmentsPerTurn: Int = defaultMaximumSegmentsPerTurn
+        maximumGapMs: Int = defaultMaximumGapMs
     ) -> [TranscriptDisplayTurn] {
         var groups: [[TranscriptSegment]] = []
         for segment in segments {
@@ -166,9 +168,7 @@ nonisolated enum TranscriptTurnGrouping {
             if shouldAppend(
                 segment,
                 to: currentGroup,
-                maximumGapMs: maximumGapMs,
-                maximumTurnDurationMs: maximumTurnDurationMs,
-                maximumSegmentsPerTurn: maximumSegmentsPerTurn
+                maximumGapMs: maximumGapMs
             ) {
                 currentGroup.append(segment)
                 groups.append(currentGroup)
@@ -183,16 +183,12 @@ nonisolated enum TranscriptTurnGrouping {
     private static func shouldAppend(
         _ segment: TranscriptSegment,
         to group: [TranscriptSegment],
-        maximumGapMs: Int,
-        maximumTurnDurationMs: Int,
-        maximumSegmentsPerTurn: Int
+        maximumGapMs: Int
     ) -> Bool {
         guard let first = group.first, let previous = group.last else { return false }
         guard isCertainSpeaker(first.speaker), isCertainSpeaker(segment.speaker) else { return false }
         guard previous.speaker == segment.speaker else { return false }
         guard segment.startMs - previous.endMs <= maximumGapMs else { return false }
-        guard segment.endMs - first.startMs <= maximumTurnDurationMs else { return false }
-        guard group.count < maximumSegmentsPerTurn else { return false }
         return true
     }
 

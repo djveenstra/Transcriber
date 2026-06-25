@@ -85,7 +85,6 @@ struct SettingsView: View {
                     .accessibilityLabel(microphoneTestButtonTitle)
                     .accessibilityHint(microphoneTest.isTesting ? "Stops the microphone level test." : "Starts a microphone level test without saving audio.")
                 }
-#if os(iOS)
                 Section("Compare Models") {
                     NavigationLink {
                         ModelLabView()
@@ -96,7 +95,6 @@ struct SettingsView: View {
                         .font(.footnote)
                         .foregroundStyle(Theme.muted)
                 }
-#endif
                 Section("Model Storage") {
                     ForEach(registryModels) { descriptor in
                         modelStorageRow(descriptor)

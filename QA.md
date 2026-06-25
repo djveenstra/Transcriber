@@ -540,3 +540,36 @@ Use an iPhone 17 Pro or equivalent beta test device. Install the current OBJ-08 
 - Gate: PASS / PROCEED for OBJ-17.1. OBJ-17.1 served its purpose as a diarization safety/tuning checkpoint and is complete.
 - Deferred backlog only: launch readiness screen with default/Base English preload and Skip loading; rerun transcription with a different model from transcript/detail; delete downloaded models; further speaker-turn grouping polish; further sticky/compact player polish; broader diarization engine evaluation if FluidAudio becomes limiting; background processing/job architecture improvements; and diarization resource/model preload or warmup only after explicit approval. No active OBJ-17.2 or OBJ-17.3 objective is created during closeout.
 - Validation retained from accepted OBJ-17.1 branch: `git diff --check` PASS; macOS build PASS; iOS simulator build PASS; full `TranscriberTests` PASS; focused diarization/session-state tests PASS; focused speaker grouping tests PASS; focused playback regression tests PASS; physical iPhone build/install PASS. The only later edits in this closeout are planning/reporting updates and removal of the inactive OBJ-17.2 objective file.
+
+## OBJ-18 — Mac Companion Parity — Agent Pass — 2026-06-23
+- Tier: agent-verifiable implementation and launch completed; real Mac GUI workflow remains Human-owned.
+- Build: macOS PASS / iOS-sim PASS.
+- Unit/integration tests: full `TranscriberTests` PASS, 143/143. Focused Model Lab + playback/cache + transcript export + shared-audio import tests PASS, 35/35.
+- Mac implementation: Model Lab is now a fourth primary Mac tab and is reachable from Dashboard and Settings. Mac Model Lab lists and runs curated Whisper models only; iOS continues to expose Whisper and Parakeet.
+- Existing Mac paths audited: in-app file importer with security-scoped access and app-storage copy; Whisper final transcription; Library transcript review; accepted completed-recording M4A playback derivative; speaker/status presentation; diagnostics; phase timeline; TXT/SRT/JSON export; system sharing.
+- Mac run: updated app launched successfully and remained running. This Codex session lacks Screen Recording and Accessibility permission, so native window capture/click-through could not be completed. Existing AppIntents service warning remained; no launch crash was observed.
+- Auditor: ALIGNED. No iOS regression from platform guards; no dependency, schema, concurrency, project-setting, server/cloud/off-device, new-engine, deferred 17.x, OBJ-19, OBJ-20, or prohibited-path work.
+- Intentional gaps: documented in `DECISIONS.md` D-011. Parakeet Model Lab comparison and the Share to Transcriber extension remain iOS-only; Mac uses in-app import and system share controls.
+- Human Mac checklist outstanding: verify four tabs; import/transcribe; completed playback; transcript/speaker/status/diagnostics/timeline rendering; TXT/SRT/JSON share; Whisper-only Model Lab comparison/report; accept intentional gaps.
+- Regression checklist: `git diff --check` PASS; accepted playback derivative unchanged; iOS simulator build PASS; deferred backlog untouched.
+- Verdict: PASS for agent-verifiable scope. Manager gate recommendation: **ASK USER** until Human Reviewer Mac testing is accepted. Do not advance to OBJ-19.
+
+## OBJ-18 — Human Review FIX FIRST Follow-Up — 2026-06-23
+- Human findings addressed: stuck Mac recording sheet, Live Preview readiness not started, and adjacent same-speaker cards splitting at display caps.
+- Mac close behavior: recording/import remains a SwiftUI sheet, so it now has an explicit Close toolbar button. Idle/completed/failed sheets dismiss directly. Active preparation, recording, transcription, or speaker labeling requires confirmation.
+- Data safety: confirmed recording close stops capture and inserts a retryable Library record. Copied imported audio is also inserted before processing-close can dismiss, including cancellation races that move the session to failed first. Persistence failure keeps the sheet open with a durable Retry Save and Close path.
+- Readiness: Mac launch starts non-blocking Whisper Live Preview preparation first. Default/Base English preload starts only after Live Preview succeeds. Failure is visible and retryable; recording and navigation are not gated. No full launch readiness screen was added. FluidAudio/Sortformer preload remains deferred to preserve deliberate transcription-to-diarization resource pacing.
+- Speaker grouping: display-only grouping now follows same certain speaker plus an adjacent gap of 2 seconds or less. Different speakers, unknown speakers, and gaps over 2 seconds stay separate. The old 60-second/12-segment display caps no longer split a continuous turn. Grouped cards retain underlying IDs and show a start-end timestamp range. Raw segments and exports are unchanged.
+- Auditor: final **ALIGNED** after Worker fixed import-cancellation preservation, durable save retry, and readiness serialization. No dependency, new engine, server/cloud/off-device, schema, strict-concurrency, project-setting, prohibited-path, OBJ-19, or OBJ-20 drift.
+- Validation: `git diff --check` PASS; macOS build PASS; iOS simulator build PASS; full `TranscriberTests` PASS 147/147; focused readiness/close/grouping/playback/export/persistence/import tests PASS 43/43.
+- Mac run: updated app launched and remained running. Logs showed launch-time model checks and Core ML/Apple Neural Engine loading with no launch crash. Native GUI interaction could not be automated because this Codex session lacks macOS Screen Recording/Accessibility permission.
+- Human Mac gate: verify idle Close; active-recording Keep Open and Stop, Save, and Close; retryable Library item after close; Preparing/Loading and Retry states for Live Preview; improved same-speaker grouping; completed playback.
+- Verdict: PASS for agent-verifiable FIX FIRST work. Manager gate recommendation: **ASK USER** for the real Mac interaction checklist. Keep OBJ-18 active and do not start OBJ-19/OBJ-20.
+
+## OBJ-18 — Final Human Reviewer Acceptance — 2026-06-25
+- Human decision: **PROCEED**. OBJ-18 is accepted as a limited Mac companion baseline.
+- Accepted evidence: macOS build and app launch passed; the Mac recording sheet gained safe Close behavior; Live Preview readiness and ordered default-model preload were improved; same-speaker display grouping improved; playback behavior was not changed; full and focused tests passed.
+- Validation boundary: exhaustive Mac parity was not Human-verified. Further Mac GUI validation/polish is deferred.
+- Product priority: the mobile app remains the primary beta target, and mobile-first beta work proceeds to OBJ-19.
+- Scope confirmation: no additional Mac feature work, full launch readiness screen, deferred 17.x feature objective, OBJ-19 implementation, dependency, engine, server/cloud/off-device path, or prohibited-path change was added during closeout.
+- Final Manager gate: **PROCEED** for the accepted limited Mac companion baseline.

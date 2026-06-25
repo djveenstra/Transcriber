@@ -66,6 +66,24 @@ Format per entry: **ID · Date · Decision · Why · Implications · Reversibili
 **Implications:** D-009 remains a product-direction note for a future phase, but it is no longer active sequencing before OBJ-18. Any future preload, model-rerun, model-delete, diarization-warmup, or broader engine/job work requires explicit Human approval and its own active objective.
 **Reversibility:** Planning/product decision only. No runtime behavior changes are implied.
 
+### D-011 · 2026-06-23 · Mac companion Model Lab is Whisper-only
+**Why:** WhisperKit and the existing Model Lab import, comparison, diagnostics, and report-sharing paths are available on macOS. The Parakeet final-transcription implementation remains intentionally iOS-only.
+**Decision:** Mac uses the established Dashboard, Library, Model Lab, and Settings structure. Model Lab is enabled on Mac for the curated Whisper models only. Parakeet model comparison and the Share to Transcriber extension remain iOS-only; Mac uses the in-app file importer and system share controls instead.
+**Implications:** Mac remains a companion rather than a separate redesign. Import, transcription, playback, transcript review, TXT/SRT/JSON export, status badges, diagnostics, and progress UI reuse the shared app paths. Platform-specific model and share-extension gaps are visible and documented.
+**Reversibility:** UI availability and filtering only; reverting restores the prior iOS-only Model Lab without data or schema migration.
+
+### D-012 · 2026-06-23 · OBJ-18 Mac launch readiness is narrow and ordered
+**Why:** Human Mac review found that Live Preview could reach recording before its Whisper resources had ever been prepared.
+**Decision:** On Mac, launch begins a non-blocking Whisper preparation attempt for Live Preview first. After Live Preview preparation succeeds, the existing default/Base English model preload is scheduled. A failed Live Preview preparation remains visible and retryable without racing lower-priority model work. Recording, navigation, Library, and playback remain available throughout. FluidAudio/Sortformer resources are not preloaded in this pass because the current pipeline deliberately sequences transcription and diarization model loads to avoid GPU/ANE contention.
+**Implications:** This is not the deferred launch readiness screen: there is no launch gate, progress screen, or Skip Loading flow. iOS keeps its existing preload behavior. Diarization preparation remains on demand until a separately approved design can preserve the pipeline pacing guardrails.
+**Reversibility:** The coordinator and Mac launch hook are additive and can be reverted without changing stored data, model caches, or dependencies.
+
+### D-013 · 2026-06-25 · Accept a limited Mac companion baseline and return focus to mobile
+**Why:** Agent validation established a useful Mac companion baseline, while exhaustive Mac GUI validation and further polish would delay the remaining original mobile-first beta objectives.
+**Decision:** OBJ-18 is accepted as a limited Mac companion baseline. Further Mac GUI validation/polish is deferred until after the original 20 objectives or a future fine-tuning phase. The mobile app remains the primary product and beta target.
+**Implications:** This acceptance does not claim exhaustive Human verification of Mac parity. Existing intentional Mac gaps remain documented, no additional Mac feature work is implied, and OBJ-19 may proceed without completing the deferred Mac checklist.
+**Reversibility:** Planning/product priority decision only. Future Mac validation or polish requires an explicitly approved scope.
+
 ---
 
 ## Decisions awaiting the Human Reviewer (open questions)

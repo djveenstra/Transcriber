@@ -2,12 +2,27 @@ import Foundation
 import Testing
 @testable import Transcriber
 
+@MainActor
 struct ModelLabTests {
     @Test func iOSTabStructureMatchesPRDPrimaryTabs() {
         #expect(RootTab.iOSPrimaryTabs == [.dashboard, .library, .modelLab, .settings])
         #expect(!RootTab.iOSPrimaryTabs.contains { tab in
             String(describing: tab).localizedCaseInsensitiveContains("record")
         })
+    }
+
+    @Test func macTabStructureIncludesCompanionModelLab() {
+        #expect(RootTab.macPrimaryTabs == [.dashboard, .library, .modelLab, .settings])
+    }
+
+    @Test func macModelLabSupportsOnlyWhisperModels() {
+#if os(macOS)
+        #expect(!ModelLabPlatformSupport.supportedChoices.isEmpty)
+        #expect(ModelLabPlatformSupport.supportedChoices.allSatisfy { $0.provider == .whisper })
+        #expect(ModelLabPlatformSupport.supportedDescriptors.map(\.id) == FinalTranscriptionModelChoice.whisper.map(\.id))
+#else
+        #expect(ModelLabPlatformSupport.supportedChoices == FinalTranscriptionModelChoice.all)
+#endif
     }
 
     @Test func reportIncludesLoadAndTranscriptionTimeSeparately() {

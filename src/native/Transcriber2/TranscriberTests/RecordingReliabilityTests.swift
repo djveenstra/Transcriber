@@ -4,6 +4,19 @@ import Testing
 
 @MainActor
 struct RecordingReliabilityTests {
+    @Test func recordingWindowClosePolicyProtectsActiveWork() {
+        #expect(!TranscriptionSession.requiresCloseConfirmation(for: .idle, isIdentifyingSpeakers: false))
+        #expect(TranscriptionSession.requiresCloseConfirmation(for: .preparing, isIdentifyingSpeakers: false))
+        #expect(TranscriptionSession.requiresCloseConfirmation(for: .recording, isIdentifyingSpeakers: false))
+        #expect(TranscriptionSession.requiresCloseConfirmation(
+            for: .processing(.transcribing),
+            isIdentifyingSpeakers: false
+        ))
+        #expect(TranscriptionSession.requiresCloseConfirmation(for: .completed, isIdentifyingSpeakers: true))
+        #expect(!TranscriptionSession.requiresCloseConfirmation(for: .completed, isIdentifyingSpeakers: false))
+        #expect(!TranscriptionSession.requiresCloseConfirmation(for: .failed("Retry"), isIdentifyingSpeakers: false))
+    }
+
     @Test func interruptedRecordingCreatesRetryableLibraryRecordWithoutTranscriptData() {
         let audioURL = URL(fileURLWithPath: "/tmp/interrupted-recording.caf")
 

@@ -214,3 +214,70 @@ private enum FinalModelDownloadError: LocalizedError {
         }
     }
 }
+
+@MainActor
+final class LaunchModelReadiness: ObservableObject {
+    enum State: Equatable, Sendable {
+        case idle
+        case preparingLivePreview
+        case livePreviewReady
+        case failed(String)
+    }
+
+    static let shared = LaunchModelReadiness()
+
+    @Published private(set) var state: State = .idle
+
+    private let prepareLivePreview: () async throws -> Void
+    private let prepareDefaultModel: () -> Void
+    private var preparationTask: Task<Void, Never>?
+
+    init(
+        prepareLivePreview: @escaping @MainActor () async throws -> Void = {
+            let engine = WhisperKitTranscriptionEngine()
+            try await engine.prepare()
+            await engine.unload()
+        },
+        prepareDefaultModel: @escaping @MainActor () -> Void = {
+            FinalModelDownloader.shared.scheduleDefaultPreloadIfNeeded()
+        }
+    ) {
+        self.prepareLivePreview = prepareLivePreview
+        self.prepareDefaultModel = prepareDefaultModel
+    }
+
+    func startIfNeeded() {
+        start(forceRetry: false)
+    }
+
+    func retry() {
+        start(forceRetry: true)
+    }
+
+    func waitForLivePreviewAttempt() async {
+        startIfNeeded()
+        await preparationTask?.value
+    }
+
+    private func start(forceRetry: Bool) {
+        guard preparationTask == nil else { return }
+        if !forceRetry, state == .livePreviewReady { return }
+
+        state = .preparingLivePreview
+        preparationTask = Task { [weak self] in
+            guard let self else { return }
+            do {
+                try await prepareLivePreview()
+                state = .livePreviewReady
+                prepareDefaultModel()
+            } catch {
+                state = .failed(error.localizedDescription)
+            }
+
+            // A failed high-priority Live Preview attempt remains retryable and
+            // does not race a lower-priority preload. Default preload begins only
+            // after Live Preview preparation succeeds.
+            preparationTask = nil
+        }
+    }
+}

@@ -7,7 +7,11 @@ struct Transcriber2App: App {
         _ = WhisperModelChoice.migrateToLightweightDefaultIfNeeded()
         Task { @MainActor in
             FinalModelDownloader.shared.refreshFileStatus()
+#if os(macOS)
+            LaunchModelReadiness.shared.startIfNeeded()
+#else
             FinalModelDownloader.shared.scheduleDefaultPreloadIfNeeded()
+#endif
         }
     }
 
