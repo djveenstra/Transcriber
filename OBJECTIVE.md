@@ -2,13 +2,13 @@
 
 _This file holds the **single active objective** the Worker is currently implementing. The Manager sets it from the roadmap and advances it only when the current objective is gated `PROCEED`. Full details for every objective live in [docs/planning/objectives/](docs/planning/objectives/)._
 
-## ▶ Active objective: **OBJ-20 — Beta Acceptance Pass + `TranscriptionSession` Decomposition + Tech Debt**
+## ✅ No active objective — original 20-objective Beta 2.0 roadmap complete
 
-Read the full spec: [docs/planning/objectives/OBJECTIVE-20.md](docs/planning/objectives/OBJECTIVE-20.md).
+Beta 2.0 was accepted by the Human Reviewer on 2026-06-28. The final report is in [docs/planning/objectives/OBJECTIVE-20.md](docs/planning/objectives/OBJECTIVE-20.md#final-beta-20-acceptance-report--2026-06-28).
 
-**One-line mission:** Run the full beta acceptance matrix, then complete the approved behavior-preserving session decomposition, English-default language setting, and speaker-color parsing fix.
+**Current state:** OBJ-01 through OBJ-20 are complete. Beta 2.1 remains planning-only; no implementation objective or branch is active.
 
-**Closeout boundary:** This pointer and the new branch prepare OBJ-20 only. No OBJ-20 implementation was started during OBJ-19 closeout.
+**Boundary:** Do not begin Beta 2.1 implementation, create an implementation branch, or activate a new objective without explicit Human Reviewer approval.
 
 **Before starting, read:** [PRD.md](PRD.md) → [PLAN.md](PLAN.md) → this file → [AGENTS.md](AGENTS.md).
 
@@ -38,9 +38,9 @@ Read the full spec: [docs/planning/objectives/OBJECTIVE-20.md](docs/planning/obj
 | 17.1 | [FluidAudio diarization safety & timeout stabilization](docs/planning/objectives/OBJECTIVE-17.1.md) | 6 | Done — PROCEED 2026-06-23 |
 | 18 | [Mac companion parity](docs/planning/objectives/OBJECTIVE-18.md) | 7 | Done — PROCEED 2026-06-25 (limited baseline accepted) |
 | 19 | [Cancellation & failure-injection hardening](docs/planning/objectives/OBJECTIVE-19.md) | 7 | Done — PROCEED 2026-06-25 |
-| 20 | [Beta acceptance + decomposition + tech debt](docs/planning/objectives/OBJECTIVE-20.md) | 8 | ▶ Active — implementation not started |
+| 20 | [Beta acceptance / final QA](docs/planning/objectives/OBJECTIVE-20.md) | 8 | Done — PROCEED 2026-06-28 |
 
-> **Sequencing reminders:** OBJ-19 is complete. OBJ-20 is the active original objective, but implementation begins only with its own Human Reviewer kickoff. Launch-screen work, model rerun, delete-downloaded-models, and additional tuning ideas remain deferred until after the original 20 objectives are complete.
+> **Closed-roadmap reminder:** The original Beta 2.0 roadmap is complete. Deferred polish, feature additions, and fine-tuning are preserved for Beta 2.1 discussion only. No Beta 2.1 implementation objective or branch is active.
 
-## How the Manager advances this file
-When the active objective is gated `PROCEED`: mark it done in the table, link its completion report, update [PLAN.md](PLAN.md), then set the next objective as ▶ Active and restate its mission here. Never advance while the current objective is `FIX FIRST` / `ASK USER` / `BLOCKED`. See [docs/planning/MULTI_AGENT_WORKFLOW.md](docs/planning/MULTI_AGENT_WORKFLOW.md).
+## How future work becomes active
+Beta 2.1 planning begins with review of [DECISIONS.md](DECISIONS.md), the deferred backlog, priorities, and scope. The Manager may activate a new objective and implementation branch only after explicit Human Reviewer approval. See [docs/planning/MULTI_AGENT_WORKFLOW.md](docs/planning/MULTI_AGENT_WORKFLOW.md).

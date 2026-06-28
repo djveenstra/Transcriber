@@ -600,3 +600,96 @@ Use an iPhone 17 Pro or equivalent beta test device. Install the current OBJ-08 
 - Device-owned checks queued for OBJ-20: real provider resource release, genuine recorder write failure, microphone hardware fallback, rapid real-device interleavings, and physical iPhone install/device validation.
 - Scope confirmation: no OBJ-20 implementation was included in OBJ-19. Deferred feature/fine-tuning ideas remain deferred until after the original 20 objectives are complete.
 - Final Manager gate: **PROCEED**. Advance the planning pointer and branch to OBJ-20 without starting implementation.
+
+## OBJ-20 — Beta Acceptance / Final QA — 2026-06-25
+- Tier: agent-verifiable PASS; final device acceptance is Human-owned.
+- `git diff --check`: PASS.
+- Build: macOS PASS / iOS Simulator PASS / physical iPhone 17 Pro build PASS.
+- Physical install: PASS on paired device shown as “iPhone 14 Pro” (iPhone 17 Pro hardware). Command-line launch was blocked because the phone was locked.
+- Full unit/integration suite: `TranscriberTests` PASS, 163/163.
+- Focused acceptance suites: PASS, 150 executions: acceptance/failure 27; playback/reassignment 15; TXT/SRT/JSON export and import 15; diarization/session 31; model readiness/download 25; microphone/recording/data preservation 37.
+- Flake note: one Bluetooth reconnect test failed during an initial parallel run, then passed independently, in the serial 163/163 run, and in a second normal full-suite run. No product failure was reproduced.
+- Auditor: **ALIGNED** after one stale planning phrase was corrected.
+- Production changes: none. No dependency, schema, new engine, server/cloud/off-device, playback/M4A, strict-concurrency, or prohibited-path change.
+- Beta-blocker assessment: no known audio/transcript loss, permanent stuck state, core-workflow crash, inability to record/transcribe/review/export, unbounded processing, or false-complete state was found in agent-verifiable evidence.
+
+### Original 20-objective acceptance matrix
+
+| OBJ | Expected behavior | Existing/agent evidence | Human/device coverage or limitation | Status |
+|---|---|---|---|---|
+| 01 | Governance, green baseline, persistence safeguards | Builds/tests and corruption/round-trip coverage | No device gate | PASS |
+| 02 | Readiness comes from real model files | Present/missing/partial-file and stale-hint tests | Relaunch/reboot/offline persistence pending | NEEDS HUMAN DEVICE CHECK |
+| 03 | Honest lifecycle states and safe Repair/Redownload | Lifecycle and cache-safety tests | Real download/corrupt-cache recovery pending | NEEDS HUMAN DEVICE CHECK |
+| 04 | Default preload, refresh, verify, fallback | Preflight/refresh/fallback tests | Reboot persistence and offline transcription pending | NEEDS HUMAN DEVICE CHECK |
+| 05 | Automatic/built-in/accessory mic selection | Discovery, persistence, route-resolution tests | Physical routing/enumeration pending | NEEDS HUMAN DEVICE CHECK |
+| 06 | Test Mic and live meter | Permission/start/stop/failure tests | Real meter and microphone release pending | NEEDS HUMAN DEVICE CHECK |
+| 07 | Missing selected mic falls back with notice | Fallback/active-label tests; prior Bluetooth evidence | Hardware-unavailable fallback pending | NEEDS HUMAN DEVICE CHECK |
+| 08 | Background/lock and 5/15/30-minute reliability | Safe-stop/interruption tests; prior AirPods acceptance | Full duration/background matrix pending | NEEDS HUMAN DEVICE CHECK |
+| 09 | Truthful Library status badges | Status truth table and non-destructive reconciliation | No required device gate | PASS |
+| 10 | Dashboard status and core entry points | Dashboard filtering/warning tests | No required device gate | PASS |
+| 11 | Model Lab comparison and diagnostics | Model Lab/report tests and prior timings | Exported benchmark polish deferred | PASS WITH DEFERRED POLISH |
+| 12 | Segment reassignment with persistence/export | Reassignment and export tests | No required device gate | PASS |
+| 13 | Consistent label states and label-only retry | Status/retry tests; prior two-speaker device acceptance | 3/4-speaker sampling pending | NEEDS HUMAN DEVICE CHECK |
+| 14 | Timeline, elapsed state, Cancel/Retry | Processing-phase and affordance tests | No required device gate | PASS |
+| 15 | Calm diagnostics on normal screens | Capture/formatting/failure tests | Real timing/performance remains device-owned | NEEDS HUMAN DEVICE CHECK |
+| 16 | Usable TXT/SRT/JSON with speaker names | Export timing/shape/name tests | Real share-sheet tap-through pending | NEEDS HUMAN DEVICE CHECK |
+| 17 | Accessibility and completed playback | Accessibility/playback tests and Human iPhone acceptance | Further polish deferred | PASS |
+| 18 | Limited Mac companion baseline | Mac build/launch and focused tests; Human acceptance | Exhaustive Mac polish deferred | PASS WITH DEFERRED POLISH |
+| 19 | Safe cancellation/failure recovery | Full deterministic failure matrix and preservation tests | Provider release, write realism, mic fallback, rapid interleavings pending | NEEDS HUMAN DEVICE CHECK |
+| 20 | Final beta acceptance and honest limitations | Complete agent baseline, focused suites, physical build/install | Final Human iPhone acceptance pending | NEEDS HUMAN DEVICE CHECK |
+
+### Known limitations and deferred work
+- Human-owned: background/lock and 5/15/30-minute reliability; model persistence after reboot; offline operation; real microphone/Bluetooth fallback; genuine recorder interruption/write failure; provider resource release; rapid real-device interleavings; share/import workflows; battery, heat, and performance.
+- Accepted limitation: Mac is a limited companion baseline; exhaustive Mac polish is deferred.
+- Beta limitation: diarization may require retry/manual cleanup, especially with 3–4 speakers.
+- Deferred feature/fine-tuning work was not implemented: launch readiness UI, model rerun, model deletion, session decomposition, language picker, speaker-color parsing changes, new diarization engines, and server/cloud/off-device processing.
+
+### Final Human iPhone checklist
+- [ ] Unlock the phone and open the newly installed build; confirm fresh launch.
+- [ ] Confirm model readiness/download state.
+- [ ] Record short audio; stop and save.
+- [ ] Record while locked/backgrounded; verify complete audio afterward.
+- [ ] Complete representative 5-, 15-, and 30-minute runs when practical; note battery, heat, performance, and crashes.
+- [ ] Transcribe; confirm text appears before speaker labeling finishes.
+- [ ] Complete speaker labeling; retry labels if needed; include 1-, 2-, 3-, and 4-speaker samples when available.
+- [ ] Play the recording.
+- [ ] Rename a speaker and reassign a segment.
+- [ ] Share TXT, SRT, and JSON; confirm usable content and renamed speaker names.
+- [ ] Import audio from Files or Voice Memos and transcribe it.
+- [ ] Cancel transcription; confirm audio remains and retry works.
+- [ ] Cancel speaker labeling; confirm transcript/playback remain and retry works.
+- [ ] Exercise model unavailable/Repair/Redownload if feasible.
+- [ ] Force-quit/relaunch and reboot; confirm downloaded models remain ready.
+- [ ] Enable Airplane Mode after models are ready and complete offline transcription.
+- [ ] Disconnect a selected microphone/Bluetooth device; confirm recording fallback and notice.
+- [ ] Rapidly record, stop, cancel, and retry several times.
+- [ ] Confirm transcription/diarization resources do not remain stuck after cancellation or model switching.
+- [ ] Reproduce a real interruption or recorder write failure if feasible; confirm honest messaging and preserved audio.
+- [ ] Confirm no audio or transcript is lost throughout.
+
+- Release-readiness recommendation: **ASK USER**. If the checklist passes without data loss, crashes, permanent stuck processing, failed default transcription, or unusable review/export, the Manager may close OBJ-20 as `PROCEED`.
+
+## OBJ-20 — Mac App Acceptance Hardening — 2026-06-27
+- Tier: agent-verifiable PASS; short Human Mac spot-check remains.
+- `git diff --check`: PASS.
+- Build: macOS PASS / generic iOS Simulator PASS.
+- Full unit/integration suite: `TranscriberTests` PASS, 164/164 with 0 failures or skips.
+- Focused suites: recording close/reliability 5/5; shared inbox + persistence 13/13; cancellation/failure preservation 10/10; playback/transcript review 15/15 including 3 CAF/M4A cases; TXT/SRT/JSON export 9/9; launch/model readiness/preflight 9/9.
+- Direct blocker fixed: Library navigation could freeze because `SharedAudioInbox.refresh()` enumerated the app-group inbox synchronously on the main UI thread. Enumeration and sorting now run off the MainActor and only the current, non-canceled refresh publishes results.
+- Direct blocker fixed: export could show a blank 100×80 Mac sheet because URL and presentation Boolean state raced. One identifiable export item now atomically drives presentation; TXT/SRT/JSON generation is unchanged.
+- Mac run PASS: clean launch; Dashboard/Library/Model Lab/Settings navigation; responsive Library; saved and completed item opening; playback progress/pause; readable speaker grouping/status; expanded diagnostics; recording sheet opening; Live Preview preparation; safe active close confirmation; cancel-to-retryable state; idle close; import picker open/cancel; export controls; corrected share-sheet presentation.
+- Preservation: Worker and QA test recordings were stopped and saved, not deleted. The existing Worker-created retryable item was not altered by QA. No orphaned active session remained.
+- Auditor: **ALIGNED**. No prohibited path, dependency, project setting, engine, server/cloud/off-device work, deferred feature, schema, strict-concurrency, persistence-contract, playback/M4A, or iOS regression found.
+- Environment warnings only: local CoreSimulator framework version differed slightly from Xcode, but the required generic simulator build passed; macOS selected arm64 from matching arm64/x86_64 destinations.
+- Evidence limitation: macOS denied screenshot capture, so GUI evidence came from accessibility-tree state and live state changes.
+- Remaining Human Mac checklist: confirm playback is audibly correct; visually judge transcript density/window sizing; import one real external file and confirm the persisted Library item; complete TXT/SRT/JSON system-share destinations; exercise a real model loading/failure/retry state if practical; optionally confirm intended Mac microphone input.
+- Manager gate: **ASK USER**. The Mac companion is usable enough for the limited beta baseline in agent evidence. Complete the short Human Mac spot-check, then proceed to final iPhone QA.
+
+## OBJ-20 — Final Human Reviewer PASS and Beta 2.0 Acceptance — 2026-06-28
+- Human decision: **PASS / PROCEED**. The iPhone app and limited Mac companion are acceptable for closing the original Transcriber 2.0 Beta roadmap.
+- Human summary: everything works mostly; remaining limitations, UI polish, feature additions, and deeper fine-tuning move to Beta 2.1 planning.
+- Final retained validation: `git diff --check` PASS; macOS build PASS; generic iOS Simulator build PASS; full `TranscriberTests` PASS 164/164; focused Mac close/readiness/import/persistence/playback/export and failure-preservation suites PASS.
+- Accepted limitations: mobile remains the primary target; Mac is an accepted limited companion baseline without exhaustive GUI polish; diarization may still benefit from retry/manual cleanup; deeper device/performance and visual polish remain future work.
+- No known remaining issue was accepted as a Beta 2.0 blocker. Audio/transcript preservation, retryable failure handling, and accepted playback/M4A behavior remain intact.
+- Deferred Beta 2.1 discussion items are preserved in [DECISIONS.md](DECISIONS.md#d-016--2026-06-28--accept-beta-20-and-preserve-beta-21-planning-backlog); none was implemented during closeout and none blocks Beta 2.0 acceptance.
+- Final Manager gate: **PROCEED**. OBJ-20 and the original 20-objective Beta 2.0 roadmap are complete.

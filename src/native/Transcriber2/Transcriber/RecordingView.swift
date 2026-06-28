@@ -560,24 +560,29 @@ struct RecordingView: View {
     }
 }
 
+private struct TranscriptExportShareItem: Identifiable {
+    let url: URL
+    var id: URL { url }
+}
+
 struct TranscriptShareMenu: View {
     let segments: [TranscriptSegment]
     var speakerNames: [String: String] = [:]
     var isCompact = false
     @Environment(\.scenePhase) private var scenePhase
-    @State private var shareURL: URL?
-    @State private var showingShareSheet = false
+    @State private var shareItem: TranscriptExportShareItem?
 
     var body: some View {
         Menu {
             ForEach(TranscriptExportFormat.allCases) { format in
                 Button {
-                    shareURL = TranscriptExporter.exportFile(
-                        segments,
-                        speakerNames: speakerNames,
-                        as: format
+                    shareItem = TranscriptExportShareItem(
+                        url: TranscriptExporter.exportFile(
+                            segments,
+                            speakerNames: speakerNames,
+                            as: format
+                        )
                     )
-                    showingShareSheet = true
                 } label: {
                     Label(format.rawValue.uppercased(), systemImage: "doc")
                 }
@@ -592,11 +597,9 @@ struct TranscriptShareMenu: View {
         .accessibilityLabel(isCompact ? CompactTranscriptAction.share.label : "Share transcript")
         .accessibilityHint(isCompact ? CompactTranscriptAction.share.hint : "Choose TXT, SRT, or JSON export.")
         .accessibilityAddTraits(.isButton)
-        .sheet(isPresented: $showingShareSheet, onDismiss: clearShareItem) {
-            if let shareURL {
-                SystemShareSheet(item: shareURL) {
-                    showingShareSheet = false
-                }
+        .sheet(item: $shareItem) { item in
+            SystemShareSheet(item: item.url) {
+                shareItem = nil
             }
         }
         // Returning from the system share sheet (e.g. after AirDrop or Save to Files)
@@ -606,16 +609,12 @@ struct TranscriptShareMenu: View {
         // showing and dismiss it manually after a brief delay so SwiftUI has time to
         // settle the scene transition first.
         .onChange(of: scenePhase) { _, phase in
-            guard phase == .active, showingShareSheet else { return }
+            guard phase == .active, shareItem != nil else { return }
             Task { @MainActor in
                 try? await Task.sleep(for: .milliseconds(300))
-                showingShareSheet = false
+                shareItem = nil
             }
         }
-    }
-
-    private func clearShareItem() {
-        shareURL = nil
     }
 }
 

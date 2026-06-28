@@ -100,7 +100,7 @@ On-device acceptance (Human Reviewer, iPhone 17 Pro) covers: real mic capture, b
 - **OBJ-17 — Accessibility pass.** **DONE 2026-06-23 — Gate: PROCEED; evidence: [QA.md](QA.md#obj-17--final-human-reviewer-pass-and-gate--2026-06-23), [completion report](docs/planning/objectives/OBJECTIVE-17.md#final-closeout-report--2026-06-23).** Dynamic Type, VoiceOver labels/traits, contrast audit, non-color status/speaker indicators, reachability, compact transcript actions, transcript/detail header cleanup, and accepted playback-safe M4A derivative path for completed-recording playback.
 - **OBJ-17.1 — FluidAudio Diarization Safety & Timeout Stabilization.** **DONE 2026-06-23 — Gate: PROCEED; evidence: [QA.md](QA.md#obj-171--final-human-reviewer-pass-and-gate--2026-06-23), [completion report](docs/planning/objectives/OBJECTIVE-17.1.md#final-closeout-report--2026-06-23).** Added per-stage private diagnostics, safe timeout/cancel state recovery, retry guard behavior, transcript/playback preservation, speaker-turn display grouping, and compact transcript detail layout tuning while keeping FluidAudio as the current diarization path.
 
-**Deferred future feature/fine-tuning backlog:** launch readiness screen with default/Base English model preload and Skip loading; rerun transcription with a different model from transcript/detail; delete downloaded models; further speaker-turn grouping polish; further sticky/compact player polish; broader diarization engine evaluation if FluidAudio becomes limiting; background processing/job architecture improvements; and diarization resource/model preload or warmup only after explicit approval. These are not active OBJ-17.2/OBJ-17.3 objectives and should wait until the original 20 stated objectives are complete unless the Human Reviewer explicitly reopens sequencing.
+**Deferred Beta 2.1 planning backlog:** launch readiness screen with default/Base English model preload and Skip Loading/background continuation; priority loading of Live Preview first, transcription model second, and diarization resources third; rerun transcription with a different model from transcript/detail; delete downloaded models; further speaker-turn grouping polish; further sticky/compact player/header polish; broader diarization engine evaluation if FluidAudio becomes limiting; deeper Mac GUI QA/polish; background processing/job architecture improvements; and broader UI polish and feature fine-tuning. These are discussion items only, not active objectives or Beta 2.0 blockers. Their scope and sequencing require explicit Human approval before Beta 2.1 implementation begins.
 
 **Risk:** Low–Medium for OBJ-16/OBJ-17; Medium for OBJ-17.1 because it touched diarization state safety. **Rollback:** export/accessibility changes are mostly additive/cosmetic; OBJ-17.1 remains narrow and reversible.
 
@@ -111,11 +111,11 @@ On-device acceptance (Human Reviewer, iPhone 17 Pro) covers: real mic capture, b
 
 **Risk:** Medium. **Rollback:** test-led; behavior fixes isolated.
 
-## Phase 8 — Acceptance & tech-debt
+## Phase 8 — Acceptance
 
-- **OBJ-20 — Beta acceptance pass + `TranscriptionSession` decomposition + small tech debt.** Run the full PRD §17 acceptance matrix (Human-owned device portions); extract persistence + model-selection coordinators without behavior change; add a language setting (default English); fix flagged speaker-color parsing.
+- **OBJ-20 — Beta acceptance / final QA.** **DONE 2026-06-28 — Gate: PROCEED; evidence: [QA.md](QA.md#obj-20--final-human-reviewer-pass-and-beta-20-acceptance--2026-06-28), [completion report](docs/planning/objectives/OBJECTIVE-20.md#final-beta-20-acceptance-report--2026-06-28).** Agent acceptance, narrow Mac hardening, and final Human iPhone/Mac acceptance passed. The original 20-objective Beta 2.0 roadmap is complete. Mobile remains the primary target; the limited Mac companion baseline is accepted without deep polish. No known beta blocker remains accepted as outstanding. Remaining polish, feature additions, and fine-tuning are deferred to Beta 2.1 planning only.
 
-**Risk:** Medium (refactor). **Rollback:** behavior-preserving extraction is revertible objective-by-objective.
+**Risk:** Low for validation/documentation and the two narrow Mac UI/concurrency fixes; device acceptance remains Human-owned. **Rollback:** planning updates and both isolated Mac fixes are independently revertible; no data or schema migration.
 
 ---
 
@@ -131,7 +131,7 @@ OBJ-01
  ├─ OBJ-14 ─ OBJ-15                       (progress + diagnostics)
  ├─ OBJ-16 ─ OBJ-17 ─ OBJ-17.1            (export, accessibility, diarization safety)
  ├─ OBJ-18                                (Mac parity; after IA + diagnostics + OBJ-17.1)
- └─ OBJ-19 ─ OBJ-20                       (hardening + acceptance + tech debt; last)
+ └─ OBJ-19 ─ OBJ-20                       (hardening + final acceptance; last)
 ```
 
 Strict prerequisites: OBJ-09's `RecordingStatus` lands before OBJ-10 (Dashboard); OBJ-03's model registry before OBJ-04 and before OBJ-11's Model Lab columns; OBJ-01's migration policy before any `Recording` schema change (OBJ-09 if stored, OBJ-12, OBJ-15). Otherwise phases may be reordered by the Manager with Human approval if a dependency is satisfied early.

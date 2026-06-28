@@ -84,6 +84,24 @@ Format per entry: **ID · Date · Decision · Why · Implications · Reversibili
 **Implications:** This acceptance does not claim exhaustive Human verification of Mac parity. Existing intentional Mac gaps remain documented, no additional Mac feature work is implied, and OBJ-19 may proceed without completing the deferred Mac checklist.
 **Reversibility:** Planning/product priority decision only. Future Mac validation or polish requires an explicitly approved scope.
 
+### D-014 · 2026-06-25 · OBJ-20 is beta acceptance and final QA only
+**Why:** The Human Reviewer wants the final original objective to establish release truth before any new feature, refactor, or fine-tuning work begins.
+**Decision:** OBJ-20 verifies the original beta objectives, runs the agent acceptance suite, documents known limitations, and produces the final Human-owned iPhone checklist. The previously drafted `TranscriptionSession` decomposition, language picker, and speaker-color parsing change are removed from active OBJ-20 scope. Launch readiness/default-model preload UI, model rerun, delete-downloaded-models, new diarization engines, broader Mac polish, and all other feature/fine-tuning work remain deferred.
+**Implications:** No production code, dependency, schema, playback/M4A, engine, server/cloud, or off-device change is authorized by OBJ-20 unless a narrow fix is required for a directly observed beta blocker. Any such blocker that requires product choice or broader feature scope returns `ASK USER` before implementation.
+**Reversibility:** Planning/product decision only. Deferred work may be reconsidered after the original beta milestone is closed through a separately approved objective.
+
+### D-015 · 2026-06-27 · Run a narrow Mac acceptance-hardening pass before final iPhone QA
+**Why:** The Human Reviewer wants confidence that the accepted Mac companion baseline is usable enough before completing the final iPhone checklist.
+**Decision:** Reopen OBJ-20 agent work only to run and inspect the Mac app and fix narrow blockers to basic companion usability. This does not authorize a Mac redesign, deferred features, a new feature/fine-tuning phase, dependency or schema changes, or changes to accepted playback/M4A behavior.
+**Implications:** Launch, navigation, safe recording/live-preview dismissal, readiness messaging/retry, import persistence, Library/detail usability, playback, transcript review, export/share, and cancel/failure recovery may receive small reversible fixes. Any broader or product-dependent finding returns `ASK USER`.
+**Reversibility:** The decision is planning-only; any resulting narrow code fix must remain independently revertible.
+
+### D-016 · 2026-06-28 · Accept Beta 2.0 and preserve Beta 2.1 planning backlog
+**Why:** The Human Reviewer passed final OBJ-20 acceptance and considers the original 20-objective build acceptable. Remaining issues are polish, feature additions, and deeper fine-tuning rather than Beta 2.0 blockers.
+**Decision:** Close OBJ-20 and the original Beta 2.0 roadmap. Preserve for Beta 2.1 discussion: a launch readiness screen and default-model preload; possible priority loading of Live Preview first, transcription model second, and diarization resources third; Skip Loading with continued background loading; rerun transcription with a different model; delete downloaded models; further speaker grouping polish; further sticky/compact player and header polish; broader diarization-engine evaluation if FluidAudio becomes limiting; deeper Mac GUI QA and polish; background processing/job architecture improvements; and broader UI polish and feature fine-tuning.
+**Implications:** None of these deferred items is a Beta 2.0 blocker or an active implementation objective. Their exact scope, ordering, and architecture require future Human-approved Beta 2.1 planning. No new dependency, engine, server/cloud/off-device processing, schema change, or implementation branch is authorized by this decision.
+**Reversibility:** Planning and milestone acceptance only; no runtime behavior changes are implied.
+
 ---
 
 ## Decisions awaiting the Human Reviewer (open questions)

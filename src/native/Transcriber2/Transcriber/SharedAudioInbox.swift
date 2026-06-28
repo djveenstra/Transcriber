@@ -2,7 +2,7 @@ import AVFoundation
 import Combine
 import Foundation
 
-nonisolated struct SharedAudioItem: Identifiable, Hashable {
+nonisolated struct SharedAudioItem: Identifiable, Hashable, Sendable {
     let url: URL
 
     var id: URL { url }
@@ -29,6 +29,7 @@ final class SharedAudioInbox: ObservableObject {
     static let shared = SharedAudioInbox()
 
     @Published private(set) var items: [SharedAudioItem] = []
+    private var refreshTask: Task<Void, Never>?
 
     private var directory: URL? {
         guard let container = FileManager.default.containerURL(
@@ -41,15 +42,30 @@ final class SharedAudioInbox: ObservableObject {
 
     func refresh() {
         guard let directory else {
+            refreshTask?.cancel()
+            refreshTask = nil
             items = []
             return
         }
+
+        refreshTask?.cancel()
+        refreshTask = Task {
+            let loadedItems = await Task.detached(priority: .userInitiated) {
+                Self.loadItems(in: directory)
+            }.value
+            guard !Task.isCancelled else { return }
+            items = loadedItems
+            refreshTask = nil
+        }
+    }
+
+    nonisolated static func loadItems(in directory: URL) -> [SharedAudioItem] {
         let urls = (try? FileManager.default.contentsOfDirectory(
             at: directory,
             includingPropertiesForKeys: [.creationDateKey, .contentTypeKey],
             options: [.skipsHiddenFiles]
         )) ?? []
-        items = urls
+        return urls
             .filter { $0.isAudioFile }
             .map(SharedAudioItem.init)
             .sorted { $0.receivedAt > $1.receivedAt }

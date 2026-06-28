@@ -52,4 +52,19 @@ struct SharedAudioInboxTests {
 
         #expect(url.isAudioFile)
     }
+
+    @Test func inboxLoadingEnumeratesAudioFilesAndIgnoresOtherFiles() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("shared-audio-inbox-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        try Data().write(to: directory.appendingPathComponent("first.m4a"))
+        try Data().write(to: directory.appendingPathComponent("second.WAV"))
+        try Data().write(to: directory.appendingPathComponent("notes.txt"))
+
+        let items = SharedAudioInbox.loadItems(in: directory)
+
+        #expect(Set(items.map(\.name)) == ["first", "second"])
+    }
 }
