@@ -102,6 +102,12 @@ Format per entry: **ID · Date · Decision · Why · Implications · Reversibili
 **Implications:** None of these deferred items is a Beta 2.0 blocker or an active implementation objective. Their exact scope, ordering, and architecture require future Human-approved Beta 2.1 planning. No new dependency, engine, server/cloud/off-device processing, schema change, or implementation branch is authorized by this decision.
 **Reversibility:** Planning and milestone acceptance only; no runtime behavior changes are implied.
 
+### D-017 · 2026-06-28 · Beta 2.1 prep introduces app-scoped governance for the multi-app repo
+**Why:** The Beta 2.1 prep inventory ([docs/planning/INVENTORY_REPORT.md](docs/planning/INVENTORY_REPORT.md)) confirmed the repo holds four distinct trees — the active Swift app (`src/native/Transcriber2/`), an independent Python app (`src/python/`), a read-only legacy iOS reference (`src/legacy-ios/`), and a stale Xcode template (`XCode App Build/`) — plus generated build artifacts (`dist/`, `native/Builds/`). D-001 already named this risk (R20); the inventory confirmed it is still unresolved and gave it concrete shape.
+**Decision:** Add a root [CLAUDE.md](CLAUDE.md) as the canonical cross-app guardrail doc: an app registry table, a rule that every future objective must declare target app/allowed paths/forbidden paths/risk tier, explicit warnings on the three non-active trees, and a five-tier risk-tiered workflow (Critical/high-risk, Normal feature, Docs-only, Git-only closeout, Read-only inventory). AGENTS.md now points to it. An app-scoped objective template was added at [docs/planning/OBJECTIVE_TEMPLATE_APP_SCOPED.md](docs/planning/OBJECTIVE_TEMPLATE_APP_SCOPED.md), and README markers were added inside `src/legacy-ios/` and `XCode App Build/` stating they are read-only/stale and not to be edited.
+**Implications:** Future objectives must declare their target app and paths up front. Python app packaging/signing work, any archive/removal decision for `src/legacy-ios/` or `XCode App Build/`, and Swift Beta 2.1 feature work are each separate, independently approved objectives — none of them is authorized by this decision. Tool-level enforcement (`.claude/settings.json` deny patterns) was considered but deferred pending confirmation of correct syntax; enforcement is policy-only for now (see CLAUDE.md §5).
+**Reversibility:** Policy/docs only. No runtime behavior, schema, dependency, or file-location changes.
+
 ---
 
 ## Decisions awaiting the Human Reviewer (open questions)

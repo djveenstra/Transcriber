@@ -2,6 +2,8 @@
 
 This file governs every agent working in this repository. **Read it in full before doing any work**, together with [PRD.md](PRD.md), [PLAN.md](PLAN.md), and the active [OBJECTIVE.md](OBJECTIVE.md). The detailed operating loop is in [docs/planning/MULTI_AGENT_WORKFLOW.md](docs/planning/MULTI_AGENT_WORKFLOW.md).
 
+**This is a multi-app repository.** Before reading further, see [CLAUDE.md](CLAUDE.md) for the app registry, cross-app guardrails, and risk-tiered workflow that apply no matter which app or doc-only task you're doing. Everything below assumes your target app is `src/native/Transcriber2/`.
+
 ## 0. Communicating with the Human Reviewer (Daniel)
 
 This note from the project owner overrides nothing below but shapes _how_ you communicate:
@@ -29,7 +31,7 @@ Supporting context (read as needed): [docs/planning/ARCHITECTURE_REVIEW.md](docs
 
 1. **Preserve user data.** Never delete or overwrite original audio (`Application Support/Transcriber2Beta/Recordings/`) or transcripts on any failure path. Deletion is user-initiated only.
 2. **Preserve the architecture.** Keep the actor-based engine abstractions, the `TranscriptionSession` state machine, persist-then-proceed, and `SWIFT_STRICT_CONCURRENCY = complete`. Do not weaken concurrency settings to make code compile.
-3. **Active path only.** Work in `src/native/Transcriber2/`. **Never modify** `src/python/` (independent Transcriber 1.x), and treat `src/legacy-ios/` and `XCode App Build/` as read-only reference.
+3. **Active path only.** Work in `src/native/Transcriber2/`. **Never modify** `src/python/` (independent Transcriber 1.x), and treat `src/legacy-ios/` and `XCode App Build/` as read-only reference. Full app registry and rationale: [CLAUDE.md](CLAUDE.md) §1–§3.
 4. **Stay in scope.** Implement only the active OBJECTIVE. Out-of-scope ideas go to that objective's "Notes for the Manager," not into the diff.
 5. **Refactor, don't rewrite.** Prefer the smallest correct change. No broad rewrites when a targeted refactor works.
 6. **Incremental & reversible.** Each objective must leave the app building and green, and must be cleanly `git revert`-able.
