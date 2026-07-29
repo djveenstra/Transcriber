@@ -1,4 +1,5 @@
 # OBJECTIVE-19 — Cancellation & Failure-Injection Hardening
+> **Workspace note (2026-07-28):** This checkout is now the Mac-focused Transcriber workspace. Existing Beta 2.0 and iPhone-first material below is retained as historical pre-split context; iOS follow-up belongs in the sibling `../iOS Transcriber/` workspace.
 
 _Phase 7. Depends on all feature objectives. Closes PRD §7 Cancel + §17 Cancellation/Failure. RISK R6, R7, R8, R10._
 

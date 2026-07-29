@@ -1,4 +1,5 @@
 # OBJECTIVE-10 — Dashboard Tab
+> **Workspace note (2026-07-28):** This checkout is now the Mac-focused Transcriber workspace. Existing Beta 2.0 and iPhone-first material below is retained as historical pre-split context; iOS follow-up belongs in the sibling `../iOS Transcriber/` workspace.
 
 _Phase 3 (second of three). **Depends on OBJ-09 (`RecordingStatus`)**, OBJ-02/03 (model status), OBJ-07 (mic status). Closes PRD §6 Dashboard (A1, A2). RISK R14._
 

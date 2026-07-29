@@ -1,46 +1,57 @@
 # OBJECTIVE.md — Active Work Pointer
 
-_This file holds the **single active objective** the Worker is currently implementing. The Manager sets it from the roadmap and advances it only when the current objective is gated `PROCEED`. Full details for every objective live in [docs/planning/objectives/](docs/planning/objectives/)._
+Last updated: 2026-07-29
 
-## ✅ No active objective — original 20-objective Beta 2.0 roadmap complete
+## Status: VX-03 is awaiting Human approval; Phase 0 milestone is pending
 
-Beta 2.0 was accepted by the Human Reviewer on 2026-06-28. The final report is in [docs/planning/objectives/OBJECTIVE-20.md](docs/planning/objectives/OBJECTIVE-20.md#final-beta-20-acceptance-report--2026-06-28).
+Daniel authorized activation and sequential execution of all Phase 0 objectives on 2026-07-29. This authorization satisfies approval-to-start and between-objective activation requirements for VX-01, VX-02, and VX-03, but it does not pre-approve private-audio use, deletion choices, or the VX-03 Human data-model gate.
 
-**Current state:** OBJ-01 through OBJ-20 are complete. Beta 2.1 remains planning-only; no implementation objective or branch is active.
+Only one objective is active at a time. Phase 1 remains unauthorized.
 
-**Boundary:** Do not begin Beta 2.1 implementation, create an implementation branch, or activate a new objective without explicit Human Reviewer approval.
+## Active objective
 
-**Before starting, read:** [PRD.md](PRD.md) → [PLAN.md](PLAN.md) → this file → [AGENTS.md](AGENTS.md).
+**[VX-03 — Versioned processing contracts and migration design](docs/planning/objectives/VX-03.md)**
 
----
+Risk tier: docs-only design for future Critical storage and migration work; independent audit required.
 
-## Roadmap (sequential — do not skip dependencies)
+Agent-verifiable result: final Auditor `ALIGNED`; QA PASS.
 
-| # | Objective | Phase | Status |
-|---|---|---|---|
-| 01 | [Governance, green baseline & data-safety guardrails](docs/planning/objectives/OBJECTIVE-01.md) | 0 | Done — PROCEED 2026-06-18 |
-| 02 | [File-based model readiness](docs/planning/objectives/OBJECTIVE-02.md) | 1 | Done — PROCEED 2026-06-18 |
-| 03 | [Model lifecycle states + Repair/Redownload](docs/planning/objectives/OBJECTIVE-03.md) | 1 | Done — PROCEED 2026-06-18 |
-| 04 | [Default preload + status refresh + verify-before-process](docs/planning/objectives/OBJECTIVE-04.md) | 1 | Done — PROCEED 2026-06-18 |
-| 05 | [Microphone abstraction & selection backend](docs/planning/objectives/OBJECTIVE-05.md) | 2 | Done — PROCEED 2026-06-18 |
-| 06 | [Test Mic + live input meter](docs/planning/objectives/OBJECTIVE-06.md) | 2 | Done — PROCEED 2026-06-18 |
-| 07 | [Mic fallback + active-mic display + notice](docs/planning/objectives/OBJECTIVE-07.md) | 2 | Done — PROCEED 2026-06-18 |
-| 08 | [Background/lock & 30-min reliability (device gate)](docs/planning/objectives/OBJECTIVE-08.md) | 2 | Done — PROCEED 2026-06-19 |
-| 09 | [Library status badges + canonical `RecordingStatus`](docs/planning/objectives/OBJECTIVE-09.md) | 3 | Done — PROCEED 2026-06-19 |
-| 10 | [Dashboard tab](docs/planning/objectives/OBJECTIVE-10.md) | 3 | Done — PROCEED 2026-06-20 |
-| 11 | [Model Lab as top-level tab + diagnostics columns](docs/planning/objectives/OBJECTIVE-11.md) | 3 | Done — PROCEED 2026-06-20 |
-| 12 | [Segment-level speaker reassignment](docs/planning/objectives/OBJECTIVE-12.md) | 4 | Done — PROCEED 2026-06-20 |
-| 13 | [Consistent speaker-label states + edit parity](docs/planning/objectives/OBJECTIVE-13.md) | 4 | Done — PROCEED 2026-06-20 |
-| 14 | [Phase-timeline progress UI](docs/planning/objectives/OBJECTIVE-14.md) | 5 | Done — PROCEED 2026-06-20 |
-| 15 | [Diagnostics on normal screens + data model](docs/planning/objectives/OBJECTIVE-15.md) | 5 | Done — PROCEED 2026-06-20 |
-| 16 | [Export hardening](docs/planning/objectives/OBJECTIVE-16.md) | 6 | Done — PROCEED 2026-06-21 |
-| 17 | [Accessibility pass](docs/planning/objectives/OBJECTIVE-17.md) | 6 | Done — PROCEED 2026-06-23 |
-| 17.1 | [FluidAudio diarization safety & timeout stabilization](docs/planning/objectives/OBJECTIVE-17.1.md) | 6 | Done — PROCEED 2026-06-23 |
-| 18 | [Mac companion parity](docs/planning/objectives/OBJECTIVE-18.md) | 7 | Done — PROCEED 2026-06-25 (limited baseline accepted) |
-| 19 | [Cancellation & failure-injection hardening](docs/planning/objectives/OBJECTIVE-19.md) | 7 | Done — PROCEED 2026-06-25 |
-| 20 | [Beta acceptance / final QA](docs/planning/objectives/OBJECTIVE-20.md) | 8 | Done — PROCEED 2026-06-28 |
+Manager gate: `ASK USER`.
 
-> **Closed-roadmap reminder:** The original Beta 2.0 roadmap is complete. Deferred polish, feature additions, and fine-tuning are preserved for Beta 2.1 discussion only. No Beta 2.1 implementation objective or branch is active.
+Authorized result:
 
-## How future work becomes active
-Beta 2.1 planning begins with review of [DECISIONS.md](DECISIONS.md), the deferred backlog, priorities, and scope. The Manager may activate a new objective and implementation branch only after explicit Human Reviewer approval. See [docs/planning/MULTI_AGENT_WORKFLOW.md](docs/planning/MULTI_AGENT_WORKFLOW.md).
+- Versioned normalized processing contracts.
+- Explicit stable IDs, timebase, provenance, uncertainty, and state semantics.
+- SwiftData/artifact/cache placement and old-record compatibility.
+- Atomic-write, corruption, cleanup, transcript-history, and rollback design.
+- No production, schema, user-data, dependency, or behavior change.
+
+## Human decisions before Phase 1
+
+1. Resolve VX-02 disposition choices, either individually or by choosing the conservative default to retain every candidate in place and defer all cleanup.
+2. Approve the nine VX-03 principles in [VX-03-MIGRATION-DESIGN.md §12](docs/planning/evidence/VX-03-MIGRATION-DESIGN.md#12-decisions-requiring-human-approval).
+3. Explicitly authorize activation of VX-04 after the Phase 0 milestone passes.
+
+No Phase 1 objective is active.
+
+## Phase 0 authorization boundary
+
+- VX-01, VX-02, and VX-03 may be activated sequentially without another start request.
+- Private audio must not be used unless Daniel separately approves an exact source or bounded collection.
+- VX-02 inventories and proposes removals; it does not remove application files.
+- VX-03 designs contracts and migration only; no production schema or behavior changes are authorized.
+- The Phase 0 milestone cannot pass until all Human-owned gates are explicitly resolved.
+
+## Historical roadmap
+
+The original Beta 2.0 objectives (OBJ-01 through OBJ-20, including OBJ-17.1) remain under [docs/planning/objectives/](docs/planning/objectives/) as historical completion evidence. They are not active work and must not be edited to make the new roadmap appear complete.
+
+## Required read order for implementation
+
+1. [PRD.md](PRD.md)
+2. [PLAN.md](PLAN.md)
+3. This file
+4. [AGENTS.md](AGENTS.md)
+5. [CLAUDE.md](CLAUDE.md)
+6. [DECISIONS.md](DECISIONS.md)
+7. The active objective’s linked supporting references

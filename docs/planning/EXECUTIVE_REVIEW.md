@@ -1,4 +1,5 @@
 # Executive Review — Transcriber 2.0 Beta
+> **Workspace note (2026-07-28):** This checkout is now the Mac-focused Transcriber workspace. Existing Beta 2.0 and iPhone-first material below is retained as historical pre-split context; iOS follow-up belongs in the sibling `../iOS Transcriber/` workspace.
 
 _Author: Staff Software Architect (planning pass). Date: 2026-06-18._
 _Source of truth for the product: [PRD.md](../../PRD.md). Source of truth for current code: `src/native/Transcriber2/`._
@@ -19,7 +20,7 @@ Transcriber 2.0 Beta is a **native, on-device audio transcription app** for iPho
 
 The app is explicitly a **beta with instrumentation**: it must expose enough diagnostics (model load time, processing speed, failure reasons, fallbacks) to measure and improve model quality, via a dedicated **Model Lab**.
 
-There is also an independent, unchanged **Python Transcriber 1.x** (`src/python/`) and an older iOS prototype (`src/legacy-ios/`). Neither is the subject of this work. The native 2.0 app must never require modifying the Python app.
+The old **Python Transcriber 1.x** has been moved out to the sibling `../Python Transcriber/` folder. This repo now carries the native 2.0 app plus older Swift reference trees such as `src/legacy-ios/`. The native 2.0 app must never require recreating or modifying the Python app inside this repository.
 
 ## 2. Intended users
 
@@ -71,6 +72,6 @@ Dependencies (Swift Package Manager, pinned by revision): **WhisperKit** (argmax
 2. **Stabilize the invariants before adding surface area.** Sequence data-safety and model-persistence work (the Critical risks) ahead of new UI like the Dashboard.
 3. **Many small, reversible milestones.** Favor one-session objectives that each leave the app building, green, and shippable. No rewrites where a refactor will do.
 4. **Treat real-device validation as a first-class, human-owned gate.** Agents validate via build + unit tests + simulator; the Human Reviewer owns on-device acceptance (recording, background, model persistence, performance).
-5. **Protect the Python app and the user's data absolutely.** Out of bounds for every objective.
+5. **Protect the user's data absolutely.** The moved Python app is outside this native repo and out of bounds for native objectives.
 
 The implementation is carried out by a Manager → Worker → Auditor → QA → Human Reviewer loop defined in [MULTI_AGENT_WORKFLOW.md](MULTI_AGENT_WORKFLOW.md) and governed by [AGENTS.md](../../AGENTS.md).

@@ -1,4 +1,5 @@
 # OBJECTIVE-11 — Model Lab as Top-Level Tab + Diagnostics Columns
+> **Workspace note (2026-07-28):** This checkout is now the Mac-focused Transcriber workspace. Existing Beta 2.0 and iPhone-first material below is retained as historical pre-split context; iOS follow-up belongs in the sibling `../iOS Transcriber/` workspace.
 
 _Phase 3 (third of three). **Depends on OBJ-03 (model registry)** and assumes the status foundation (OBJ-09) is in place. Closes PRD §6 Model Lab (A6, A7). RISK R14._
 

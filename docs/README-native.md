@@ -1,35 +1,36 @@
-# Transcriber 2.0 Beta
+# Native Transcriber Mac App
 
-This directory contains the native SwiftUI version of Transcriber. It is intentionally
-isolated from the working Python Transcriber 1.x application in the repository root.
+The active SwiftUI application is `src/native/Transcriber2/`.
 
-## Open in Xcode
+## Current capabilities
 
-Open `src/native/Transcriber2/Transcriber2.xcodeproj`, select the `Transcriber` scheme, and choose
-an iPhone running iOS 26 or a Mac running macOS 26.
+- Native Dashboard, Library, Model Lab, and Settings.
+- Microphone recording and file import.
+- Preserved application-owned original audio.
+- WhisperKit live/final transcription on Mac.
+- FluidAudio Sortformer speaker labeling.
+- Transcript-first persistence, retry, cancellation, timeout, and fallback behavior.
+- Playback, speaker rename/reassignment, and TXT/SRT/JSON export.
+- File-backed model readiness, repair/redownload, diagnostics, and tests.
 
-The first transcription and diarization sessions may download and compile speech-model
-assets. Later sessions process locally on the device.
-
-## Current Features
-
-- Shared iOS/macOS SwiftUI app with separate 2.0 storage and bundle identifier
-- iPhone live preview using Parakeet EOU
-- Selectable on-device Parakeet and Whisper final-transcription models
-- Final FluidAudio Sortformer speaker labels
-- Audio-file import, recording library, playback, speaker renaming, and sharing
-- TXT, SRT, and JSON transcript exporters
-- iPhone Model Lab for comparing downloaded transcription models
-
-## Verification
+## Build and test
 
 ```sh
-xcodebuild -project src/native/Transcriber2/Transcriber2.xcodeproj -scheme Transcriber \
-  -destination 'platform=macOS' CODE_SIGNING_ALLOWED=NO build
+xcodebuild -project "src/native/Transcriber2/Transcriber2.xcodeproj" \
+  -scheme Transcriber \
+  -destination 'platform=macOS' \
+  CODE_SIGNING_ALLOWED=NO build
 
-xcodebuild -project src/native/Transcriber2/Transcriber2.xcodeproj -scheme Transcriber \
-  -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
+xcodebuild test \
+  -project "src/native/Transcriber2/Transcriber2.xcodeproj" \
+  -scheme Transcriber \
+  -destination 'platform=macOS' \
+  CODE_SIGNING_ALLOWED=NO \
+  -only-testing:TranscriberTests
 ```
 
-Microphone capture, model installation, FluidAudio model downloads, and real-time
-performance must be validated on the iPhone 17 Pro.
+## Important boundary
+
+This checkout is Mac-focused. iOS work belongs in `../iOS Transcriber/`. Shared Swift files may still contain iOS-origin branches; remove them only through an approved ownership/removal objective.
+
+Downloaded models, application data, private benchmark audio, voiceprints, and local build output do not belong in Git.

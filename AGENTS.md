@@ -1,111 +1,189 @@
-# AGENTS.md — Operating Rules for Transcriber 2.0 Beta
+# AGENTS.md — Operating Rules for Transcriber Mac
 
-This file governs every agent working in this repository. **Read it in full before doing any work**, together with [PRD.md](PRD.md), [PLAN.md](PLAN.md), and the active [OBJECTIVE.md](OBJECTIVE.md). The detailed operating loop is in [docs/planning/MULTI_AGENT_WORKFLOW.md](docs/planning/MULTI_AGENT_WORKFLOW.md).
+Last updated: 2026-07-28
 
-**This is a multi-app repository.** Before reading further, see [CLAUDE.md](CLAUDE.md) for the app registry, cross-app guardrails, and risk-tiered workflow that apply no matter which app or doc-only task you're doing. Everything below assumes your target app is `src/native/Transcriber2/`.
+This file governs work in this repository. The active product is the Mac app at `src/native/Transcriber2/`. iOS product work belongs in the sibling `../iOS Transcriber/` workspace.
 
-## 0. Communicating with the Human Reviewer (Daniel)
+## 1. Working with Daniel
 
-This note from the project owner overrides nothing below but shapes _how_ you communicate:
+Daniel is learning coding, application architecture, and backends. Explain meaningful technical choices in plain language without talking down to him. State trade-offs and disagree when evidence supports it, but Daniel owns product decisions and has the final word.
 
-> When answering technical questions, remember that I am new to coding, app creation, and backends, but am capable of learning. Explain mid-level to advanced concepts to me simply but without being condescending.
->
-> Do not assume that I know best, but do not override my instructions. You may question me, help me work through difficult concepts, and ask me to explain my logic, but ultimately what I say is final.
->
-> You are a trusted teammate. I know you are capable of great things, and I need you on my side. Let's work together. Tell me why you do what you do so I can learn and grow with you.
+Do not silently turn an exploratory idea into an implementation commitment. Surface decisions, evidence, risks, and removal candidates clearly.
 
-So: explain your reasoning, name trade-offs in plain language, and surface decisions rather than silently choosing. The Human Reviewer's word is final.
+## 2. Mandatory read order
 
----
+Before implementation work:
 
-## 1. Read order (mandatory, every session)
+1. [PRD.md](PRD.md) — product requirements.
+2. [PLAN.md](PLAN.md) — approved sequence and gates.
+3. [OBJECTIVE.md](OBJECTIVE.md) — the only active scope.
+4. [AGENTS.md] (AGENTS.md) — operating rules.
+5. [CLAUDE.md](CLAUDE.md) — workspace and path registry.
+6. [DECISIONS.md](DECISIONS.md) — standing decisions and open questions.
+7. Objective-specific architecture, risk, and QA references.
 
-1. [PRD.md](PRD.md) — the product target.
-2. [PLAN.md](PLAN.md) — phases and sequencing.
-3. The active [OBJECTIVE.md](OBJECTIVE.md) — your scoped work for this session.
-4. This file ([AGENTS.md](AGENTS.md)) — the rules.
+If no objective is active, do not implement roadmap code.
 
-Supporting context (read as needed): [docs/planning/ARCHITECTURE_REVIEW.md](docs/planning/ARCHITECTURE_REVIEW.md), [GAP_ANALYSIS.md](docs/planning/GAP_ANALYSIS.md), [RISK_REGISTER.md](docs/planning/RISK_REGISTER.md), [QA_STRATEGY.md](docs/planning/QA_STRATEGY.md), [DECISIONS.md](DECISIONS.md).
+## 3. Authority and conflict handling
 
-## 2. Non-negotiable rules (all roles)
+Use this priority:
 
-1. **Preserve user data.** Never delete or overwrite original audio (`Application Support/Transcriber2Beta/Recordings/`) or transcripts on any failure path. Deletion is user-initiated only.
-2. **Preserve the architecture.** Keep the actor-based engine abstractions, the `TranscriptionSession` state machine, persist-then-proceed, and `SWIFT_STRICT_CONCURRENCY = complete`. Do not weaken concurrency settings to make code compile.
-3. **Active path only.** Work in `src/native/Transcriber2/`. **Never modify** `src/python/` (independent Transcriber 1.x), and treat `src/legacy-ios/` and `XCode App Build/` as read-only reference. Full app registry and rationale: [CLAUDE.md](CLAUDE.md) §1–§3.
-4. **Stay in scope.** Implement only the active OBJECTIVE. Out-of-scope ideas go to that objective's "Notes for the Manager," not into the diff.
-5. **Refactor, don't rewrite.** Prefer the smallest correct change. No broad rewrites when a targeted refactor works.
-6. **Incremental & reversible.** Each objective must leave the app building and green, and must be cleanly `git revert`-able.
-7. **Ask before deleting files** or removing assets. Assets in `assets/` and existing files are presumed intentional until the Human Reviewer confirms otherwise.
-8. **Preserve assets** unless their non-use is confirmed in writing.
-9. **Don't bump dependencies** (WhisperKit, FluidAudio) inside a feature objective. Dependency changes get their own objective and full re-validation.
-10. **Validate before claiming done.** "Done" requires the [PLAN.md](PLAN.md) baseline commands passing and the objective's Acceptance Criteria met. Never claim completion you have not validated.
-11. **Update planning docs when a milestone finishes** (Manager): mark the objective done, link the completion report, advance [OBJECTIVE.md](OBJECTIVE.md).
-12. **Stop when requirements conflict.** If the OBJECTIVE, PRD, code, and reality disagree in a way you cannot resolve from documented defaults, stop and escalate (`ASK USER` / `BLOCKED`).
-13. **Respect the Human-owned gates.** Real-device behaviors (background/lock recording, model persistence across reboot, 30-min reliability, performance, battery, offline) cannot be marked done by an agent. End at `ASK USER` for device validation.
+1. Daniel’s explicit current instruction.
+2. The active `OBJECTIVE.md`.
+3. `PRD.md`.
+4. `PLAN.md`.
+5. Approved entries in `DECISIONS.md`.
+6. This file and `CLAUDE.md`.
+7. Supporting planning documents.
+8. Historical plans and reference material.
 
-## 3. Roles & responsibilities
+The reference files `VoxBot Expanded PLN.md` and `Voiceprint PLN.md` inform the roadmap but do not override the current PRD, objective, working code, or data-safety rules.
+
+Stop at `ASK USER` when a conflict would change product behavior, data meaning, privacy, architecture, target platform, or scope. A documented default may resolve small implementation details; it may not invent approval.
+
+## 4. Non-negotiable invariants
+
+1. **Never lose user work.** Original audio, confirmed transcripts, corrections, speaker profiles, and enrollment samples survive failures and migrations.
+2. **Persist before dependent work.** A useful result is saved before a later stage can fail.
+3. **Preserve the working core.** Recording, import, Library, playback, review, export, cancellation, retry, diagnostics, model readiness, and Model Lab remain functional unless an approved objective explicitly replaces a behavior.
+4. **Refactor incrementally.** The current actor-based engines, `TranscriptionSession` state machine, attempt guards, and failure paths are regression baselines. Extract behind tests; do not rewrite wholesale.
+5. **Keep strict concurrency.** `SWIFT_STRICT_CONCURRENCY = complete` must not be weakened.
+6. **Use versioned additive storage.** Existing `Recording` rows and transcripts remain readable. Schema or blob changes require a migration decision and old-version/corruption/rollback tests.
+7. **Do not force uncertainty into certainty.** Unknown or ambiguous text/speaker results are valid.
+8. **Benchmark model decisions.** A named model, ensemble, fallback, or AI stage enters production only after feasibility, licensing, packaging, resource, accuracy, and failure-path evidence.
+9. **Local by default.** Network or off-device audio processing requires a separate Human-approved objective and privacy decision.
+10. **One active implementation objective.** Out-of-scope discoveries go to “Notes for the Manager.”
+11. **Dependencies change separately.** WhisperKit, FluidAudio, model weights, helper runtimes, and other dependencies are not bumped or added inside an unrelated feature objective.
+12. **No automatic learning.** Conversation clips are not added to speaker profiles and corrections do not trigger training without explicit user confirmation and a controlled workflow.
+
+## 5. Paths and ownership
+
+Normal implementation is limited to the active Mac app:
+
+- `src/native/Transcriber2/Transcriber/`
+- `src/native/Transcriber2/TranscriberTests/`
+- `src/native/Transcriber2/TranscriberUITests/` when explicitly scoped
+- `src/native/Transcriber2/Transcriber2.xcodeproj/` when explicitly scoped
+- Planning or documentation paths named by the objective
+
+Do not modify:
+
+- `../iOS Transcriber/` unless Daniel explicitly assigns cross-workspace work.
+- `src/legacy-ios/` except for an approved archive/removal objective.
+- `../Python Transcriber/`.
+- Private audio files or application data except under an approved test/migration procedure.
+
+See [CLAUDE.md](CLAUDE.md) for the full registry and removal rules.
+
+## 6. Deletion and cleanup
+
+The roadmap may identify superfluous code and files. Planning a removal is not permission to execute it.
+
+An implementation objective may remove an application file only when:
+
+- The exact file or target is named in scope.
+- Its active behavior and references have been checked.
+- Any sibling-workspace ownership is confirmed.
+- Unique history or reference value is preserved where appropriate.
+- Baseline validation passes before and after.
+- The change has a clear rollback.
+
+Always ask Daniel before deleting an asset, private audio, historical reference tree, or anything with unresolved ownership. User data is never cleanup.
+
+## 7. Risk tiers and required workflow
+
+### Critical
+
+Triggers: user-data migration, `Recording` schema change, artifact-store format, dependency/runtime addition, model update, processing-pipeline replacement, voiceprint/profile security, broad structural removal.
+
+Workflow: Manager scopes → Worker implements → Auditor returns `ALIGNED` → QA produces evidence → Human gate when applicable → Manager decides gate.
+
+### High
+
+Triggers: audio/transcription/diarization/identity changes, concurrency or scheduler changes, persistent jobs, large state-machine refactor, new processing UI.
+
+Workflow: Manager scopes → Worker implements → Auditor returns `ALIGNED` → QA produces evidence → Manager decides gate.
+
+### Normal
+
+Triggers: contained UI behavior, ordinary bug fix, test-only improvement, small non-data refactor.
+
+Workflow: Worker implements → QA verifies → Manager reviews and gates. Escalate if risk grows.
+
+### Docs-only
+
+Triggers: governance, PRD, plan, decision, README, or objective drafting with no production-code change.
+
+Workflow: Manager edits → checks links, consistency, scope, and diff → reports. A separate Auditor is optional unless the document authorizes risky implementation or Daniel requests one.
+
+### Read-only or Git-only
+
+Use a compact evidence report for inspection; use a scoped closeout for branch/tag/commit work. Neither tier authorizes product changes.
+
+Risk may increase during an objective but may not be silently downgraded.
+
+## 8. Roles
 
 ### Manager
-- Owns the user-facing conversation and the planning documents.
-- Reads PRD/PLAN/OBJECTIVE/AGENTS before assigning work.
-- Selects the next objective from [PLAN.md](PLAN.md), confirms its dependencies are met, and hands the Worker a single scoped objective.
-- Reviews the Auditor's alignment report and the QA evidence.
-- Makes the **Gate decision** (`PROCEED` / `FIX FIRST` / `ASK USER` / `BLOCKED`; see §6) — only the Manager decides the gate.
-- Updates [PLAN.md](PLAN.md) / [OBJECTIVE.md](OBJECTIVE.md) / [DECISIONS.md](DECISIONS.md) / [QA.md](QA.md) on completion.
-- **Owns the final user-facing report.** The Worker, Auditor, and QA produce internal reports/evidence _to the Manager_; the single report delivered to the Human Reviewer comes only from the Manager and synthesizes those inputs.
-- Never writes feature code; never overrides the Human Reviewer on product decisions.
+
+- Owns the user conversation, scope, roadmap, objective activation, decisions, and final report.
+- Confirms dependencies and risk tier before implementation.
+- Does not mix feature implementation into a planning-only pass.
+- Reviews Auditor and QA evidence and chooses the gate.
+- Updates `PLAN.md`, `OBJECTIVE.md`, `DECISIONS.md`, and `QA.md`.
 
 ### Worker
-- Implements **only** the active objective's Scope.
-- Makes the smallest correct change; preserves architecture and data.
-- Runs the baseline build/test commands and the objective's Validation Commands.
-- Reports: files touched, assumptions made, tests run + results, objective rows completed, and anything deferred.
-- Never claims completion without validation; never expands scope; stops and reports if blocked or if requirements conflict.
+
+- Implements only the active scope.
+- Makes the smallest correct, reversible change.
+- Preserves data and architecture invariants.
+- Runs baseline and objective-specific validation.
+- Reports files changed, assumptions, tests, evidence, and deferred work.
+- Stops rather than widening scope.
 
 ### Auditor
-- Runs **before QA** — QA must not start until the Auditor returns `ALIGNED`.
-- Compares the implementation against **[PRD.md](PRD.md), [PLAN.md](PLAN.md), the active [OBJECTIVE.md](OBJECTIVE.md), this [AGENTS.md](AGENTS.md), and [DECISIONS.md](DECISIONS.md)** (standing policies + open questions).
-- Checks for architectural drift, scope creep, data-safety regressions, concurrency-setting changes, edits outside the active path, dependency bumps, and unauthorized `Recording`/model schema changes.
-- Verifies the change is reversible and that planning-doc updates are accurate.
-- Produces a written **alignment report** (`ALIGNED` / `DRIFT FOUND` + specifics) with a recommendation; **does not fix code** (flags issues back to Worker/Manager) and **does not write the user-facing report**.
+
+- Reviews after implementation and before QA for High/Critical objectives.
+- Compares the diff with the PRD, plan, objective, decisions, path rules, data invariants, dependency pins, and concurrency settings.
+- Returns `ALIGNED` or `DRIFT FOUND` with specifics.
+- Does not fix the implementation being audited.
 
 ### QA Tester
-- Runs **only after the Auditor returns `ALIGNED`**. Tests completed work per the objective's QA Checklist and [QA_STRATEGY.md](docs/planning/QA_STRATEGY.md).
-- Verifies workflows, UI states, failure paths, regressions, and edge cases; captures **QA evidence** (commands, outputs, screenshots/notes).
-- Distinguishes agent-verifiable results from Human-owned device gates and says which is which.
 
-### Human Reviewer (Daniel)
-- Resolves ambiguity and makes all product decisions.
-- Approves milestones and any PLAN.md scope/sequence change.
-- Owns on-device acceptance testing.
-- Prevents scope creep; the final word on conflicts.
+- Starts after `ALIGNED` when an Auditor is required.
+- Tests acceptance criteria, regressions, failure paths, cancellation, migration, and edge cases.
+- Records exact evidence and distinguishes automated from Human-owned validation.
 
-## 4. Definition of Done (every objective)
+### Human Reviewer
 
-- [ ] Only the active objective's scope was changed; touched paths are inside `src/native/Transcriber2/` (or planning docs).
-- [ ] macOS build, iOS-simulator build, and unit tests pass (see [PLAN.md](PLAN.md) baseline).
-- [ ] `SWIFT_STRICT_CONCURRENCY = complete` unchanged; no new warnings introduced where avoidable.
-- [ ] Data-safety invariants intact (no audio/transcript loss path added).
-- [ ] Acceptance Criteria met; QA evidence captured; Auditor alignment report attached.
-- [ ] Planning docs updated (Manager); Human-owned device gates explicitly flagged as such.
-- [ ] Change is reversible (single clean revert).
+- Owns product priorities, private-data use, architecture choices with meaningful trade-offs, model/privacy decisions, milestone approval, and real-world acceptance.
 
-## 5. Escalation triggers (stop and ask)
+## 9. Definition of done
 
-- The objective conflicts with the PRD, the code, or observed reality.
-- A change would require modifying `src/python/`, deleting a file/asset, bumping a dependency, weakening concurrency, or touching the `Recording` schema without a migration.
-- A data-safety invariant cannot be preserved.
-- Validation cannot be completed by an agent (device-only behavior) — finish at `ASK USER`.
+Every implementation objective must satisfy:
 
-Tell the Human Reviewer _what_ you found, _why_ it blocks you, and _your recommended option(s)_ in plain language.
+- [ ] Only allowed paths and scope changed.
+- [ ] Mac build passes.
+- [ ] `TranscriberTests` passes.
+- [ ] Objective-specific tests and benchmarks pass.
+- [ ] Existing recordings and transcripts remain readable.
+- [ ] Original audio and useful partial results remain safe on failure/cancel.
+- [ ] Strict concurrency and dependency policy remain intact.
+- [ ] Auditor is `ALIGNED` when required.
+- [ ] QA evidence is recorded.
+- [ ] Human-owned gates are explicitly passed or the objective ends at `ASK USER`.
+- [ ] Rollback is documented and practical.
+- [ ] Planning documents reflect the actual result.
 
-## 6. Gate definitions (canonical — used by every objective)
+## 10. Canonical gates
 
-The Manager closes every objective with exactly one of these four gates. Every `OBJECTIVE-NN.md` "Gate Decision" section and [docs/planning/MULTI_AGENT_WORKFLOW.md](docs/planning/MULTI_AGENT_WORKFLOW.md) Step 5 use these same definitions:
+- **PROCEED** — Acceptance criteria are met, required audit is aligned, QA is green, and required Human acceptance is complete. The Manager may close the objective and activate the next approved one.
+- **FIX FIRST** — A defect, drift, regression, or missing evidence must be corrected. Do not advance.
+- **ASK USER** — A product, privacy, data, architecture, deletion, benchmark, or Human-only validation decision is required. Do not advance.
+- **BLOCKED** — A dependency, platform limit, license, missing prerequisite, or external condition prevents safe progress. Record it; do not bypass invariants.
 
-- **PROCEED** — Acceptance Criteria met, Auditor returned `ALIGNED`, QA evidence is green, and any Human-owned device gates are explicitly flagged for the Human Reviewer. The Manager updates the planning docs and advances [OBJECTIVE.md](OBJECTIVE.md) to the next objective.
-- **FIX FIRST** — Defects, drift, or scope creep were found. Work returns to the Worker with a specific list; the Auditor and QA re-run before the gate is reconsidered. Do **not** advance.
-- **ASK USER** — A product decision, an ambiguity, or a Human-owned device gate (real mic, background/lock recording, model persistence across reboot, 30-min reliability, performance, battery, offline) must be resolved by the Human Reviewer before the objective can be called done. Do **not** advance until answered.
-- **BLOCKED** — A dependency, conflict, or external factor prevents progress (e.g. an unmet prerequisite objective, a missing migration policy, an unreachable dependency, or a green build that would require a prohibited change). Record the blocker and escalate; do **not** work around it by violating §2.
+Only `PROCEED` advances the roadmap.
 
-An objective advances **only** on `PROCEED`. Never start the next objective while the current one is `FIX FIRST`, `ASK USER`, or `BLOCKED`.
+## 11. Baseline commands
+
+Use the commands in [PLAN.md](PLAN.md#4-standard-validation). Do not claim completion from compilation alone. Model, migration, failure, privacy, and real-audio claims require their own evidence.

@@ -1,92 +1,122 @@
-# CLAUDE.md — Multi-App Repository Guardrails
+# CLAUDE.md — Workspace Registry and Path Guardrails
 
-**This repository contains multiple app trees that grew together during Beta 2.0.** Before touching any file, identify which app/tree your objective targets and confirm your edits stay inside its allowed paths. Editing the wrong tree is the single highest agent-confusion risk in this repo (see [DECISIONS.md](DECISIONS.md) D-001, D-017).
+Last updated: 2026-07-28
 
-This file is read alongside [AGENTS.md](AGENTS.md). AGENTS.md governs the Swift app's objective workflow in detail; this file governs **cross-app boundaries** that apply no matter which app or doc-only task you're doing.
+Despite the filename, these rules apply to every coding agent and tool operating in this repository.
 
----
+## 1. Workspace identity
 
-## 1. App Registry
+This checkout is the Mac-focused Transcriber workspace:
 
-| Path | App / Tree | Status | Allowed Modification Policy |
+`/Users/daniel/Library/CloudStorage/OneDrive-Personal/AI Research/Transcription app`
+
+The product code is a native SwiftUI app in `src/native/Transcriber2/`. The accuracy-expansion roadmap strengthens that app in place.
+
+## 2. Registry
+
+| Path | Status | Purpose | Default permission |
 |---|---|---|---|
-| `src/native/Transcriber2/` | **Transcriber 2.0 (Swift/SwiftUI)** | **Active development** | The only app under active feature/fix work. Edit per the active OBJECTIVE and [AGENTS.md](AGENTS.md). |
-| `src/python/` | **Transcriber 1.x (Python/PyQt6)** | Independent, not under Beta 2.x development | **Do not touch** during Swift work. Edits require their own explicitly approved, app-scoped objective. |
-| `src/legacy-ios/` | **Legacy iOS prototype (Swift, no Xcode project)** | Read-only reference | **Do not edit.** Archive decision pending (see [docs/planning/INVENTORY_REPORT.md](docs/planning/INVENTORY_REPORT.md)). |
-| `XCode App Build/` | **Stale Xcode/SwiftData template** | Stale / archive candidate | **Do not edit.** Not the active app — it is default template code with a nested `.git`. Archive/removal decision pending. |
-| `dist/` | Python build artifact (PyInstaller output) | Generated | Do not hand-edit. Regenerate via `src/python/build.sh` only inside an approved Python-app objective. |
-| `native/Builds/` | Swift app build artifact | Generated | Do not hand-edit. Regenerate via Xcode build only. |
-| `assets/` | Shared assets (icon, UI preview images) | Shared | Treat as intentional; do not delete without Human Reviewer confirmation (see AGENTS.md §2.7–2.8). |
-| `docs/planning/` | Governance & planning docs | Active | Edit per the active objective's allowed paths. |
+| `src/native/Transcriber2/Transcriber/` | Active | Mac application source | Read/write only within active objective |
+| `src/native/Transcriber2/TranscriberTests/` | Active | Unit and integration-style test bundle | Read/write only within active objective |
+| `src/native/Transcriber2/TranscriberUITests/` | Active but limited | UI tests | Change only when scoped |
+| `src/native/Transcriber2/Transcriber2.xcodeproj/` | Active, high risk | Targets, settings, dependencies | Change only when scoped |
+| `src/native/Transcriber2/ShareToTranscriber/` | iOS-origin candidate | Share extension code in Mac-focused checkout | Read; removal/move requires approved objective |
+| `src/legacy-ios/` | Reference | Older iOS implementation | Read-only pending archive decision |
+| `assets/` | Preserved | Icons and visual references | Read-only unless explicitly scoped |
+| `docs/` | Documentation | Product and planning support | Change when objective allows |
+| `docs/planning/objectives/OBJECTIVE-01...20` | Historical | Completed Beta 2.0 evidence | Preserve; do not rewrite as new work |
+| `VoxBot Expanded PLN.md` | Reference | Accuracy-first design source | Read-only; not governing authority |
+| `Voiceprint PLN.md` | Reference | Earlier voiceprint design source | Read-only; not governing authority |
+| `test_clip.m4a` | Unresolved | Possible test fixture | Do not use, move, commit, or delete without Daniel |
+| `Kelly Creek Dr.m4a` | Private/unresolved | Possible personal recording | Do not inspect beyond metadata, use, move, commit, or delete without Daniel |
+| `../iOS Transcriber/` | Separate sibling workspace | iOS product | Out of scope by default |
+| `../Python Transcriber/` | Separate sibling workspace | Legacy Python application | Out of scope |
 
-**Current active Swift app path:** `src/native/Transcriber2/`
+Generated Xcode data, downloaded models, compiled apps, private benchmarks, and application data are not source files and must not be added to the repository.
 
----
+## 3. Active architecture map
 
-## 2. Every Future Objective Must Declare
+The current Mac baseline includes:
 
-Before any work begins, an objective (in [OBJECTIVE.md](OBJECTIVE.md), an `OBJECTIVE-NN.md` file, or an ad-hoc task prompt) must state:
+- `Transcriber2App.swift` — app entry and SwiftData container.
+- `RootView.swift` — Dashboard, Library, Model Lab, and Settings navigation.
+- `Models.swift` — `Recording`, transcript types, status derivation, and storage paths.
+- `TranscriptionSession.swift` — UI-facing state machine and current processing orchestrator.
+- `TranscriptionEngine.swift` — actor protocol and WhisperKit implementation.
+- `ParakeetTranscriptionEngines.swift` — FluidAudio Parakeet engines, currently iOS-gated where applicable.
+- `DiarizationEngine.swift` — actor protocol and FluidAudio Sortformer implementation.
+- `TranscriptMerger.swift` — current temporal speaker assignment and smoothing.
+- `ModelRegistry.swift` / `TranscriptionModelReadiness.swift` — model lifecycle and file-backed readiness.
+- `ProcessingPhase.swift` / `ProcessingDiagnostics.swift` — progress and diagnostic presentation.
+- `RecordingView.swift`, `LibraryView.swift`, `DashboardView.swift`, `ModelLabView.swift`, and `SettingsView.swift` — working product surfaces.
 
-1. **Target app** — which row of the App Registry (§1) this objective touches.
-2. **Allowed paths** — the specific directories/files this objective may edit.
-3. **Forbidden paths** — explicitly, every other app tree (especially the other "Transcriber"-named trees).
-4. **Risk tier** — one of the five tiers in §4 below.
+Do not replace these pieces because a reference plan sketches a different architecture. First add tests and contracts, then extract or replace one responsibility at a time.
 
-An objective with no target app declared defaults to **no source-code edits** — read/report only — until the Human Reviewer assigns a target app.
+## 4. Objective path contract
 
-A template for this is at [docs/planning/OBJECTIVE_TEMPLATE_APP_SCOPED.md](docs/planning/OBJECTIVE_TEMPLATE_APP_SCOPED.md).
+Every implementation objective must name:
 
----
+- Target app: `Transcriber Mac`.
+- Risk tier.
+- Allowed paths.
+- Forbidden paths.
+- Whether `project.pbxproj`, package pins, entitlements, schema, user data, model caches, or application storage may change.
+- Whether private benchmark audio may be accessed.
+- Exact removal targets, if any.
 
-## 3. Explicit Warnings
+If a needed file is outside allowed paths, stop and return to the Manager. Do not “just fix” an adjacent app or reference tree.
 
-### ⚠️ `XCode App Build/` is stale and must not be edited
-This tree is a default Xcode "New Project" template (SwiftUI + SwiftData `Item` model). It contains **no transcription code**. It is named `Transcriber`, which makes it easy to confuse with the active app — check the full path, not just the folder name, before editing anything under a path containing "Transcriber." It has its own nested `.git/` repository; do not modify, delete, or merge that nested `.git`.
+## 5. Cross-platform rules
 
-### ⚠️ `src/python/` is an independent app — do not touch during Swift work
-This is Transcriber 1.x: a separate PyQt6 desktop app with its own venv, `requirements.txt`, `build.sh`, and `Transcriber.spec`. It shares no code with `src/native/Transcriber2/`. Any change to this tree requires its own explicitly approved, app-scoped objective — never as a side effect of Swift work.
+1. Mac behavior is the authority in this checkout.
+2. iOS implementation belongs in the sibling workspace.
+3. Shared Swift files may still contain `#if os(iOS)` code from before the split.
+4. Do not delete iOS-origin code until an objective proves the sibling owns it and the Mac project no longer needs it.
+5. Do not make a Mac architecture worse solely to preserve an unconfirmed mobile need; surface the conflict and coordinate it explicitly.
 
-### ⚠️ `src/legacy-ios/` is read-only reference
-Older iOS Swift prototype, no Xcode project file. It may contain reference patterns (custom diarization clustering, a Whisper C bridge) not present in the active app. Do not edit it. Whether it has unique value worth preserving, and whether to archive it, is an open decision — see [docs/planning/INVENTORY_REPORT.md](docs/planning/INVENTORY_REPORT.md).
+## 6. Dependency and model rules
 
----
+The current project pins WhisperKit and FluidAudio by revision. Any revision change or new runtime is its own High/Critical objective.
 
-## 4. Risk-Tiered Workflow
+Before adding a model or runtime, verify:
 
-Match the workflow to the risk of the change. Do not run the full Manager → Worker → Auditor → QA loop for a docs-only edit, and do not skip it for schema/dependency/pipeline changes.
+- License and distribution terms.
+- Apple Silicon and macOS support.
+- App Sandbox and signing implications.
+- Download, storage, update, repair, and removal behavior.
+- Offline behavior.
+- Memory, thermal, timing, and cancellation behavior.
+- Normalized result quality and provenance.
+- Failure isolation and rollback.
+- Benchmark benefit.
 
-| Tier | Trigger | Workflow |
-|---|---|---|
-| **Critical / high-risk code** | Schema migration, dependency bump, pipeline/engine change, structural repo change (moves/archival), data-loss-adjacent code | Manager → Worker → Auditor → QA |
-| **Normal feature** | Standard feature work, UI changes, non-critical bug fixes, test additions, within the active app's existing architecture | Worker → QA → Manager summary |
-| **Docs-only** | Governance updates, planning docs, README changes, templates — no source code touched | Manager → QA only |
-| **Git-only closeout** | Tagging, branching, commit-message cleanup, `.gitignore` updates | Compact closeout (commit/tag description; no QA pass needed) |
-| **Read-only inventory** | File listings, cross-reference analysis, reports with zero code or doc-state changes beyond the one report file | Single report; no QA pass needed |
+Named candidates in the VoxBot reference plan are hypotheses until these checks pass.
 
-**Tier assignment:** The Human Reviewer or Manager assigns the tier when the objective is created. The tier can only escalate (go up), never de-escalate, mid-objective — if a docs-only task discovers it needs a code change, stop and re-scope as Normal or higher rather than proceeding under the lower tier.
+## 7. Private data and fixtures
 
-This repository's existing Manager/Worker/Auditor/QA role definitions are in [AGENTS.md](AGENTS.md) §3; this table only says which roles are required for a given tier, not how each role operates.
+- Never assume a repository audio file is safe test data.
+- Do not commit private benchmark audio, voiceprints, embeddings, enrollment samples, or derived speech clips.
+- A dataset manifest may reference private files outside Git after Daniel approves them.
+- Tests should use generated audio, tiny approved fixtures, fakes, or metadata-only placeholders whenever possible.
+- Logs and reports must avoid full private paths and transcript content unless the objective explicitly needs them.
 
----
+## 8. Removal protocol
 
-## 5. Tool-Level Enforcement (Deferred)
+For any planned code, target, asset, or reference removal:
 
-`.claude/settings.json` does not currently exist in this repo (only `.claude/settings.local.json`, which holds unrelated `Bash` permission allow-rules). Adding deny-pattern enforcement for the protected paths above (`src/python/**`, `src/legacy-ios/**`, `XCode App Build/**`) was considered during this governance update but **not implemented**, because the correct deny-pattern syntax for this Claude Code settings format was not confirmed safe to invent without risking a malformed config that silently fails to enforce anything.
+1. Resolve exact references with read-only checks.
+2. Identify the behavior and owner.
+3. Confirm migration or replacement.
+4. Preserve unique history when useful.
+5. Run baseline validation before and after.
+6. Record what was removed and how to recover it.
 
-**Recommended follow-up (ASK USER):** Confirm the correct settings.json deny-pattern syntax for this Claude Code version, then add rules denying writes to:
-- `src/python/**`
-- `src/legacy-ios/**`
-- `XCode App Build/**`
+Deletion of user data, private audio, profiles, or enrollment samples occurs only through tested user-initiated product behavior or an explicitly approved migration procedure.
 
-Until that is confirmed and added, enforcement of §1–§3 above is **policy-only** (governance docs + Auditor review), not tool-enforced. Treat every objective's stated forbidden paths as binding regardless.
+## 9. Historical planning
 
----
+The completed Beta 2.0 objective files and older planning analyses explain how the current core was built. Some supporting documents still describe the pre-split iPhone-first state and must be treated as historical unless the active PRD or objective explicitly refreshes them.
 
-## 6. Reading Order for This File
+Conflict priority is:
 
-If you are about to start any objective:
-1. Read this file (CLAUDE.md) first to confirm target app and tier.
-2. Then read [AGENTS.md](AGENTS.md) for the Swift-app-specific operating rules (if your target app is `src/native/Transcriber2/`).
-3. Then read the active objective document.
-
-If your objective's target app is anything other than `src/native/Transcriber2/`, AGENTS.md's detailed rules (concurrency, schema, dependency policy) may not apply verbatim — but the cross-app boundaries in §1–§3 here always apply.
+Daniel’s explicit current instruction → active `OBJECTIVE.md` → `PRD.md` → `PLAN.md` → approved `DECISIONS.md` → `AGENTS.md` → this registry → supporting and historical references.

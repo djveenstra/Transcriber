@@ -1,119 +1,225 @@
-# DECISIONS.md — Architecture & Product Decision Log
+# DECISIONS.md — Transcriber Architecture and Product Decisions
 
-_Append-only log of non-obvious decisions, with rationale. The Manager records a decision here whenever a choice isn't self-evident from the code or PRD. Newest at the bottom of each section. See [docs/planning/](docs/planning/)._
+Last updated: 2026-07-29
 
-Format per entry: **ID · Date · Decision · Why · Implications · Reversibility.**
+This log records choices that are not obvious from the code or PRD. A decision remains in force until a later entry explicitly supersedes it.
 
----
+Each entry states: decision, reason, implications, and reversibility.
 
-## Standing policies
+## Active standing decisions
 
-### D-001 · 2026-06-18 · Active development path is `src/native/Transcriber2/` only
-**Why:** Three iOS-ish trees exist (`native/Transcriber2`, `legacy-ios`, stale `XCode App Build/`) plus the independent Python app. Editing the wrong one is a real risk (RISK R20).
-**Implications:** Agents never modify `src/python/`; `src/legacy-ios/` and `XCode App Build/` are read-only reference. The Auditor checks touched paths.
-**Reversibility:** Policy only.
+### D-001 · 2026-06-18 · Active implementation path
 
-### D-002 · 2026-06-18 · SwiftData migration policy for `Recording`
-**Why:** Transcript/raw/speaker data are JSON blobs inside a SwiftData `@Model`; uncontrolled schema changes can lose beta data (RISK R2).
-**Policy:**
-1. Prefer **deriving** new info over storing it (e.g. `RecordingStatus` computed from existing flags).
-2. If a stored field is required, it must be **additive with a safe default** so old rows decode.
-3. Blob shape changes require a **versioned decode path** (try new, fall back to old) — never a destructive re-encode.
-4. **No `Recording` schema change without a DECISIONS.md entry** describing the migration and a round-trip test.
-**Implications:** Gates OBJ-09 (if `RecordingStatus` is stored rather than derived), OBJ-12, and OBJ-15 schema work.
-**Reversibility:** Additive changes keep old code able to read data after a revert.
+**Decision:** Product work in this repository targets `src/native/Transcriber2/`.
 
-### D-003 · 2026-06-18 · Keep `SWIFT_STRICT_CONCURRENCY = complete`
-**Why:** The pipeline is concurrency-heavy; strict checking is the canonical drift/regression alarm (RISK R7).
-**Implications:** Never weaken the setting to compile; fix the concurrency issue instead.
-**Reversibility:** N/A (do not change).
+**Reason:** Multiple app and reference trees have existed, making wrong-tree edits a recurring risk.
 
-### D-004 · 2026-06-18 · Dependencies (WhisperKit, FluidAudio) are not bumped inside feature objectives
-**Why:** Pinned by revision; a bump can change behavior or break the build (RISK R22).
-**Implications:** Any bump is its own objective with full re-validation.
-**Reversibility:** Revert the pin.
+**Implications:** `src/legacy-ios/` is reference-only; the Python app remains in `../Python Transcriber/`; iOS product work belongs in `../iOS Transcriber/`.
 
-### D-005 · 2026-06-18 · Deliberate pipeline pacing is intentional
-**Why:** The 1-second post-unload sleeps, the inference semaphore, sequenced (non-parallel) model loads, and the share-sheet scene-phase workaround are deliberate and commented in code; removing them risks GPU/ANE contention, OOM, or a stuck share sheet.
-**Implications:** Do not remove/optimize these without on-device measurement; objectives touching the pipeline restate this.
-**Reversibility:** Changes require measurement evidence before merge.
+**Reversibility:** Workspace policy; changing it requires a Human-approved structural objective.
 
-### D-006 · 2026-06-18 · Agent baseline test command targets the unit-test bundle
-**Why:** The generated `Transcriber` scheme also attempts to launch `TranscriberUITests` on macOS, and that runner exited before bootstrapping during OBJ-01. The agent-verifiable baseline for every objective is the `TranscriberTests` unit-test bundle; UI workflows remain covered by scoped manual QA or later objective-specific UI tests.
-**Implications:** Baseline test commands include `-only-testing:TranscriberTests`. UI-test runner failures are documented as QA evidence, not worked around by modifying the Xcode project in OBJ-01.
-**Reversibility:** Remove the filter once the scheme/UI-test runner is intentionally configured and validated.
+### D-002 · 2026-06-18 · `Recording` migration policy
 
-### D-007 · 2026-06-20 · iOS primary tabs are Dashboard, Library, Model Lab, Settings
-**Why:** PRD §6 defines four primary tabs, and OBJ-11's Human Reviewer instruction confirmed Record should remain prominent as a Dashboard action instead of staying in the tab bar.
-**Implications:** Dashboard owns the prominent Record/Import entry points; iOS Model Lab is a top-level tab; Settings may keep a secondary Model Lab link. Removing the Record tab is acceptable only while the Dashboard-triggered recording/import flow remains available.
-**Reversibility:** Tab promotion and Dashboard-triggered Record/Import routing are UI-level changes and can be reverted without schema or data migration.
+**Decision:**
 
-### D-008 · 2026-06-23 · Diarization and audio-pipeline guardrails before Mac parity
-**Why:** Human Reviewer device testing accepted OBJ-17 playback/accessibility but did not accept speaker-label reliability. The app must remain useful when diarization is slow, canceled, times out, or fails.
-**Decision:** Off-device/server diarization, pyannote, sherpa-onnx, and any new dependencies are investigation options only until the Human Reviewer explicitly approves them. The beta must preserve transcript availability and safe failure even if speaker labeling is imperfect. The M4A playback derivative is accepted as a cache/regenerable playback artifact, not the canonical source of truth. Background/locked-screen recording is mandatory for the product.
-**Implications:** OBJ-17.1 stabilizes the current FluidAudio/Sortformer path first: diagnostics, timeout, cancellation, transcript preservation, playback preservation, retry safety, and overlapping-attempt protection. Future local/on-device alternatives may be researched, but not implemented without a scoped approval. Original/master audio remains preserved, and cache derivatives can be regenerated.
-**Reversibility:** Policy/documentation only. Any future engine, dependency, or pipeline replacement requires its own approved objective and validation.
+1. Prefer derived information over stored duplication.
+2. Stored additions require safe defaults and old-record compatibility.
+3. Blob changes require versioned decode with legacy fallback.
+4. No `Recording` or artifact-format change ships without migration, round-trip, corrupt-data, interrupted-write, and rollback evidence.
+5. Original audio is never migrated destructively.
 
-### D-009 · 2026-06-23 · Launch preload is approved for the default transcription model only
-**Why:** The app should feel ready and intentional at launch, but model preparation must not trap the user or block core workflows.
-**Decision:** OBJ-17.2 may add a skippable launch/readiness flow that begins preparing the default/Base English transcription model when the app opens. If the user skips, the app must enter Dashboard/Home and continue loading the transcription model in the background. Transcription model readiness must be visible, retryable on failure, and must not block recording, Library access, playback, or basic navigation. Diarization/FluidAudio preload is not approved yet.
-**Implications:** OBJ-17.2 is limited to default transcription model readiness/preload and related status surfaces. Any diarization warmup, FluidAudio resource preload, new dependency, server/off-device processing, model-change/rerun backlog, or delete-downloaded-models backlog requires a separate approved objective.
-**Reversibility:** Planning/product decision only until OBJ-17.2 implementation begins. Runtime changes must remain narrow and reversible when implemented.
+**Reason:** `Recording` is SwiftData-backed and contains JSON `Data` fields. Uncontrolled changes can make existing work unreadable.
 
-### D-010 · 2026-06-23 · Finish original 20 objectives before new 17.x feature objectives
-**Why:** The Human Reviewer accepted OBJ-17.1 and wants to finish the original 20 stated objectives before returning to a future feature/fine-tuning phase.
-**Decision:** Launch readiness/default model preload, Skip loading with background preload, rerun transcription with a different model from transcript/detail, delete downloaded models, further speaker-turn/player polish, broader diarization engine evaluation, background processing/job architecture, and diarization resource/model preload are deferred backlog items only. Do not create active OBJ-17.2 or OBJ-17.3 objective files right now. OBJ-18 Mac companion parity is the next active original objective.
-**Implications:** D-009 remains a product-direction note for a future phase, but it is no longer active sequencing before OBJ-18. Any future preload, model-rerun, model-delete, diarization-warmup, or broader engine/job work requires explicit Human approval and its own active objective.
-**Reversibility:** Planning/product decision only. No runtime behavior changes are implied.
+**Implications:** Storage objectives are Critical risk.
 
-### D-011 · 2026-06-23 · Mac companion Model Lab is Whisper-only
-**Why:** WhisperKit and the existing Model Lab import, comparison, diagnostics, and report-sharing paths are available on macOS. The Parakeet final-transcription implementation remains intentionally iOS-only.
-**Decision:** Mac uses the established Dashboard, Library, Model Lab, and Settings structure. Model Lab is enabled on Mac for the curated Whisper models only. Parakeet model comparison and the Share to Transcriber extension remain iOS-only; Mac uses the in-app file importer and system share controls instead.
-**Implications:** Mac remains a companion rather than a separate redesign. Import, transcription, playback, transcript review, TXT/SRT/JSON export, status badges, diagnostics, and progress UI reuse the shared app paths. Platform-specific model and share-extension gaps are visible and documented.
-**Reversibility:** UI availability and filtering only; reverting restores the prior iOS-only Model Lab without data or schema migration.
+**Reversibility:** Additive formats and compatibility projections must permit rollback.
 
-### D-012 · 2026-06-23 · OBJ-18 Mac launch readiness is narrow and ordered
-**Why:** Human Mac review found that Live Preview could reach recording before its Whisper resources had ever been prepared.
-**Decision:** On Mac, launch begins a non-blocking Whisper preparation attempt for Live Preview first. After Live Preview preparation succeeds, the existing default/Base English model preload is scheduled. A failed Live Preview preparation remains visible and retryable without racing lower-priority model work. Recording, navigation, Library, and playback remain available throughout. FluidAudio/Sortformer resources are not preloaded in this pass because the current pipeline deliberately sequences transcription and diarization model loads to avoid GPU/ANE contention.
-**Implications:** This is not the deferred launch readiness screen: there is no launch gate, progress screen, or Skip Loading flow. iOS keeps its existing preload behavior. Diarization preparation remains on demand until a separately approved design can preserve the pipeline pacing guardrails.
-**Reversibility:** The coordinator and Mac launch hook are additive and can be reverted without changing stored data, model caches, or dependencies.
+### D-003 · 2026-06-18 · Strict concurrency remains complete
 
-### D-013 · 2026-06-25 · Accept a limited Mac companion baseline and return focus to mobile
-**Why:** Agent validation established a useful Mac companion baseline, while exhaustive Mac GUI validation and further polish would delay the remaining original mobile-first beta objectives.
-**Decision:** OBJ-18 is accepted as a limited Mac companion baseline. Further Mac GUI validation/polish is deferred until after the original 20 objectives or a future fine-tuning phase. The mobile app remains the primary product and beta target.
-**Implications:** This acceptance does not claim exhaustive Human verification of Mac parity. Existing intentional Mac gaps remain documented, no additional Mac feature work is implied, and OBJ-19 may proceed without completing the deferred Mac checklist.
-**Reversibility:** Planning/product priority decision only. Future Mac validation or polish requires an explicitly approved scope.
+**Decision:** Keep `SWIFT_STRICT_CONCURRENCY = complete`.
 
-### D-014 · 2026-06-25 · OBJ-20 is beta acceptance and final QA only
-**Why:** The Human Reviewer wants the final original objective to establish release truth before any new feature, refactor, or fine-tuning work begins.
-**Decision:** OBJ-20 verifies the original beta objectives, runs the agent acceptance suite, documents known limitations, and produces the final Human-owned iPhone checklist. The previously drafted `TranscriptionSession` decomposition, language picker, and speaker-color parsing change are removed from active OBJ-20 scope. Launch readiness/default-model preload UI, model rerun, delete-downloaded-models, new diarization engines, broader Mac polish, and all other feature/fine-tuning work remain deferred.
-**Implications:** No production code, dependency, schema, playback/M4A, engine, server/cloud, or off-device change is authorized by OBJ-20 unless a narrow fix is required for a directly observed beta blocker. Any such blocker that requires product choice or broader feature scope returns `ASK USER` before implementation.
-**Reversibility:** Planning/product decision only. Deferred work may be reconsidered after the original beta milestone is closed through a separately approved objective.
+**Reason:** The pipeline is actor- and task-heavy; strict checking is an important regression alarm.
 
-### D-015 · 2026-06-27 · Run a narrow Mac acceptance-hardening pass before final iPhone QA
-**Why:** The Human Reviewer wants confidence that the accepted Mac companion baseline is usable enough before completing the final iPhone checklist.
-**Decision:** Reopen OBJ-20 agent work only to run and inspect the Mac app and fix narrow blockers to basic companion usability. This does not authorize a Mac redesign, deferred features, a new feature/fine-tuning phase, dependency or schema changes, or changes to accepted playback/M4A behavior.
-**Implications:** Launch, navigation, safe recording/live-preview dismissal, readiness messaging/retry, import persistence, Library/detail usability, playback, transcript review, export/share, and cancel/failure recovery may receive small reversible fixes. Any broader or product-dependent finding returns `ASK USER`.
-**Reversibility:** The decision is planning-only; any resulting narrow code fix must remain independently revertible.
+**Implications:** Fix isolation problems rather than weakening the setting.
 
-### D-016 · 2026-06-28 · Accept Beta 2.0 and preserve Beta 2.1 planning backlog
-**Why:** The Human Reviewer passed final OBJ-20 acceptance and considers the original 20-objective build acceptable. Remaining issues are polish, feature additions, and deeper fine-tuning rather than Beta 2.0 blockers.
-**Decision:** Close OBJ-20 and the original Beta 2.0 roadmap. Preserve for Beta 2.1 discussion: a launch readiness screen and default-model preload; possible priority loading of Live Preview first, transcription model second, and diarization resources third; Skip Loading with continued background loading; rerun transcription with a different model; delete downloaded models; further speaker grouping polish; further sticky/compact player and header polish; broader diarization-engine evaluation if FluidAudio becomes limiting; deeper Mac GUI QA and polish; background processing/job architecture improvements; and broader UI polish and feature fine-tuning.
-**Implications:** None of these deferred items is a Beta 2.0 blocker or an active implementation objective. Their exact scope, ordering, and architecture require future Human-approved Beta 2.1 planning. No new dependency, engine, server/cloud/off-device processing, schema change, or implementation branch is authorized by this decision.
-**Reversibility:** Planning and milestone acceptance only; no runtime behavior changes are implied.
+**Reversibility:** Not intended to be reversed.
 
-### D-017 · 2026-06-28 · Beta 2.1 prep introduces app-scoped governance for the multi-app repo
-**Why:** The Beta 2.1 prep inventory ([docs/planning/INVENTORY_REPORT.md](docs/planning/INVENTORY_REPORT.md)) confirmed the repo holds four distinct trees — the active Swift app (`src/native/Transcriber2/`), an independent Python app (`src/python/`), a read-only legacy iOS reference (`src/legacy-ios/`), and a stale Xcode template (`XCode App Build/`) — plus generated build artifacts (`dist/`, `native/Builds/`). D-001 already named this risk (R20); the inventory confirmed it is still unresolved and gave it concrete shape.
-**Decision:** Add a root [CLAUDE.md](CLAUDE.md) as the canonical cross-app guardrail doc: an app registry table, a rule that every future objective must declare target app/allowed paths/forbidden paths/risk tier, explicit warnings on the three non-active trees, and a five-tier risk-tiered workflow (Critical/high-risk, Normal feature, Docs-only, Git-only closeout, Read-only inventory). AGENTS.md now points to it. An app-scoped objective template was added at [docs/planning/OBJECTIVE_TEMPLATE_APP_SCOPED.md](docs/planning/OBJECTIVE_TEMPLATE_APP_SCOPED.md), and README markers were added inside `src/legacy-ios/` and `XCode App Build/` stating they are read-only/stale and not to be edited.
-**Implications:** Future objectives must declare their target app and paths up front. Python app packaging/signing work, any archive/removal decision for `src/legacy-ios/` or `XCode App Build/`, and Swift Beta 2.1 feature work are each separate, independently approved objectives — none of them is authorized by this decision. Tool-level enforcement (`.claude/settings.json` deny patterns) was considered but deferred pending confirmation of correct syntax; enforcement is policy-only for now (see CLAUDE.md §5).
-**Reversibility:** Policy/docs only. No runtime behavior, schema, dependency, or file-location changes.
+### D-004 · 2026-06-18 · Dependency and model updates are isolated objectives
 
----
+**Decision:** Do not add or bump WhisperKit, FluidAudio, helper runtimes, model weights, or other processing dependencies inside an unrelated feature objective.
 
-## Decisions awaiting the Human Reviewer (open questions)
+**Reason:** A dependency change can alter output, storage, resource use, licensing, packaging, and concurrency behavior at once.
 
-- **Q-1 (OBJ-01):** Archive the stale `XCode App Build/` template tree? (Proposal only; needs approval before any move.)
-- **Q-3 (OBJ-03):** If model sizes aren't exposed by WhisperKit/FluidAudio, approve a static size table.
-- **Q-4 (OBJ-02):** If WhisperKit's on-disk cache path isn't reliably discoverable, approve a loadability-probe approach for readiness.
+**Implications:** Each update receives its own feasibility, benchmark, failure, and rollback evidence.
 
-_The Manager moves each answered question into a numbered D-### decision._
+**Reversibility:** Pin restoration plus artifact compatibility must be tested.
+
+### D-005 · 2026-06-18 · Current resource pacing is intentional
+
+**Decision:** Preserve the inference semaphore, sequenced expensive model loads, post-unload pacing, and diarization attempt guards until Mac measurements prove a safer configuration.
+
+**Reason:** These controls prevent resource contention, overlapping unsafe work, and stale results.
+
+**Implications:** VoxBot’s desired parallel processing is a VX-12 experiment, not an assumption.
+
+**Reversibility:** Any scheduler change must retain a sequential fallback.
+
+### D-006 · 2026-06-18 · Automated baseline targets the Mac unit-test bundle
+
+**Decision:** The standard automated test command uses `-only-testing:TranscriberTests`.
+
+**Reason:** This is the established reliable unit-test baseline; UI and real-device behavior require separate scoped evidence.
+
+**Implications:** A passing unit bundle does not prove microphone, model, UI, long-run, or packaging behavior.
+
+**Reversibility:** Expand the baseline when the UI-test runner is intentionally made reliable.
+
+### D-008 · 2026-06-23 · Transcript survives speaker-system failure
+
+**Decision:** Diarization and identity are downstream, optional enrichments. A failure, timeout, cancellation, or ambiguous result must leave the transcript and audio usable.
+
+**Reason:** Speaker quality is valuable but must not turn a successful transcription into total failure.
+
+**Implications:** Every new diarizer and voiceprint engine preserves anonymous labels and retryable partial success.
+
+**Reversibility:** Product safety policy; not intended to be reversed.
+
+### D-011 · 2026-06-23 · Current Mac model baseline
+
+**Decision:** The current Mac app uses WhisperKit transcription and FluidAudio Sortformer diarization. Mac Model Lab currently evaluates curated Whisper choices.
+
+**Reason:** That is the implementation present in the working Mac app.
+
+**Implications:** Parakeet on Mac, Pyannote, ERes2NetV2, ReDimNet2, and w2v-BERT are unintegrated candidates until their roadmap gates pass.
+
+**Reversibility:** Superseded only by benchmark-backed objectives.
+
+### D-018 · 2026-07-28 · Python app remains outside this repository
+
+**Decision:** The former Python Transcriber and its generated output remain in `../Python Transcriber/`.
+
+**Reason:** Native Mac development should not carry or accidentally rebuild the independent legacy Python product.
+
+**Implications:** A future Pyannote or helper-runtime proposal must be designed as a new, isolated component; it must not copy the old Python application back into this repo.
+
+**Reversibility:** Requires a Human-approved structural decision.
+
+## Accuracy-expansion decisions
+
+### D-019 · 2026-07-28 · This is now a Mac product roadmap
+
+**Decision:** This checkout’s active PRD and roadmap are Mac-first. iOS requirements and implementation are owned by `../iOS Transcriber/`.
+
+**Reason:** The workspace was split, but the root governance still described the completed iPhone-first Beta 2.0 roadmap.
+
+**Implications:** Mac product needs no longer inherit mobile resource or navigation assumptions by default. Shared-code removal still requires an ownership audit.
+
+**Reversibility:** Product/workspace decision; Daniel may later authorize a shared strategy.
+
+### D-020 · 2026-07-28 · Strengthen the current application rather than rebuild it
+
+**Decision:** Existing recording, import, storage, playback, review, export, retry, cancellation, diagnostics, Model Lab, actor protocols, and state-machine behavior are the baseline.
+
+**Reason:** Code inspection and a green Mac build/test run show a substantial working core.
+
+**Implications:** Architecture is improved through tested extraction and additive contracts. A new subsystem does not justify replacing unrelated working UI or data paths.
+
+**Reversibility:** Foundational roadmap policy.
+
+### D-021 · 2026-07-28 · VoxBot model names are candidates, not promises
+
+**Decision:** Whisper Large v3, Parakeet TDT, Pyannote, ERes2NetV2, ReDimNet2, and w2v-BERT 2.0 must pass feasibility, license, package, privacy, resource, accuracy, and failure-isolation gates before production integration.
+
+**Reason:** The current project ships only pinned WhisperKit and FluidAudio dependencies, and several proposed runtimes may not fit a sandboxed native Mac app without architectural consequences.
+
+**Implications:** A feasibility objective may validly conclude “do not integrate.” The roadmap can ship the strongest simpler pipeline.
+
+**Reversibility:** Individual model choices remain replaceable behind normalized contracts.
+
+### D-022 · 2026-07-28 · Versioned artifacts supplement existing `Recording`
+
+**Decision:** Raw model results, prepared audio, provenance, candidate transcripts, and future identity evidence should use an application-owned versioned artifact design. Existing `Recording` fields remain readable compatibility projections during migration.
+
+**Reason:** Continually adding opaque blobs to one SwiftData model would make migrations, inspection, and reprocessing fragile.
+
+**Implications:** VX-03 designs the format; VX-05 implements only after Human approval and migration tests.
+
+**Reversibility:** Additive storage and legacy projections must support rollback.
+
+### D-023 · 2026-07-28 · Open-set identity is mandatory if voiceprints ship
+
+**Decision:** Voice identity returns `known`, `unknown`, or `ambiguous`. Nearest-neighbor ranking alone may not assign a person’s name.
+
+**Reason:** A confident wrong name is more harmful than leaving a speaker unresolved.
+
+**Implications:** False known-person identification is the primary voiceprint gate; calibration and best-versus-second-best separation are required.
+
+**Reversibility:** Product safety policy; not intended to be reversed.
+
+### D-024 · 2026-07-28 · AI cannot freely author transcript content
+
+**Decision:** Any future AI adjudicator is limited to disputed regions and constrained outcomes: choose supported candidates, combine only with evidence, mark uncertainty, or request review.
+
+**Reason:** Whole-transcript generative rewriting can create linguistically plausible dialogue unsupported by audio.
+
+**Implications:** Off-device audio or text processing requires a separate privacy decision. Deterministic reconciliation and targeted reprocessing are built first.
+
+**Reversibility:** The adjudicator is optional and removable.
+
+### D-025 · 2026-07-28 · Governance rewrite does not activate implementation
+
+**Decision:** The new PRD and PLAN authorize planning direction only. No VX objective is active until Daniel explicitly approves its start and `OBJECTIVE.md` is updated.
+
+**Reason:** A roadmap should not silently become permission for dependency, schema, model, privacy, or removal work.
+
+**Implications:** The next proposed scope is VX-01.
+
+**Reversibility:** Daniel can activate an objective at any time.
+
+### D-026 · 2026-07-28 · Planned removal requires proof
+
+**Decision:** The roadmap may plan to remove superfluous code, targets, assets, or reference material, but execution requires an exact scoped objective, ownership proof, baseline validation, and rollback.
+
+**Reason:** Daniel authorized planning for cleanup but explicitly did not authorize deleting application material during this governance pass.
+
+**Implications:** VX-02 is an inventory and recommendation objective. Actual removals occur later.
+
+**Reversibility:** Each removal must be independently reversible.
+
+### D-027 · 2026-07-29 · Private benchmark handling charter
+
+**Decision:** The private benchmark uses opaque tracked case metadata plus an untracked private source/ground-truth overlay. Audio remains outside Git and read-only. No recording is eligible until Daniel approves the exact source or an explicitly bounded collection and its permitted uses. Reports omit private paths, transcript text, names, embeddings, and audio by default.
+
+**Reason:** VX-01 needs a reproducible evidence format without turning repository or personal recordings into assumed fixtures.
+
+**Implications:** VX-08 implements the versioned manifest and validation contract in [VX-01-BENCHMARK-CHARTER.md](docs/planning/evidence/VX-01-BENCHMARK-CHARTER.md). VX-09 derives thresholds from approved data. Phase 0 accesses no private audio.
+
+**Reversibility:** The manifest tooling and private overlay can be replaced behind a versioned import/export boundary; source audio is never modified.
+
+## Historical decisions
+
+The completed Beta 2.0 objective files and the `beta-2.0-complete` Git tag preserve the detailed pre-split record. Earlier decisions about iOS primary tabs, iPhone preload, device validation, and the original OBJ-01…20 sequence are historical in this Mac workspace; they do not override D-019 or the new PRD.
+
+## Open Human decisions
+
+These questions are intentionally deferred to the objective that can provide evidence:
+
+| ID | Decision | Needed by |
+|---|---|---|
+| Q-01 | Keep the app name Transcriber or adopt VoxBot branding? | Before release/packaging UI work |
+| Q-02 | What Apple Silicon Mac and memory configuration define the supported performance target? | VX-01 / VX-12 |
+| Q-03 | Which private recordings, if any, may become benchmark references? | VX-01 / VX-08 |
+| Q-04 | Which benchmark errors matter most when trade-offs conflict? | VX-09 |
+| Q-05 | May an alternative diarizer use a signed helper process or Python-derived runtime? | VX-15 |
+| Q-06 | What protection and retention policy should speaker profiles and enrollment audio use? | VX-17 |
+| Q-07 | May disputed audio or transcript text ever be sent to an optional network adjudicator? | VX-24 |
+| Q-08 | Which VX-02 removal candidates should actually be removed, moved, or archived? | After VX-02 |
+| Q-09 | Approve the nine VX-03 artifact placement, durable identity, migration, compatibility, transcript-history, cleanup, and corruption principles? | Before VX-04/VX-05 implementation |
+
+### VX-02 decision detail — 2026-07-29
+
+Q-08 is now evidence-ready but unanswered. [VX-02-BOUNDARY-INVENTORY.md](docs/planning/evidence/VX-02-BOUNDARY-INVENTORY.md) records nine separate choices covering durable iOS ownership, the iOS share target, Mac project narrowing, shared-inbox behavior, the legacy tree, the nested-Git template, the built app artifact, each root audio file, and visual-reference PNGs. None is approved for removal, movement, or archival.
+
+Q-09 is evidence-ready but unanswered. [VX-03-PROCESSING-CONTRACTS.md](docs/planning/evidence/VX-03-PROCESSING-CONTRACTS.md) and [VX-03-MIGRATION-DESIGN.md](docs/planning/evidence/VX-03-MIGRATION-DESIGN.md) are final-audit `ALIGNED` and agent-QA PASS, but they remain proposed designs until Daniel approves the nine principles in migration design §12.
+
+The Manager converts an answered question into a new dated decision entry.

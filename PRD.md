@@ -1,556 +1,329 @@
-# Transcriber 2.0 Beta Product Requirements Document
+# PRD.md — Transcriber for Mac, Accuracy Expansion
 
-Last updated: June 18, 2026
+Last updated: 2026-07-28
 
-## 1. Product Overview
+## 1. Product definition
 
-Transcriber 2.0 Beta is a native, on-device transcription app for iPhone first and Mac second. It records or imports audio, creates a fast usable transcript, then applies speaker labels after the transcript is available. The app is designed for meetings, interviews, building walkthroughs, and conversations where speaker separation matters.
+Transcriber is a native Mac application that records or imports audio, preserves the original recording, creates a usable transcript, applies speaker labels, and lets the user review, correct, play, and export the result.
 
-The product should feel calm, professional, and trustworthy. It should expose enough diagnostics for serious beta testing without turning the normal recording experience into a lab bench. The existing native app is the baseline, but this PRD describes the intended product, not only the current implementation.
+The next product stage is an accuracy-first expansion informed by [VoxBot Expanded PLN.md](VoxBot%20Expanded%20PLN.md). It strengthens the existing application rather than replacing it. The working application in `src/native/Transcriber2/` is the baseline; new processing capabilities must attach to that baseline incrementally and remain removable.
 
-The original Python Transcriber remains separate and unchanged.
+“VoxBot” describes the expanded processing direction: multiple transcription candidates, stronger diarization, optional known-speaker identification, deterministic reconciliation, focused human review, and benchmark-driven decisions. It is not yet an approved application rename. The shipped app remains Transcriber until Daniel explicitly chooses otherwise.
 
-## 2. Goals
+## 2. Current product baseline
 
-### Primary Goals
+The current Mac app already provides valuable, tested infrastructure:
 
-- Capture audio immediately and reliably.
-- Produce a usable transcript as quickly as possible.
-- Apply useful speaker labels for 2-4 speakers after transcription.
-- Preserve original audio by default for playback, retry, and speaker-label repair.
-- Keep processing on device except for user-initiated sharing/export.
-- Support a beta workflow where transcription models and diarization quality can be measured and improved.
+- Native SwiftUI Dashboard, Library, Model Lab, and Settings surfaces.
+- Microphone recording and audio-file import.
+- Original-audio storage under `Application Support/Transcriber2Beta/Recordings/`.
+- SwiftData recording metadata and JSON-backed transcript data.
+- Actor-based WhisperKit transcription and FluidAudio diarization engines.
+- A `TranscriptionSession` state machine with cancellation, retry, fallback, diagnostics, and persist-then-proceed behavior.
+- A draft transcript that remains available if speaker labeling fails.
+- Library playback, speaker renaming, segment reassignment, and TXT/SRT/JSON export.
+- Model readiness, repair/redownload, launch preparation, and Model Lab comparisons.
+- Unit coverage for persistence, cancellation, failure injection, model readiness, recording reliability, transcript merging, exports, and core UI presentation logic.
 
-### Beta Success Criteria
+This baseline is the product’s solid core. New work must preserve it or replace a component only after the replacement has passed equivalent safety and quality gates.
 
-- A 5-, 15-, and 30-minute recording can be recorded, transcribed, speaker-labeled, reviewed, and shared.
-- A shared/imported audio file can be brought into the app and transcribed.
-- The transcript appears before speaker labels finish.
-- Cancellation works during transcription and speaker labeling.
-- Downloaded models remain available after force-quit, relaunch, and device reboot.
-- The app clearly explains model downloads, failures, fallbacks, retries, and progress.
-
-## 3. Target Users And Use Cases
-
-### Primary User
-
-The primary user for 2.0 Beta is Daniel using the app on his own devices, especially iPhone. The app should optimize for real testing in practical situations rather than broad public release polish.
-
-### Primary Use Cases
-
-- Meetings with 2-4 speakers.
-- Interviews and conversations.
-- Building walkthroughs and site visits.
-- Imported recordings from Voice Memos or other audio apps.
-
-### Secondary Use Cases
-
-- Single-speaker lecture capture.
-- Mac review, playback, import, and sharing.
-- Model benchmarking and diagnostics during beta.
-
-## 4. Platform Strategy
-
-### iPhone
-
-iPhone is the primary product surface. The iPhone app must support recording, importing, live preview, transcription, speaker labeling, sharing, Model Lab, settings, and diagnostics.
-
-Target device for beta validation: iPhone 17 Pro or newer equivalent test hardware.
-
-### Mac
-
-Mac is a secondary companion app. It should support opening/importing recordings, playback, transcript review, sharing, and basic model workflows where feasible. Mac should not block iPhone-first decisions during 2.0 Beta.
-
-### Existing Python App
-
-The Python desktop app remains independent. Native app work must not require moving, deleting, or changing the Python app.
-
-## 5. Product Principles
-
-- **Record first.** Audio capture starts immediately when the user taps Record.
-- **Never lose audio.** The recording is the source of truth and should be preserved whenever possible.
-- **Transcript first, labels second.** Text should become usable before speaker labeling finishes.
-- **Plain language by default.** Technical state should be understandable, even when detailed diagnostics are available.
-- **On-device by default.** Audio, transcription, and speaker labeling stay local unless the user explicitly shares or exports.
-- **Beta with instrumentation.** The app should help measure model speed, failures, and quality during beta.
-
-## 6. App Structure
-
-The app uses four primary tabs:
-
-1. **Dashboard**
-2. **Library**
-3. **Model Lab**
-4. **Settings**
-
-### Dashboard
-
-The Dashboard is the home screen. It should show system status plus recent work, while keeping the main actions easy to reach.
-
-Required content:
-
-- Active microphone status.
-- Selected transcription model and readiness state.
-- Speaker-labeling engine status.
-- Recent recordings needing attention.
-- Prominent actions: Record, Import, Model Lab.
-- Friendly warnings when required models are missing, downloading, failed, or being repaired.
-
-Required actions:
-
-- Start recording.
-- Import audio.
-- Open Model Lab.
-- Jump to recent incomplete or failed jobs.
-
-### Library
-
-The Library is a chronological list of recordings, newest first.
-
-Each recording should show:
-
-- Date/time default title.
-- Duration.
-- Status badge: recording saved, needs transcription, transcribing, speaker labeling, speaker labels failed, complete.
-- Final transcription model used.
-- Speaker-label status when available.
-
-Library detail should support:
-
-- Basic audio playback.
-- Transcript viewing.
-- Speaker renaming.
-- Segment-level speaker reassignment.
-- Sharing/export.
-- Retry transcription when needed.
-- Retry speaker labels when needed.
-- Delete recording.
-
-### Model Lab
-
-Model Lab is a top-level tab for beta diagnostics and model comparison.
-
-Model Lab should let the user:
-
-- Choose an existing recording or import an audio file.
-- Run selected downloaded models one at a time.
-- Compare transcript output.
-- Capture model load time, transcription time, failure status, model size/status, and processing speed.
-- Export a shareable comparison report.
-
-Model Lab is allowed to expose more technical detail than normal app screens.
-
-### Settings
-
-Settings should include:
-
-- Microphone selection and test.
-- Transcription model selection and downloads.
-- Model storage status and repair/redownload actions.
-- Storage policy.
-- Privacy information.
-- Diagnostics settings/status.
-- About/version information.
-
-## 7. Core User Flows
-
-### Record Flow
-
-1. User taps Record.
-2. Audio recording starts immediately.
-3. Selected microphone is used if available.
-4. If selected microphone is unavailable, app falls back automatically and shows a notice.
-5. Live transcription may start when its model is ready, but recording must not wait for it.
-6. User taps Stop.
-7. Recording is saved immediately.
-8. Final transcription begins.
-9. Transcript appears as soon as final transcription completes.
-10. Speaker labeling starts after transcript is available.
-11. Final speaker labels replace provisional/unknown labels when complete.
-12. User can share, rename speakers, reassign speaker segments, retry, or start a new recording.
-
-### Import / Share-To-App Flow
-
-1. User shares audio to Transcriber from Voice Memos or another app, or imports from the app.
-2. Audio is saved into Transcriber storage.
-3. Imported item appears in Library or Dashboard recent work.
-4. User can transcribe it.
-5. Processing follows the same final transcription and speaker-label workflow as recordings.
-
-### Cancel Flow
-
-Cancellation must be available during:
-
-- Final transcription.
-- Speaker labeling.
-- Retry transcription.
-- Retry speaker labels.
-
-Expected behavior:
-
-- If no transcript exists yet, keep the audio and mark the recording as needing transcription.
-- If transcript exists but speaker labels are still running, keep the transcript and mark speaker labels as retryable.
-- Stop or unload active model work where the platform/framework allows.
-- Show a clear message explaining what was saved and what can be retried.
-
-## 8. Recording And Microphone Requirements
-
-### Recording
-
-- Recording starts immediately after Record is tapped.
-- Recording continues in background/lock screen where iOS allows.
-- Recording must not depend on transcription model readiness.
-- The app should target reliable handling of recordings up to 30 minutes for beta.
-- Original audio is kept by default.
-
-### Microphone Selection
-
-Settings must include microphone selection with:
-
-- Automatic/default input.
-- Built-in iPhone microphone when available.
-- Bluetooth/headset inputs when available.
-- Any available named input exposed by the platform.
-- Test Mic action.
-- Live input meter during test.
-- Clear active microphone display during recording.
-
-Fallback behavior:
-
-- If selected microphone is unavailable when recording starts, automatically use the best available input.
-- Notify the user which microphone is being used.
-- Do not block recording solely because the preferred microphone is missing.
-
-## 9. Transcription Requirements
-
-### Product Behavior
-
-- Final transcription quality matters more than live preview quality.
-- Live transcription is helpful but secondary.
-- The default model should be fast and reliable.
-- Model defaults should be benchmark-driven and can change during beta based on Model Lab evidence.
-
-### Model Picker
-
-Normal users should see a simple curated model picker with plain-language descriptions.
-
-The picker should communicate:
-
-- Speed expectation.
-- Accuracy expectation.
-- Storage/download size where possible.
-- Download/readiness state.
-
-### Model Failure
-
-If a selected model fails:
-
-- Save audio and partial work.
-- Try a safer fallback when reasonable.
-- Notify the user that fallback was used.
-- Offer retry/repair/redownload actions.
-
-## 10. Diarization Requirements
-
-Speaker labeling is a high-priority differentiator for this app.
-
-### Beta Target
-
-- Optimize for 2-4 speakers.
-- Speaker labels should be useful enough to separate major speakers.
-- Speaker labels may require retry or manual cleanup during beta.
-- Transcript should appear before speaker labels finish.
-
-### Required Speaker Features
-
-- Apply speaker labels after recording/import transcription.
-- Preserve transcript even if speaker labeling fails.
-- Retry speaker labels without rerunning transcription.
-- Rename speakers.
-- Reassign individual transcript segments to a different speaker.
-- Show when speaker labels are approximate, failed, canceled, or retryable.
-
-### Production Goals
-
-- Improve diarization accuracy for overlapping speech and fast turn-taking.
-- Surface speaker-label confidence if available.
-- Add better tools for merging/splitting speaker identities.
-
-## 11. Transcript Review And Sharing
-
-### Transcript Display
-
-Transcripts should use speaker cards:
-
-- Speaker name.
-- Speaker color.
-- Timestamp or time range.
-- Transcript text.
-- Clear visual grouping.
-
-Screens should use balanced density: readable and calm, with details available but not crammed.
-
-### Editing
-
-2.0 Beta must support:
-
-- Rename speakers.
-- Reassign a transcript segment to a different speaker.
-
-Text editing is not required for beta.
-
-### Playback
-
-2.0 Beta requires basic play/pause playback of the original audio.
-
-Production roadmap:
-
-- Transcript-synced playback.
-- Playback speed control.
-- Jump to transcript segment.
-- Waveform navigation.
-- Review tools for fast correction.
-
-### Sharing And Export
-
-Sharing uses the universal system share sheet.
-
-Required export formats:
-
-- TXT.
-- SRT.
-- JSON.
-
-Exports should include speaker names when available.
-
-## 12. Model Downloads And Persistence
-
-Downloaded models must stay downloaded after:
-
-- App force-quit.
-- Normal app relaunch.
-- Device reboot.
-
-The app must not rely only on in-memory state or a remembered downloaded flag. Model readiness should be based on actual on-device files and, where practical, loadability checks.
-
-Required model states:
-
-- Not downloaded.
-- Downloading.
-- Downloaded.
-- Verifying.
-- Ready.
-- Missing/corrupt.
-- Failed.
-
-Required behavior:
-
-- Preload the default model without a heavy onboarding flow.
-- Show clear download size/progress when known.
-- Refresh model status on app launch.
-- Refresh model status when Settings opens.
-- Verify selected model again before processing.
-- If missing/corrupt, show Repair/Redownload.
-- Once required models are downloaded, recording/transcription/speaker labeling should work offline.
-
-## 13. Progress, Diagnostics, And Failure Handling
-
-### Progress UI
-
-Long-running work should use a detailed timeline, not a vague spinner.
-
-Progress should show:
-
-- Current phase.
-- Rough percent or activity state.
-- Elapsed time.
-- Cancel action.
-- Retry action where relevant.
-- Details/diagnostics where relevant.
-
-Core phases:
-
-- Saving recording.
-- Preparing model.
-- Transcribing.
-- Saving transcript.
+## 3. Product goals
+
+### 3.1 Primary goals
+
+1. Produce materially more accurate transcripts than the current single-final-model pipeline on representative recordings.
+2. Improve speaker attribution while treating anonymous or uncertain identity as a valid result.
+3. Preserve original audio, confirmed transcript text, corrections, profiles, and decision provenance.
+4. Keep processing local on the Mac by default.
+5. Make every important automated decision reviewable and reversible.
+6. Allow transcription, diarization, voiceprint, reconciliation, and adjudication components to evolve independently.
+7. Continue providing a useful transcript when an optional model or downstream stage fails.
+
+### 3.2 Success measures
+
+Exact production thresholds will be set from a representative private benchmark dataset. The product must measure at least:
+
+- Word error rate and insertion/deletion/substitution rates.
+- Proper-name and domain-vocabulary accuracy.
+- Hallucination frequency.
+- Speaker-attributed word accuracy.
+- Diarization error, speaker-count errors, cluster fragmentation, and overlap handling.
+- False known-speaker identification, false acceptance, false rejection, and unknown-speaker rejection.
+- Percentage of a transcript requiring human review.
+- Total processing time, peak memory, thermal behavior, failure recovery, and reprocessing reliability.
+
+No ensemble, model, fallback, or AI stage becomes the production default merely because it is sophisticated. It must demonstrate a meaningful benefit over the best simpler alternative.
+
+## 4. Product principles
+
+1. **Strengthen, do not restart.** Reuse reliable recording, import, persistence, playback, review, export, diagnostics, and failure-handling paths.
+2. **Original audio is the source of truth.** Derived audio may be regenerated; the source recording is never destructively replaced.
+3. **Draft first, verified later.** A useful draft may appear before all accuracy and speaker stages finish.
+4. **Unknown is better than wrong.** The app must not force a word, speaker cluster, or person identity merely because one candidate ranks first.
+5. **Evidence before architecture.** Benchmarks and feasibility work decide which proposed models and runtimes enter production.
+6. **Local by default.** Audio, transcripts, speaker profiles, embeddings, and corrections remain on the Mac unless the user explicitly exports them.
+7. **Persist before proceeding.** A completed stage writes a recoverable result before a dependent stage begins.
+8. **Partial success remains useful.** Failure in a secondary transcription engine, diarizer, voiceprint model, or adjudicator does not erase successful upstream work.
+9. **Version everything that changes meaning.** Processing artifacts record their model, runtime, preprocessing, calibration, and schema versions.
+10. **Components remain replaceable.** Engines communicate through normalized result contracts rather than reaching into each other’s internal types.
+
+## 5. Target user and use cases
+
+The primary user is Daniel on an Apple Silicon Mac with enough unified memory for accuracy-focused local processing.
+
+Primary uses:
+
+- Meetings, interviews, and conversations with two to four speakers.
+- Building walkthroughs and field recordings.
+- Imported Voice Memos and other audio files.
+- Recordings containing names, addresses, technical terms, interruptions, and background noise.
+- Reprocessing older recordings after better models or calibration become available.
+
+Secondary uses:
+
+- Single-speaker lectures and notes.
+- Benchmarking transcription and speaker systems.
+- Building a private set of enrolled speakers for transcript labeling.
+
+## 6. Scope boundaries
+
+### 6.1 In scope
+
+- macOS application behavior in `src/native/Transcriber2/`.
+- Local recording, importing, processing, review, playback, and export.
+- Versioned audio derivatives and processing artifacts.
+- Multiple transcription candidates when benchmark evidence supports them.
+- Strong local diarization and open-set speaker identification.
+- Human correction and controlled reuse of confirmed corrections.
+- Optional constrained adjudication of disputed regions.
+- Persistent, recoverable background processing appropriate to macOS.
+
+### 6.2 Out of scope for the first production-ready accuracy expansion
+
+- iPhone or iPad implementation; that belongs in `../iOS Transcriber/`.
+- Cloud transcription as a required path.
+- Security authentication or authorization based on a voiceprint.
+- Silent training or enrollment from conversations.
+- Free-form AI rewriting, summarization, or invention of dialogue.
+- Identification across a large public population.
+- Destructive replacement of historical transcripts when models or thresholds change.
+- A full rewrite of the SwiftUI application or storage system.
+
+## 7. Product architecture
+
+The target architecture contains separable workstreams:
+
+```text
+Original Audio
+      |
+      v
+Prepared Audio + Quality Analysis
+      |
+      +----------------+----------------+----------------+
+      |                |                |                |
+      v                v                v                v
+Transcriber A     Transcriber B     Diarization     Draft Transcript
+      |                |                |
+      +---------> Normalized, Versioned Results <-------+
+                               |
+                               v
+                Deterministic Reconciliation
+                               |
+                               v
+                  Optional Voice Identification
+                               |
+                               v
+                 Reviewable Attributed Transcript
+                               |
+                               v
+             Targeted Reprocessing / Adjudication
+                               |
+                               v
+                    Verified Transcript Version
+```
+
+The existing `TranscriptionSession` remains the behavior baseline while orchestration responsibilities are extracted gradually behind tested seams. A “cleaner architecture” is not sufficient reason to change behavior or weaken failure recovery.
+
+## 8. Functional requirements
+
+### 8.1 Recording and import
+
+- Recording begins without waiting for an accuracy model to load.
+- Imported audio is copied into application-owned storage before processing.
+- Original recordings remain readable throughout migrations and retries.
+- A recording can be played, exported, or deleted only through an explicit user action.
+- A failed import or save must not produce a false success state.
+
+### 8.2 Audio preparation
+
+- Preserve the original channel layout and format.
+- Produce versioned working derivatives, normally including mono 16 kHz audio.
+- Measure duration, channel layout, clipping, speech activity, silence, level, and other quality signals that prove useful.
+- Treat denoising and source separation as alternate derivatives, not automatic replacements.
+- Supply equivalent prepared audio to models being compared.
+- Record the preprocessing version and inputs for every generated derivative.
+
+### 8.3 Transcription
+
+- Every transcription engine implements a normalized, versioned result contract.
+- Normalized results support timed words or the most precise timed units the engine exposes.
+- Raw provider output remains available for inspection and future reprocessing.
+- A primary result can produce a draft without waiting for all secondary work.
+- Failure of a secondary engine does not invalidate a successful draft.
+- Whisper Large v3 and Parakeet TDT are candidates from the VoxBot reference plan, not unconditional production requirements. Each requires a Mac feasibility, licensing, packaging, resource, and benchmark gate.
+
+### 8.4 Transcript reconciliation
+
+- Align candidates by time and token/word sequence.
+- Accept exact or materially equivalent agreement deterministically.
+- Preserve disagreements as structured evidence.
+- Avoid whole-transcript generative rewriting.
+- Extract and reprocess only disputed regions when possible.
+- Mark unresolved material as uncertain or requiring review.
+- Apply punctuation and readability formatting after factual word selection.
+
+### 8.5 Diarization
+
+- Diarization remains independent from transcription and known-speaker identification.
+- Preserve anonymous temporary cluster labels even after a person identity is assigned.
+- Store boundaries, overlap information, confidence/quality signals when available, engine version, and raw output.
+- Preserve the transcript if diarization fails, times out, or is canceled.
+- The current FluidAudio Sortformer path remains the production baseline until a measured replacement is safer and more accurate.
+- Pyannote is a candidate requiring explicit runtime, sandbox, licensing, packaging, privacy, and benchmark approval before integration.
+
+### 8.6 Voiceprint identification
+
+- Voiceprints label transcripts; they do not authenticate people.
+- Profiles use stable identifiers, display names, multiple approved enrollment samples, quality metadata, and versioned model embeddings.
+- Identity output has exactly three semantic outcomes: `known`, `unknown`, or `ambiguous`.
+- A nearest candidate is not accepted unless absolute evidence and separation from alternatives pass calibrated thresholds.
+- Evidence is aggregated across suitable segments in a temporary speaker cluster.
+- Poor, short, overlapping, clipped, or contaminated segments are rejected or deferred.
+- ERes2NetV2, ReDimNet2, and w2v-BERT 2.0 are proposed candidates. They enter production only after local Mac feasibility and false-identification benchmarks.
+- Enrollment from ordinary recordings requires explicit user confirmation.
+- Profile deletion removes protected profile data and retained enrollment audio according to a documented, tested policy.
+
+### 8.7 Human review
+
+The review experience should focus attention on uncertainty:
+
+- Transcription disagreements and low-confidence words.
+- Proper names and technical terms needing confirmation.
+- Overlapping or poor-quality regions.
+- Ambiguous identities and conflicting cluster evidence.
+- Regions where all available systems performed poorly.
+
+The user can:
+
+- Edit transcript text.
+- Select or reject a candidate.
+- Mark a region uncertain.
+- Rename an anonymous speaker.
+- Confirm or reject an identity suggestion.
+- Merge or split speaker clusters.
+- Reassign individual segments.
+- Reprocess a selected region or the full recording.
+- Add a confirmed clean segment to a profile through an explicit workflow.
+
+Historical verified transcript versions do not silently change after a new correction, model, profile, or calibration version is introduced.
+
+### 8.8 Processing states and recovery
+
+The UI distinguishes at least:
+
+- Recorded or imported.
+- Preparing audio.
+- Creating draft transcript.
+- Draft ready.
+- Running additional transcription.
+- Running diarization.
+- Reconciling.
 - Identifying speakers.
-- Saving speaker labels.
-- Exporting/sharing.
+- Resolving disputed regions.
+- Needs review.
+- Verified result ready.
+- Partial result or retry required.
 
-### Diagnostics
+Progress is reported by workstream rather than one misleading overall percentage. Processing may continue while the user reviews other recordings. Relaunch recovery must never claim a stage completed unless a persisted result proves it.
 
-Normal app screens may show detailed metrics, but they must remain organized and calm.
+### 8.9 Storage and provenance
 
-Diagnostics may include:
+The product stores, as appropriate:
 
-- Model used.
-- Model readiness.
-- Load time.
-- Processing time.
-- Realtime factor.
-- Failure message.
-- Fallback used.
-- Speaker-label status.
+- Original audio and versioned derivatives.
+- Quality analysis.
+- Raw and normalized engine outputs.
+- Draft and verified transcript versions.
+- Diarization output and reconciled clusters.
+- Identity hypotheses and decisions.
+- Human corrections.
+- Model, runtime, preprocessing, pipeline, schema, and calibration versions.
+- Processing timing, resource use, failures, fallbacks, and cancellation state.
 
-Model Lab should expose full diagnostics.
+New storage is additive and versioned. Existing `Recording` rows, audio, and transcripts remain readable. Large or replaceable artifacts should use an application-owned artifact store rather than continually expanding opaque SwiftData blobs.
 
-### Failure Philosophy
+### 8.10 Model Lab and benchmarks
 
-The app should save partial work whenever possible.
+Model Lab becomes the evidence center for:
 
-Failure states should explain:
+- Running comparable pipelines on the same source and prepared audio.
+- Capturing quality, timing, memory, failure, and version information.
+- Comparing an ensemble against each individual component.
+- Exporting reproducible reports without exporting private audio by default.
+- Recording human-corrected ground truth.
+- Detecting regressions before model, threshold, or pipeline changes ship.
 
-- What is safe.
-- What failed.
-- What can be retried.
-- Whether fallback was used.
+The private benchmark set should represent quiet rooms, distance, vehicles, television, reverberation, speakerphone audio, interruptions, overlap, short replies, similar voices, names, technical vocabulary, compressed files, and both enrolled and unenrolled speakers.
 
-## 14. Storage And Privacy
+## 9. Non-functional requirements
 
-### Storage
+### 9.1 Data safety
 
-- Original audio is kept by default.
-- Recordings and transcripts are stored separately from the original Python app.
-- Users should be able to delete recordings.
-- Future storage management should include model sizes and cache cleanup.
+- No automated failure path deletes or overwrites original audio.
+- Transcript and profile migrations have round-trip, old-version, corrupt-data, and rollback tests.
+- A model or stage retry cannot overwrite a newer user correction or processing attempt.
 
-### Privacy
+### 9.2 Privacy and security
 
-- Audio, transcription, and speaker labeling are processed on device.
-- Model downloads require network access before offline use.
-- Sharing/export only happens when user initiates it.
-- Cloud sync/backups are not part of beta.
+- Processing is local by default.
+- Network use is explicit and attributable to model download or a separately approved optional service.
+- Voiceprint profiles and enrollment audio receive stronger protection and deletion testing than disposable caches.
+- Diagnostic exports redact private paths and do not include audio unless selected.
 
-## 15. Accessibility
+### 9.3 Reliability
 
-2.0 Beta should satisfy Apple platform basics:
+- Strict Swift concurrency remains enabled.
+- Cancellation leaves the last persisted useful result intact.
+- Resource-pressure handling favors reliability over maximum concurrency.
+- A model update is a separately validated change, not a casual dependency bump.
 
-- Dynamic Type.
-- VoiceOver labels for controls and transcript cards.
-- Sufficient contrast in midnight-blue theme.
-- Reachable controls.
-- Clear text status for progress/failure states.
-- Avoid relying on color alone for speaker identity/status.
+### 9.4 Accessibility
 
-## 16. Visual And Interaction Direction
+- Core workflows support keyboard navigation, VoiceOver, Dynamic Type where applicable on macOS, sufficient contrast, and status text that does not rely on color alone.
 
-### Visual Identity
+## 10. Production acceptance
 
-- Midnight-blue theme.
-- Calm professional tone.
-- Balanced information density.
-- Clear status language.
-- Strong primary actions.
-- Secondary diagnostics should be visible but organized.
+The production-ready accuracy expansion must:
 
-### Button Philosophy
+- Preserve and successfully open existing recordings and transcripts.
+- Pass the Mac build and unit-test baseline.
+- Record, import, transcribe, review, play, and export without requiring an optional ensemble stage.
+- Recover useful partial results after cancellation, failure, or relaunch.
+- Demonstrate on the approved benchmark that the selected production pipeline improves meaningful accuracy over the current baseline.
+- Keep false known-person identification below the Human-approved operating threshold.
+- Provide known, unknown, and ambiguous identity outcomes if voice identification ships.
+- Preserve temporary speaker labels and all decision provenance.
+- Allow corrections and reprocessing without silently changing prior verified results.
+- Pass licensing, packaging, privacy, migration, and deletion reviews for every included model and data type.
+- Complete Human-owned real-audio, long-run, resource-pressure, accessibility, and release acceptance.
 
-Long-running work should expose power controls:
+## 11. Source of truth and change control
 
-- Cancel.
-- Retry.
-- Details.
-- Repair/redownload where relevant.
+- This PRD defines the product target.
+- [PLAN.md](PLAN.md) sequences delivery.
+- [OBJECTIVE.md](OBJECTIVE.md) is the only active implementation scope.
+- [DECISIONS.md](DECISIONS.md) records approved non-obvious choices.
+- [AGENTS.md](AGENTS.md) defines execution rules and gates.
+- [VoxBot Expanded PLN.md](VoxBot%20Expanded%20PLN.md) and [Voiceprint PLN.md](Voiceprint%20PLN.md) are design references, not implementation authority.
 
-Primary capture actions should remain visually obvious:
-
-- Record.
-- Import.
-- Model Lab.
-
-## 17. Beta Acceptance Tests
-
-### Recording
-
-- Record 5 minutes, stop, transcribe, speaker-label, share.
-- Record 15 minutes, stop, transcribe, speaker-label, share.
-- Record 30 minutes, stop, transcribe, speaker-label, share.
-- Lock phone during recording and verify audio is preserved where iOS allows.
-- Switch apps during recording and verify audio is preserved where iOS allows.
-
-### Import
-
-- Share a Voice Memos recording to Transcriber.
-- Import from Files.
-- Verify imported audio can be transcribed and speaker-labeled.
-
-### Transcription And Diarization
-
-- Verify transcript appears before speaker labeling completes.
-- Verify speaker labels support 2, 3, and 4 speaker recordings.
-- Verify a single-speaker recording does not fail the whole workflow.
-- Verify failed diarization preserves transcript and allows retry.
-- Verify retry speaker labels does not rerun transcription.
-
-### Cancellation And Failure
-
-- Cancel during final transcription.
-- Cancel during speaker labeling.
-- Confirm audio/transcript state remains safe after cancel.
-- Force a selected model failure and confirm fallback/notification behavior.
-- Force a selected microphone to be unavailable and confirm fallback/notice behavior.
-
-### Models
-
-- Download default model.
-- Force-quit app.
-- Reopen app and confirm model remains downloaded/ready.
-- Reboot device and confirm model remains downloaded/ready.
-- Start transcription without redownloading.
-- Corrupt/remove a model in development and confirm Repair/Redownload appears.
-
-### Export
-
-- Export TXT.
-- Export SRT.
-- Export JSON.
-- Verify speaker names appear in exports when renamed.
-
-### Model Lab
-
-- Compare at least two downloaded transcription models on the same recording.
-- Confirm Model Lab records load time, processing time, failure status, transcript output, and report export.
-
-### Mac Companion
-
-- Import/open a recording where supported.
-- Play audio where supported.
-- Share/export transcript where supported.
-
-## 18. Production Roadmap
-
-Future production goals:
-
-- Transcript-synced playback.
-- Playback speed control.
-- Jump-to-segment review.
-- Waveform navigation.
-- More powerful speaker cleanup: merge speakers, split segments, manual reassignment workflows.
-- Optional iCloud sync/backups.
-- Summaries and action items.
-- Better diarization confidence and overlap handling.
-- Broader nontechnical onboarding for friends/family.
-- Public/TestFlight distribution polish.
-
-## 19. Out Of Scope For 2.0 Beta
-
-- Cloud transcription.
-- Required cloud sync.
-- AI summaries or action items.
-- Full transcript text editing.
-- Public App Store release polish.
-- Guaranteed support beyond 30-minute recordings.
-- Replacing or modifying the existing Python Transcriber.
-
-## 20. Assumptions
-
-- 2.0 Beta is English-first.
-- Speaker labels are important but may need retry/manual cleanup.
-- 30 minutes is the beta reliability target.
-- The app is iPhone-first.
-- Mac is a companion app.
-- Model defaults are benchmark-driven.
-- Cloud sync/backups are roadmap only.
-- Summaries/action items are roadmap only.
-- Python Transcriber 1.x remains independent and unchanged.
+When the reference plans, this PRD, and current code disagree, preserve user data and the working app, record the conflict, and resolve it through a scoped objective and Human decision.

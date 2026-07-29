@@ -1,4 +1,5 @@
 # OBJECTIVE-18 — Mac Companion Parity
+> **Workspace note (2026-07-28):** This checkout is now the Mac-focused Transcriber workspace. Existing Beta 2.0 and iPhone-first material below is retained as historical pre-split context; iOS follow-up belongs in the sibling `../iOS Transcriber/` workspace.
 
 _Phase 7. Depends on OBJ-09–16 (features exist to mirror). Closes PRD §4/§17 Mac (K1–K4). RISK R13._
 

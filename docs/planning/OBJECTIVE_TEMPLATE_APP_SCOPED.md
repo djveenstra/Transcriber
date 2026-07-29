@@ -1,55 +1,151 @@
-# Objective Template — App-Scoped
+# VX-NN — Objective Title
 
-Use this template for every new objective in this repository. It exists because the repo contains multiple app trees (see [CLAUDE.md](../../CLAUDE.md) §1) and an objective that doesn't declare its target app/paths up front is the most common path to an agent editing the wrong tree.
+Status: Proposed
 
-Copy this into a new `docs/planning/objectives/OBJECTIVE-NN.md` (or the relevant location) and fill in every section before work begins.
+Risk tier: Normal / High / Critical
 
----
+Target app: Transcriber Mac
 
-## Objective Title
+Manager:
 
-_Short, descriptive name._
+Approved to start by Daniel: No
 
-## Target App / Path
+## Mission
 
-_Which row of the [CLAUDE.md](../../CLAUDE.md) §1 App Registry does this objective touch? State the exact path(s), e.g. `src/native/Transcriber2/`. If more than one app is touched, justify why this isn't two separate objectives._
+One sentence describing the user-visible or safety outcome.
 
-## Objective Type
+## Why now
 
-_One of: feature, bug fix, refactor, governance/docs, packaging, archive/cleanup, investigation/report._
+- Prerequisite objectives:
+- Risk or gap addressed:
+- Current code evidence:
 
-## Risk Tier
+## Scope
 
-_One of the five tiers from [CLAUDE.md](../../CLAUDE.md) §4: Critical/high-risk code · Normal feature · Docs-only · Git-only closeout · Read-only inventory._
+### Allowed paths
 
-## Allowed Paths
+- Exact paths.
 
-_Exact directories/files this objective may create or edit. Be specific — "the Swift app" is not specific enough; list the actual files or subdirectories expected to change._
+### Forbidden paths
 
-## Forbidden Paths
+- `../iOS Transcriber/`
+- `../Python Transcriber/`
+- `src/legacy-ios/`
+- Add objective-specific exclusions.
 
-_Explicitly list every other app tree this objective must not touch, especially the other trees containing "Transcriber" in their path (`XCode App Build/`, `src/legacy-ios/`) and the independent Python app (`src/python/`) if this objective targets the Swift app, or vice versa._
+### Private-data permission
 
-## Out of Scope
+- None by default.
+- List exact approved dataset/fixture access if Daniel authorizes it.
 
-_Anything adjacent that might tempt scope creep — name it here so it goes to "Notes for the Manager" instead of into the diff._
+### In scope
 
-## Required Reads
+- Concrete work.
 
-_Which governance/planning docs must be read before starting (e.g. CLAUDE.md, AGENTS.md, the relevant DECISIONS.md entries, prior objective files)._
+### Out of scope
 
-## Implementation Tasks
+- Explicit adjacent work that must not leak into this objective.
 
-_Numbered list of concrete steps._
+### Behavior that must remain unchanged
+
+- Recording/import.
+- Existing-record readability.
+- Original-audio preservation.
+- Add objective-specific regression behavior.
+
+## Technical approach
+
+Describe the smallest intended change and the existing seam it uses. Name any schema, artifact, dependency, model, concurrency, sandbox, or packaging impact.
+
+## Data and migration
+
+- Existing data read path:
+- New data/write path:
+- Versioning:
+- Corruption behavior:
+- Rollback compatibility:
+- User-data deletion: none unless explicitly approved.
+
+## Implementation tasks
+
+- [ ] Task.
+- [ ] Tests written before/with behavior.
+- [ ] Failure and cancellation paths.
+- [ ] Documentation/evidence.
 
 ## Validation
 
-_What must pass before this objective can be marked done. For code changes: build/test commands. For docs-only: what was cross-checked for consistency. For read-only inventory: confirmation no files outside the one allowed report changed._
+### Baseline
 
-## Closeout Mode
+Use [PLAN.md §4](../../PLAN.md#4-standard-validation).
 
-_Per [CLAUDE.md](../../CLAUDE.md) §4 closeout table for this objective's tier — full Manager/Worker/Auditor/QA report, short completion note, inline summary, commit-message-only, or single report._
+### Objective-specific automated checks
 
-## ASK USER Triggers
+```sh
+# Exact commands
+```
 
-_Conditions under which this objective must stop and escalate to the Human Reviewer rather than proceeding — e.g. a forbidden-path edit becomes necessary, a product decision is required, or a Human-owned device gate is reached._
+### Benchmark
+
+- Dataset version:
+- Baseline:
+- Metrics:
+- Pass gate:
+
+### Manual Mac checks
+
+- Steps and expected result.
+
+### Human-owned checks
+
+- None, or exact steps Daniel must perform.
+
+## Acceptance criteria
+
+- [ ] User/data outcome.
+- [ ] Baseline green.
+- [ ] Existing records readable.
+- [ ] Failure/cancel safe.
+- [ ] Benchmark gate passed when applicable.
+- [ ] Private data absent from Git/logs.
+- [ ] Auditor `ALIGNED` when required.
+- [ ] QA evidence appended.
+
+## Removal targets
+
+If none, say none.
+
+For each removal:
+
+- Exact target.
+- Reference/owner proof.
+- Replacement or reason it is superfluous.
+- Before/after validation.
+- Recovery path.
+- Daniel approval if required.
+
+## Rollback
+
+State the mechanical rollback and how data written by this objective remains readable afterward.
+
+## Notes for the Manager
+
+Out-of-scope discoveries only.
+
+---
+
+## Worker report
+
+Pending.
+
+## Auditor report
+
+Pending / not required by tier.
+
+## QA evidence
+
+Pending.
+
+## Gate decision
+
+Pending: `PROCEED` / `FIX FIRST` / `ASK USER` / `BLOCKED`.

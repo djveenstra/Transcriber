@@ -1,141 +1,508 @@
-# PLAN.md — Transcriber 2.0 Beta Engineering Plan
+# PLAN.md — Transcriber Mac Accuracy Roadmap
 
-_Read alongside [PRD.md](PRD.md), [AGENTS.md](AGENTS.md), and the active [OBJECTIVE.md](OBJECTIVE.md). Supporting analysis lives in [docs/planning/](docs/planning/). This plan is owned by the Manager and revised only with Human Reviewer approval._
+Last updated: 2026-07-28
 
-## How to read this plan
+Read with [PRD.md](PRD.md), [OBJECTIVE.md](OBJECTIVE.md), [AGENTS.md](AGENTS.md), and [DECISIONS.md](DECISIONS.md).
 
-- The product target is [PRD.md](PRD.md). The current code is reviewed in [docs/planning/ARCHITECTURE_REVIEW.md](docs/planning/ARCHITECTURE_REVIEW.md); the delta is in [docs/planning/GAP_ANALYSIS.md](docs/planning/GAP_ANALYSIS.md).
-- Work is delivered as **20 sequential objectives** (`docs/planning/objectives/OBJECTIVE-01.md` … `-20.md`), with Human-approved 17.x stabilization checkpoints inserted when beta-blocking risk appears. Each objective is independently completable, building, and green.
-- **Active path:** the only app under development is `src/native/Transcriber2/`. Never modify `src/python/` (independent), and treat `src/legacy-ios/` and `XCode App Build/` as read-only reference.
-- **Sequencing is dependency-driven.** Foundations (status model, model registry, microphone abstraction, diagnostics model) precede the UI that consumes them. Critical-risk work precedes new surface area.
+## 1. Mission
 
-## Guiding constraints (non-negotiable)
+Evolve the existing Transcriber Mac app into an accuracy-first, locally processed transcription system using the ideas in [VoxBot Expanded PLN.md](VoxBot%20Expanded%20PLN.md), without rebuilding working recording, storage, playback, review, export, retry, diagnostics, or Model Lab foundations.
 
-1. Never lose audio or transcripts. Persist-then-proceed; surface save failures.
-2. Keep `SWIFT_STRICT_CONCURRENCY = complete`; both iOS-simulator and macOS builds stay green.
-3. Favor refactors over rewrites; many small reversible changes over big ones.
-4. Real-device behaviors (background recording, model persistence across reboot, 30-min reliability, performance, battery, offline) are **Human-Reviewer-owned gates**, validated on iPhone 17 Pro.
-5. Don't bump WhisperKit/FluidAudio inside a feature objective.
+This plan deliberately separates:
 
-## Standard milestone template
+1. Proving what exists.
+2. Creating stable contracts and storage.
+3. Measuring the current baseline.
+4. Testing proposed models and runtimes.
+5. Integrating only the candidates that earn their place.
+6. Hardening the resulting product.
 
-Every objective documents: **Purpose · Technical goals · Affected systems · Dependencies · Implementation tasks · Validation steps · Definition of Done · Implementation risk · Rollback considerations**, plus the multi-agent **Worker/Auditor/QA/Gate** sections (see [AGENTS.md](AGENTS.md) and [docs/planning/MULTI_AGENT_WORKFLOW.md](docs/planning/MULTI_AGENT_WORKFLOW.md)).
+That sequencing prevents a speculative model choice from forcing a rewrite of the application around it.
 
-## Baseline validation (run for every objective)
+## 2. Current starting point
+
+The active app is `src/native/Transcriber2/`. On 2026-07-28, before this governance rewrite:
+
+- The Mac target built successfully with strict concurrency enabled.
+- The `TranscriberTests` unit-test bundle passed.
+- The project resolved pinned WhisperKit and FluidAudio revisions.
+- The app already contained actor-based engine seams, a guarded `TranscriptionSession`, SwiftData recording persistence, original-audio storage, transcript-first processing, retry/cancel/failure recovery, speaker reassignment, export, diagnostics, and Model Lab.
+
+The current implementation is therefore the regression baseline, not disposable prototype code.
+
+## 3. Non-negotiable delivery rules
+
+1. Preserve original audio, existing recordings, confirmed transcripts, and corrections.
+2. Keep the app usable at the end of every objective.
+3. Make additive, versioned storage changes with migration and corruption tests.
+4. Preserve `SWIFT_STRICT_CONCURRENCY = complete`.
+5. Keep expensive model work serial until measurements prove a safe concurrent configuration.
+6. Treat every new dependency, model runtime, schema migration, and pipeline replacement as High or Critical risk.
+7. Do not make a named VoxBot candidate the default until it beats the appropriate baseline on representative data.
+8. Keep draft transcription available when downstream accuracy or speaker work fails.
+9. One active implementation objective at a time.
+10. Plan removals explicitly; execute them only inside a scoped objective with proof that the replacement or sibling workspace owns the removed behavior.
+
+## 4. Standard validation
+
+Run from the repository root for every code objective:
 
 ```sh
-# From repo root. Adjust scheme/destination names only if the project changes.
-xcodebuild -project "src/native/Transcriber2/Transcriber2.xcodeproj" -scheme Transcriber \
-  -destination 'platform=macOS' CODE_SIGNING_ALLOWED=NO build
+xcodebuild -project "src/native/Transcriber2/Transcriber2.xcodeproj" \
+  -scheme Transcriber \
+  -destination 'platform=macOS' \
+  CODE_SIGNING_ALLOWED=NO build
 
-xcodebuild -project "src/native/Transcriber2/Transcriber2.xcodeproj" -scheme Transcriber \
-  -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
-
-xcodebuild test -project "src/native/Transcriber2/Transcriber2.xcodeproj" -scheme Transcriber \
-  -destination 'platform=macOS' CODE_SIGNING_ALLOWED=NO -only-testing:TranscriberTests
+xcodebuild test \
+  -project "src/native/Transcriber2/Transcriber2.xcodeproj" \
+  -scheme Transcriber \
+  -destination 'platform=macOS' \
+  CODE_SIGNING_ALLOWED=NO \
+  -only-testing:TranscriberTests
 ```
 
-On-device acceptance (Human Reviewer, iPhone 17 Pro) covers: real mic capture, background/lock recording, model download/persistence across reboot, 30-min reliability, performance, battery, offline.
+Each objective adds focused tests and QA appropriate to its risk. Model-quality claims require benchmark evidence; packaging, microphone, long-run, memory-pressure, accessibility, and real-audio behavior require Human acceptance where automation is insufficient.
+
+## 5. Objective format
+
+Each objective file must declare:
+
+- Mission and user outcome.
+- Risk tier.
+- Dependencies.
+- Allowed and forbidden paths.
+- Current behavior that must remain unchanged.
+- In scope and out of scope.
+- Implementation tasks.
+- Data/migration impact.
+- Validation and benchmark commands.
+- Acceptance criteria.
+- Rollback plan.
+- Worker report, Auditor result when required, QA evidence, and Manager gate.
+
+The canonical gates are `PROCEED`, `FIX FIRST`, `ASK USER`, and `BLOCKED` as defined in [AGENTS.md](AGENTS.md).
 
 ---
 
-## Phase 0 — Governance & baseline (foundation)
+## Phase 0 — Establish truth and safe boundaries
 
-**Purpose:** Make change safe before making change. Establish the planning system, a known-green build/test baseline, repo-hygiene conventions, and a SwiftData migration policy.
+### VX-01 — Mac baseline and benchmark charter
 
-- **OBJ-01 — Governance, green baseline & data-safety guardrails.** **DONE 2026-06-18 — Gate: PROCEED; evidence: [QA.md](QA.md#obj-01--governance-green-baseline--data-safety-guardrails--2026-06-18).** Confirm both builds + tests green; document the active-path rule; write the SwiftData schema/migration policy; add round-trip/corruption tests for `Recording` blob accessors; inventory the stale `XCode App Build/` tree and propose (don't execute) archiving.
+**Status (2026-07-29):** `PROCEED`. Baseline and benchmark charter recorded in `docs/planning/evidence/`; Mac build passed and 164/164 tests passed. Exact private recordings and production thresholds remain unapproved.
 
-**DoD:** baseline commands pass; migration policy in [DECISIONS.md](DECISIONS.md); guardrail tests added; no behavior change.
-**Risk:** Low. **Rollback:** revert added tests/docs.
+**Purpose:** Turn the current app into an explicit, reproducible baseline before changing the processing architecture.
 
-## Phase 1 — Data safety & model persistence (Critical risks R2, R3, R10)
+**Work:**
 
-**Purpose:** Make model readiness honest and downloads recoverable — the highest-risk PRD §12 gap.
+- Record current build, tests, app flows, model/runtime revisions, storage locations, and representative resource use.
+- Define the private benchmark dataset format, ground-truth rules, privacy handling, and metric calculations.
+- Select benchmark categories without inventing pass thresholds.
+- Identify which existing recordings may be used only after Daniel approves them.
 
-- **OBJ-02 — File-based model readiness.** **DONE 2026-06-18 — Gate: PROCEED; evidence: [QA.md](QA.md#obj-02--file-based-model-readiness--2026-06-18).** Unified Whisper + Parakeet readiness on actual on-device files; replaced the in-memory Whisper flag as source of truth.
-- **OBJ-03 — Model lifecycle states + Repair/Redownload.** **DONE 2026-06-18 — Gate: PROCEED; evidence: [QA.md](QA.md#obj-03--model-lifecycle-states--repairredownload--2026-06-18).** Introduced the full lifecycle state set backed by a model registry; exposed cache-only Repair/Redownload plus storage status in Settings.
-- **OBJ-04 — Default preload + status refresh + verify-before-process.** **DONE 2026-06-18 — Gate: PROCEED; evidence: [QA.md](QA.md#obj-04--default-preload-status-refresh--verify-before-process--2026-06-18).** Added non-blocking default preload scheduling, launch/Settings model-status refresh, and verify-before-process with safe fallback plus user-facing notice. Human-owned real-device preload/persistence/offline/corruption checks are deferred to OBJ-04/OBJ-20 gates.
+**Preserves:** All production behavior.
 
-**Affected systems:** model management, Settings, `TranscriptionSession` pre-flight. **Dependencies:** OBJ-01; model registry introduced in OBJ-03.
-**Risk:** Medium (touches download/load paths). **Rollback:** registry/readiness are additive; revert restores prior behavior.
+**Gate:** `PROCEED` only when the baseline can be rerun and private test data handling is approved.
 
-## Phase 2 — Recording reliability & microphone (Critical/High R4, R5, R11)
+### VX-02 — Mac-only boundary and removal inventory
 
-**Purpose:** Close the entire PRD §8 microphone gap and harden long/background recording.
+**Status (2026-07-29):** `ASK USER`. Read-only inventory is complete in `docs/planning/evidence/VX-02-BOUNDARY-INVENTORY.md`; no removal occurred. Sibling ownership, project narrowing, shared-inbox behavior, legacy/stale-tree preservation, build artifact, root audio, and visual-reference dispositions remain Human decisions.
 
-- **OBJ-05 — Microphone abstraction & selection backend.** **DONE 2026-06-18 — Gate: PROCEED; evidence: [QA.md](QA.md#obj-05--microphone-abstraction--selection-backend--2026-06-18).** Added platform input discovery, automatic/built-in/Bluetooth/named microphone choices, UserDefaults selection persistence, guarded recorder routing through selected iOS inputs, and fallback-to-default backend behavior. Human-owned real-device microphone enumeration and hardware routing checks are deferred to OBJ-05/OBJ-08/OBJ-20 gates.
-- **OBJ-06 — Test Mic + live input meter (Settings).** **DONE 2026-06-18 — Gate: PROCEED; evidence: [QA.md](QA.md#obj-06--test-mic--live-input-meter--2026-06-18).** Added Settings Test Mic control with selected-input label, metering-only capture, live RMS meter, clean stop-on-exit/input-change behavior, and no recording persistence. Human-owned real iPhone mic-level validation is deferred to OBJ-06/OBJ-08/OBJ-20 gates.
-- **OBJ-07 — Mic fallback + active-mic display + notice.** **DONE 2026-06-18 — Gate: PROCEED; evidence: [QA.md](QA.md#obj-07--mic-fallback-active-mic-display--notice--2026-06-18).** Added selected-mic-unavailable fallback resolution, active microphone state/display during recording, and a user-facing fallback notice while preserving recording startup. Human-owned real iPhone selected-mic-unavailable routing, active-label accuracy, and notice checks are deferred to OBJ-07/OBJ-08/OBJ-20 gates.
-- **OBJ-08 — Background/lock & 30-min reliability hardening (Human-owned gate).** **DONE 2026-06-19 — Gate: PROCEED; evidence: [QA.md](QA.md#obj-08--final-human-reviewer-pass-and-gate--2026-06-19).** Added interruption/route-change safe-stop hardening, retryable saved-audio failure messaging, background/lock/5/15/30-minute device checklist, Bluetooth/AirPods runtime route refresh, Test Mic race protection, stale/disconnected input cleanup, reconnect retry refreshes, and Automatic fallback behavior. Human Reviewer accepted the final AirPods/Bluetooth route-change retest; broader long-duration beta reliability remains covered by the documented device checklist.
+**Purpose:** Remove ambiguity before removing code.
 
-**Risk:** Medium–High (audio session). **Rollback:** selection defaults to current behavior (default input) if disabled.
+**Work:**
 
-## Phase 3 — Information architecture (PRD §6; R14)
+- Verify that `../iOS Transcriber/` owns the iOS product and contains every iOS behavior that may be removed from this checkout.
+- Inventory iOS-only targets, share-extension files, `#if os(iOS)` branches, mobile-only model code, legacy reference trees, stale assets, duplicate governance, and root audio fixtures.
+- Classify each item as retain, move to sibling, archive, remove later, or unresolved.
+- Propose mechanical removal objectives; do not remove application files in VX-02.
 
-**Purpose:** Bring navigation in line with the PRD and surface the status model. The canonical status model is built **first** (OBJ-09), then the Dashboard consumes it (OBJ-10), then Model Lab is promoted (OBJ-11) on top of the model registry/status foundations.
+**Candidate future removals, subject to proof:**
 
-- **OBJ-09 — Library status badges + canonical `RecordingStatus`.** **DONE 2026-06-19 — Gate: PROCEED; evidence: [QA.md](QA.md#obj-09--library-status-badges--canonical-recordingstatus--2026-06-19).** Replaced scattered booleans with a derived status enum; showed duration, status badge, final model used, and speaker-label status; added non-destructive missing-audio reconciliation. **Foundation for OBJ-10/OBJ-11.**
-- **OBJ-10 — Dashboard tab.** **DONE 2026-06-20 — Gate: PROCEED; evidence: [QA.md](QA.md#obj-10--dashboard-tab--2026-06-20), [completion report](docs/planning/objectives/OBJECTIVE-10.md#completion-report--2026-06-20).** Added the initial Dashboard tab with mic/model/speaker-label status, recent work needing attention via OBJ-09 `RecordingStatus`, Record/Import/Model Lab actions, and model readiness warnings. Model Lab remains nested until OBJ-11.
-- **OBJ-11 — Model Lab as top-level tab + diagnostics columns.** **DONE 2026-06-20 — Gate: PROCEED; evidence: [QA.md](QA.md#obj-11--model-lab-as-top-level-tab--diagnostics-columns--2026-06-20), [completion report](docs/planning/objectives/OBJECTIVE-11.md#completion-report--2026-06-20).** Promoted Model Lab to an iOS top-level tab, kept Settings secondary access, moved Record/Import to Dashboard-triggered flows per PRD tab structure, and added model load time, transcription time, speed, registry-backed model size/status, failure status, and transcript text to Model Lab results/report export.
+- The iOS Share to Transcriber target and plist/entitlements from the Mac workspace.
+- iOS-only Parakeet live-preview and audio-session branches already owned by the sibling workspace.
+- `src/legacy-ios/` after its unique reference value is confirmed elsewhere.
+- Redundant or historical planning material after links and evidence are preserved.
+- Test or personal audio at repository root after Daniel identifies it.
 
-**Risk:** Medium (UI + model). **Rollback:** status enum is additive (derive from existing flags first); tabs revertible.
+**Gate:** `ASK USER` for every unresolved ownership or deletion choice.
 
-## Phase 4 — Speaker workflow completeness (PRD §10/§11; R15)
+### VX-03 — Versioned processing contracts and migration design
 
-- **OBJ-12 — Segment-level speaker reassignment.** **DONE 2026-06-20 — Gate: PROCEED; evidence: [QA.md](QA.md#obj-12--segment-level-speaker-reassignment--2026-06-20), [completion report](docs/planning/objectives/OBJECTIVE-12.md#completion-report--2026-06-20).** Added Library detail segment reassignment to existing speakers, persisted through the existing `Recording.segments` blob without schema change, and verified TXT/SRT/JSON exports plus renamed-speaker composition.
-- **OBJ-13 — Consistent speaker-label states + rename/reassign parity.** **DONE 2026-06-20 — Gate: PROCEED; evidence: [QA.md](QA.md#obj-13--consistent-speaker-label-states--renamereassign-parity--2026-06-20), [completion report](docs/planning/objectives/OBJECTIVE-13.md#completion-report--2026-06-20).** Added shared speaker-label status presentation across Recording, Library detail, Shared Audio detail, Library row metadata, and Dashboard; routed completed transcript edit entry points through saved Library detail records for rename/reassign parity; preserved label-only retry semantics.
+**Status (2026-07-29):** `ASK USER`. Contracts and migration design are complete, final Auditor result is `ALIGNED`, and agent QA is PASS. Human approval of the nine data/model migration principles remains required; no schema or production change occurred.
 
-**Risk:** Medium. **Rollback:** reassignment additive; states derive from existing flags.
+**Purpose:** Define how future engines connect without changing production behavior yet.
 
-## Phase 5 — Progress & diagnostics (PRD §13; R8, R17)
+**Work:**
 
-- **OBJ-14 — Phase-timeline progress UI.** **DONE 2026-06-20 — Gate: PROCEED; evidence: [QA.md](QA.md#obj-14--phase-timeline-progress-ui--2026-06-20), [completion report](docs/planning/objectives/OBJECTIVE-14.md#completion-report--2026-06-20).** Added the structured PRD phase model, shared phase-timeline progress UI, elapsed time, rough percent/activity, Cancel, minimal Details, and existing retry-surface preservation across Recording, Library detail, and Shared Audio without starting OBJ-15 diagnostics.
-- **OBJ-15 — Diagnostics on normal screens + diagnostics data model.** **DONE 2026-06-20 — Gate: PROCEED; evidence: [QA.md](QA.md#obj-15--diagnostics-on-normal-screens--diagnostics-data-model--2026-06-20), [completion report](docs/planning/objectives/OBJECTIVE-15.md#completion-report--2026-06-20).** Added session/latest diagnostics for model preparation/load time, transcription time, audio duration, realtime speed, diarization time, fallback flags, speaker-label status, and safe failure messages; showed them calmly in OBJ-14 Details and completed transcript detail surfaces without a SwiftData schema change.
+- Specify normalized contracts for prepared audio, timed transcription, diarization, speaker identity, reconciliation, corrections, diagnostics, and provenance.
+- Define stable identifiers and schema versions.
+- Decide which data belongs in SwiftData, an artifact store, or regenerable cache.
+- Design old-record compatibility, additive migrations, atomic writes, corruption handling, cleanup, and rollback.
+- Define draft, verified, and historical transcript-version semantics.
 
-**Risk:** Medium. **Rollback:** diagnostics additive/read-only.
+**Gate:** Human approval of the data model and migration strategy before code changes.
 
-## Phase 6 — Export & accessibility (PRD §11/§15; R16, R19)
+**Phase 0 milestone:** The current app is reproducible, data ownership is clear, and future processing has approved contracts. No model integration begins before this milestone passes.
 
-- **OBJ-16 — Export hardening.** **DONE 2026-06-21 — Gate: PROCEED; evidence: [QA.md](QA.md#obj-16--export-hardening--2026-06-21), [completion report](docs/planning/objectives/OBJECTIVE-16.md#completion-report--2026-06-21).** JSON via `Codable`; verified speaker names in all formats; SRT timing tests; large/odd-format import checks.
-- **OBJ-17 — Accessibility pass.** **DONE 2026-06-23 — Gate: PROCEED; evidence: [QA.md](QA.md#obj-17--final-human-reviewer-pass-and-gate--2026-06-23), [completion report](docs/planning/objectives/OBJECTIVE-17.md#final-closeout-report--2026-06-23).** Dynamic Type, VoiceOver labels/traits, contrast audit, non-color status/speaker indicators, reachability, compact transcript actions, transcript/detail header cleanup, and accepted playback-safe M4A derivative path for completed-recording playback.
-- **OBJ-17.1 — FluidAudio Diarization Safety & Timeout Stabilization.** **DONE 2026-06-23 — Gate: PROCEED; evidence: [QA.md](QA.md#obj-171--final-human-reviewer-pass-and-gate--2026-06-23), [completion report](docs/planning/objectives/OBJECTIVE-17.1.md#final-closeout-report--2026-06-23).** Added per-stage private diagnostics, safe timeout/cancel state recovery, retry guard behavior, transcript/playback preservation, speaker-turn display grouping, and compact transcript detail layout tuning while keeping FluidAudio as the current diarization path.
-
-**Deferred Beta 2.1 planning backlog:** launch readiness screen with default/Base English model preload and Skip Loading/background continuation; priority loading of Live Preview first, transcription model second, and diarization resources third; rerun transcription with a different model from transcript/detail; delete downloaded models; further speaker-turn grouping polish; further sticky/compact player/header polish; broader diarization engine evaluation if FluidAudio becomes limiting; deeper Mac GUI QA/polish; background processing/job architecture improvements; and broader UI polish and feature fine-tuning. These are discussion items only, not active objectives or Beta 2.0 blockers. Their scope and sequencing require explicit Human approval before Beta 2.1 implementation begins.
-
-**Risk:** Low–Medium for OBJ-16/OBJ-17; Medium for OBJ-17.1 because it touched diarization state safety. **Rollback:** export/accessibility changes are mostly additive/cosmetic; OBJ-17.1 remains narrow and reversible.
-
-## Phase 7 — Mac parity & hardening (PRD §4/§17; R6, R7, R9)
-
-- **OBJ-18 — Mac companion parity.** **DONE 2026-06-25 — Gate: PROCEED; accepted as a limited Mac companion baseline; evidence: [QA.md](QA.md#obj-18--final-human-reviewer-acceptance--2026-06-25), [completion report](docs/planning/objectives/OBJECTIVE-18.md#final-human-reviewer-acceptance--2026-06-25).** Open/import/play/share paths, Mac Model Lab availability, launch readiness, recording-sheet dismissal, and display-only speaker grouping received agent validation. Further Mac GUI validation/polish is deferred; the mobile app remains the primary beta target.
-- **OBJ-19 — Cancellation & failure-injection hardening.** **DONE 2026-06-25 — Gate: PROCEED; evidence: [QA.md](QA.md#obj-19--cancellation--failure-injection-hardening--2026-06-25), [completion report](docs/planning/objectives/OBJECTIVE-19.md#completion-report--2026-06-25).** Added deterministic cancellation/failure seams and matrix coverage, fixed copied-import orphan risk, unloads active final transcription models on cancel, blocks stale processing attempts from overwriting newer state, and verified UI/activity recovery plus audio/transcript preservation. Real iPhone provider cleanup, recorder write-error realism, and rapid hardware interleavings remain Human-owned OBJ-20 checks.
-
-**Risk:** Medium. **Rollback:** test-led; behavior fixes isolated.
-
-## Phase 8 — Acceptance
-
-- **OBJ-20 — Beta acceptance / final QA.** **DONE 2026-06-28 — Gate: PROCEED; evidence: [QA.md](QA.md#obj-20--final-human-reviewer-pass-and-beta-20-acceptance--2026-06-28), [completion report](docs/planning/objectives/OBJECTIVE-20.md#final-beta-20-acceptance-report--2026-06-28).** Agent acceptance, narrow Mac hardening, and final Human iPhone/Mac acceptance passed. The original 20-objective Beta 2.0 roadmap is complete. Mobile remains the primary target; the limited Mac companion baseline is accepted without deep polish. No known beta blocker remains accepted as outstanding. Remaining polish, feature additions, and fine-tuning are deferred to Beta 2.1 planning only.
-
-**Risk:** Low for validation/documentation and the two narrow Mac UI/concurrency fixes; device acceptance remains Human-owned. **Rollback:** planning updates and both isolated Mac fixes are independently revertible; no data or schema migration.
+**Milestone status (2026-07-29):** `ASK USER`. VX-01 is `PROCEED`; VX-02 inventory is complete at `ASK USER`; VX-03 is aligned and QA-green at `ASK USER`. Phase 1 is not active.
 
 ---
 
-## Dependency graph (summary)
+## Phase 1 — Strengthen the existing core
 
+### VX-04 — Extract orchestration seams from `TranscriptionSession`
+
+**Purpose:** Reduce risk in the current 1,900-line session coordinator without changing user behavior.
+
+**Work:**
+
+- Characterize the existing state machine and persistence checkpoints with tests.
+- Extract small services for final transcription, diarization attempts, and persistence coordination behind protocols.
+- Keep `TranscriptionSession` as the UI-facing state owner during the transition.
+- Preserve cancellation, stale-attempt protection, timeouts, fallback, and transcript-first behavior.
+
+**Not allowed:** A rewrite, new models, new product states, or storage migration.
+
+### VX-05 — Processing artifact store
+
+**Purpose:** Add versioned, inspectable processing artifacts without bloating or destructively rewriting `Recording`.
+
+**Work:**
+
+- Implement the approved VX-03 store and manifest format.
+- Add atomic writes, checksums where useful, versioned decode, corruption isolation, and cleanup rules.
+- Preserve existing `Recording` fields as compatibility projections.
+- Add round-trip, legacy-read, corrupt-data, interrupted-write, and rollback tests.
+
+### VX-06 — Persistent processing jobs and relaunch recovery
+
+**Purpose:** Let the Mac resume or safely retry work after relaunch while keeping partial results honest.
+
+**Work:**
+
+- Persist stage state and completed artifact references.
+- Reconcile interrupted jobs on launch.
+- Never infer completion from an in-memory flag.
+- Prevent an older attempt from overwriting a correction or newer attempt.
+- Expose retry, cancel, and partial-success states through existing UI patterns.
+
+### VX-07 — Versioned audio preparation and quality analysis
+
+**Purpose:** Create consistent model input while preserving the source.
+
+**Work:**
+
+- Generate versioned mono 16 kHz working audio without replacing the original.
+- Retain original channel metadata.
+- Add measured duration, clipping, silence/speech activity, level, and initially reliable quality signals.
+- Treat denoising/source separation as optional later experiments.
+- Add deterministic derivative naming, invalidation, cleanup, and reproducibility tests.
+
+**Phase 1 milestone:** The existing app behaves the same, but processing is modular, recoverable, and able to store comparable versioned results.
+
+---
+
+## Phase 2 — Make Model Lab the evidence system
+
+### VX-08 — Benchmark dataset and ground-truth workflow
+
+**Purpose:** Create the evidence needed to make accuracy decisions.
+
+**Work:**
+
+- Add private dataset manifests that reference, but do not commit, private audio.
+- Support ground-truth words, speaker regions, enrolled/unenrolled identity, recording condition, and correction provenance.
+- Implement metric calculations and reproducible report export.
+- Include quiet, noisy, far-field, vehicle, television, reverberant, speakerphone, overlapping, short-reply, names, technical vocabulary, and compressed-audio cases.
+
+### VX-09 — Measure the current production baseline
+
+**Purpose:** Establish the number every proposed change must beat.
+
+**Work:**
+
+- Run current WhisperKit transcription, FluidAudio Sortformer diarization, and `TranscriptMerger`.
+- Capture word accuracy, speaker accuracy, review burden, failures, processing time, and memory.
+- Record known limitations without “fixing while measuring.”
+- Select Human-approved thresholds and priorities from the observed dataset.
+
+**Phase 2 milestone:** Accuracy and reliability are measurable, and production thresholds are evidence-based.
+
+---
+
+## Phase 3 — Multi-engine transcription and consensus
+
+### VX-10 — High-accuracy Whisper candidate
+
+**Purpose:** Evaluate an accuracy-focused Whisper configuration, including Large v3 if it is practical.
+
+**Work:**
+
+- Add a provider adapter that emits VX-03 normalized results and retains raw output.
+- Validate download size, loadability, memory, speed, licensing, packaging, cancellation, and failure recovery.
+- Compare it with the current selected Whisper baseline.
+
+**Gate:** The candidate remains Model-Lab-only unless its benefit justifies its resource cost.
+
+### VX-11 — Mac Parakeet feasibility and candidate integration
+
+**Purpose:** Determine whether Parakeet provides an independent, useful Mac transcript candidate.
+
+**Work:**
+
+- First test the capabilities already present through pinned FluidAudio.
+- Do not assume the iOS-only `ParakeetFinalTranscriptionEngine` can be enabled unchanged on macOS.
+- Validate word timing, raw output, model storage, cancellation, memory, licensing, and packaging.
+- Integrate behind the normalized contract only after feasibility passes.
+
+**Gate:** `BLOCKED` or a different engine candidate is acceptable if Parakeet is not production-safe on Mac.
+
+### VX-12 — Resource-aware scheduler and concurrency experiment
+
+**Purpose:** Replace inherited serialization only when the Mac can run work concurrently without becoming less reliable.
+
+**Work:**
+
+- Measure sequential, limited-parallel, and proposed CPU/GPU/Neural Engine arrangements.
+- Observe peak unified memory, pressure, thermal behavior, model load contention, cancellation, and total time.
+- Implement concurrency limits and safe fallback to sequential execution.
+
+**Gate:** Sequential execution remains the production default unless measured parallel execution is stable on the supported hardware.
+
+### VX-13 — Deterministic transcript alignment and consensus
+
+**Purpose:** Produce a better transcript from independent evidence without allowing free-form rewriting.
+
+**Work:**
+
+- Align timed units from two candidates.
+- Record agreement, formatting differences, insertions, deletions, substitutions, and unaligned regions.
+- Implement conservative consensus rules.
+- Preserve both candidates and each decision.
+- Compare consensus with the best individual model.
+
+**Gate:** Consensus ships only if it improves the approved accuracy metrics without unacceptable hallucination or review burden.
+
+**Phase 3 milestone:** Transcriber can produce a versioned draft plus an evidence-backed reconciled transcript when the ensemble is beneficial.
+
+---
+
+## Phase 4 — Speaker-attribution foundation
+
+### VX-14 — Current diarization baseline and richer contract
+
+**Purpose:** Strengthen the working FluidAudio path before replacing it.
+
+**Work:**
+
+- Persist raw Sortformer output, cluster timelines, stage diagnostics, and available overlap/quality evidence.
+- Measure diarization error, attributed-word accuracy, fragmentation, merges, speaker count, and timeouts.
+- Keep current fallback, cancellation, and transcript preservation intact.
+
+### VX-15 — Alternative diarization feasibility gate
+
+**Purpose:** Evaluate Pyannote or another local Mac candidate without coupling the app to an unproven runtime.
+
+**Work before integration:**
+
+- Review model and dependency licenses.
+- Prove Apple Silicon runtime, sandbox compatibility, packaging, offline behavior, memory use, cancellation, and data flow.
+- Compare quality with the improved current baseline.
+- Decide whether a helper process is acceptable and how it is authenticated, versioned, recovered, and removed.
+
+**Gate:** Human architecture approval is required before adding Python, a helper executable, a server process, or a new diarization dependency.
+
+### VX-16 — Speaker-attributed reconciliation
+
+**Purpose:** Combine transcript timing and diarization evidence while preserving temporary cluster truth.
+
+**Work:**
+
+- Attach words to temporary clusters through explicit, tested rules.
+- Preserve overlaps and unresolved assignments instead of smoothing away all uncertainty.
+- Store anonymous cluster labels separately from display names and future identities.
+- Surface conflicts and low-quality regions for review.
+
+**Phase 4 milestone:** Anonymous speaker attribution is versioned, measurable, reviewable, and independent of person identification.
+
+---
+
+## Phase 5 — Known-speaker identification
+
+### VX-17 — Speaker profiles, enrollment, privacy, and deletion
+
+**Purpose:** Build the user-owned data foundation before selecting an identity model.
+
+**Work:**
+
+- Add stable profile IDs, display names, approved enrollment samples, quality metadata, and version metadata.
+- Require multiple suitable samples and explicit enrollment.
+- Define export, deletion, retained-audio, cache, and migration behavior.
+- Keep profile data local and clearly state that voiceprints are not authentication.
+
+### VX-18 — Primary voiceprint candidate and open-set decision
+
+**Purpose:** Prove one local embedding model and conservative known/unknown/ambiguous behavior.
+
+**Work:**
+
+- Evaluate ERes2NetV2 or the strongest feasible candidate against the approved contract.
+- Extract only suitable diarized speech.
+- Retain per-sample embeddings rather than prematurely averaging them.
+- Calibrate absolute acceptance and best-versus-second-best separation.
+- Aggregate evidence across turns.
+
+**Gate:** False known-person identification is the primary blocker. A high unknown rate is acceptable when it reduces wrong names.
+
+### VX-19 — Independent second model and calibrated fusion
+
+**Purpose:** Add ReDimNet2 or another independent candidate only if it improves identity reliability.
+
+**Work:**
+
+- Calibrate each model separately.
+- Fuse calibrated evidence with transparent features such as duration, quality, margin, and agreement.
+- Detect contradictory cluster evidence and send it to review rather than silently renaming.
+
+### VX-20 — Difficult-case voiceprint fallback
+
+**Purpose:** Test w2v-BERT 2.0 or another costly fallback only on selected ambiguous cases.
+
+**Work:**
+
+- Define escalation conditions.
+- Measure accuracy gained, false identification, processing time, memory, and cache behavior.
+- Remove or leave the fallback out if it provides no material benefit.
+
+**Phase 5 milestone:** If benchmarks justify shipping it, speaker identity returns known, unknown, or ambiguous results with calibrated evidence and user-controlled profiles.
+
+---
+
+## Phase 6 — Review, correction, and controlled learning
+
+### VX-21 — Uncertainty-focused transcript review
+
+**Purpose:** Let the user spend time where the systems disagree or lack evidence.
+
+**Work:**
+
+- Surface disputed words, poor audio, overlaps, unresolved names, ambiguous identity, and cluster conflicts.
+- Add transcript text editing and candidate confirmation/rejection.
+- Preserve correction history and verified transcript versions.
+
+### VX-22 — Speaker correction and reprocessing
+
+**Purpose:** Extend existing rename/reassignment into complete reconciliation controls.
+
+**Work:**
+
+- Merge and split temporary clusters.
+- Confirm or reject identity suggestions.
+- Reprocess selected regions or the full recording.
+- Offer confirmed clean speech for enrollment only through an explicit approval step.
+- Convert corrections into private benchmark evidence without uncontrolled retraining.
+
+**Phase 6 milestone:** The user can understand and correct every material transcript and speaker decision.
+
+---
+
+## Phase 7 — Difficult-region processing and optional AI
+
+### VX-23 — Targeted disputed-region reprocessing
+
+**Purpose:** Spend extra compute only where it may improve the result.
+
+**Work:**
+
+- Extract context windows around disagreements.
+- Test alternate decoding, longer context, and approved audio derivatives.
+- Store each attempt and result without changing accepted text until a decision is made.
+
+### VX-24 — Constrained adjudication gate
+
+**Purpose:** Decide whether an AI adjudicator adds accuracy without becoming a transcript author.
+
+**Required Human decisions:**
+
+- Entirely local versus optional network service.
+- Privacy and retention rules.
+- Approved provider/model and cost limits if networked.
+- Whether audio clips may leave the Mac.
+
+**If approved:**
+
+- Give the adjudicator a disputed clip, existing candidates, accepted context, timing, and vocabulary.
+- Restrict output to selecting candidates, supported combinations, uncertainty, or human review.
+- Benchmark against deterministic and targeted-reprocessing baselines.
+
+**Gate:** Do not ship if it increases hallucination, hides provenance, or fails privacy requirements.
+
+---
+
+## Phase 8 — Production hardening
+
+### VX-25 — Recovery, privacy, packaging, and licensing
+
+**Purpose:** Turn the selected pipeline into a durable Mac product.
+
+**Work:**
+
+- Stress cancellation, relaunch, partial results, corruption, low disk, memory pressure, and model failure.
+- Complete profile protection, export, and deletion verification.
+- Complete dependency/model license review.
+- Validate model download, update, repair, removal, app sandbox, signing, notarization, and installation.
+- Remove only components proven superfluous by VX-02 and later decisions.
+
+### VX-26 — Final regression benchmark and Human acceptance
+
+**Purpose:** Decide whether the accuracy expansion is production-ready.
+
+**Work:**
+
+- Run the full private benchmark and compare every production stage with the VX-09 baseline.
+- Confirm no optional stage is retained without measurable benefit.
+- Run migration and backward-compatibility tests against existing recordings.
+- Complete real-audio, long-run, resource-pressure, accessibility, privacy, and release checklists.
+- Document limitations and choose the default pipeline.
+
+**Gate:** `PROCEED` only with green automated evidence, approved benchmark results, and Human acceptance.
+
+---
+
+## 6. Dependency summary
+
+```text
+VX-01 -> VX-08 -> VX-09 ------------------------------+
+   |                                                   |
+   +-> VX-03 -> VX-04 -> VX-05 -> VX-06 -> VX-07 -----+
+                                                        |
+VX-02 --------------------------------------------------+-> approved removals in VX-25
+
+VX-07 + VX-09 -> VX-10 -> VX-11 -> VX-12 -> VX-13
+VX-09 --------> VX-14 -> VX-15 -> VX-16
+VX-03 + VX-16 -> VX-17 -> VX-18 -> VX-19 -> VX-20
+VX-13 + VX-16 + VX-20 -> VX-21 -> VX-22
+VX-13 + VX-21 -> VX-23 -> VX-24
+all selected production objectives -> VX-25 -> VX-26
 ```
-OBJ-01
- ├─ OBJ-02 ─ OBJ-03 ─ OBJ-04            (model persistence)
- ├─ OBJ-05 ─ OBJ-06 ─ OBJ-07 ─ OBJ-08   (microphone + reliability)
- ├─ OBJ-09 (status model) ─ OBJ-10 (Dashboard)
- │                         └ OBJ-11 (Model Lab tab; also needs OBJ-03 registry)
- ├─ OBJ-12 ─ OBJ-13                       (speaker workflow; OBJ-12 needs migration policy from OBJ-01)
- ├─ OBJ-14 ─ OBJ-15                       (progress + diagnostics)
- ├─ OBJ-16 ─ OBJ-17 ─ OBJ-17.1            (export, accessibility, diarization safety)
- ├─ OBJ-18                                (Mac parity; after IA + diagnostics + OBJ-17.1)
- └─ OBJ-19 ─ OBJ-20                       (hardening + final acceptance; last)
-```
 
-Strict prerequisites: OBJ-09's `RecordingStatus` lands before OBJ-10 (Dashboard); OBJ-03's model registry before OBJ-04 and before OBJ-11's Model Lab columns; OBJ-01's migration policy before any `Recording` schema change (OBJ-09 if stored, OBJ-12, OBJ-15). Otherwise phases may be reordered by the Manager with Human approval if a dependency is satisfied early.
+VX-10 and VX-11 may be evaluated independently. VX-15 may conclude that the current FluidAudio path remains best. VX-19, VX-20, and VX-24 are optional: failing their benefit gates does not block a production release built from the strongest simpler pipeline.
 
-## When this plan changes
+## 7. Planned removals are not implementation permission
 
-The Manager updates PLAN.md when: an objective is completed (mark done, link the completion report), a dependency is discovered, scope is added/removed (Human-approved), or a risk materializes. PLAN.md edits that change scope or sequence require Human Reviewer approval. See [docs/planning/MULTI_AGENT_WORKFLOW.md](docs/planning/MULTI_AGENT_WORKFLOW.md).
+This plan explicitly permits future objectives to remove code or files that have become superfluous. Every such objective must:
+
+1. Identify the exact target.
+2. Prove that no active Mac behavior or user data depends on it.
+3. Confirm whether the sibling iOS workspace owns it.
+4. Preserve useful history or unique reference material.
+5. Run the baseline before and after removal.
+6. Include a simple rollback.
+
+Original audio, user transcripts, corrections, speaker profiles, and enrollment samples are never “cleanup.”
+
+## 8. Plan change policy
+
+The Manager may record completion evidence, discovered dependencies, or risk changes without changing product scope. Adding, removing, reordering, or materially widening objectives requires Daniel’s approval.
+
+The next implementation objective is not active merely because it appears here. [OBJECTIVE.md](OBJECTIVE.md) must explicitly activate it after Daniel approves the start.

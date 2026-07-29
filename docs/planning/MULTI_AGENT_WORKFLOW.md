@@ -1,88 +1,128 @@
-# Multi-Agent Operating Model — Transcriber 2.0 Beta
+# Objective Workflow — Transcriber Mac
 
-_The repeatable loop that turns [PLAN.md](../../PLAN.md) into shipped, validated objectives, month after month. Roles are defined in [AGENTS.md](../../AGENTS.md); this document defines the **timing and handoffs**._
+Last updated: 2026-07-28
 
-## Roles at a glance
+Roles and risk tiers are defined in [AGENTS.md](../../AGENTS.md). This file defines the handoffs for one active objective.
 
-```
-Human Reviewer (Daniel)  ── owns product decisions, milestone approval, on-device acceptance
-        ▲
-        │ approves / resolves ambiguity / accepts device gates
-        │
-   Manager  ── selects objective, assigns work, decides the Gate, updates planning docs
-   ┌────┴───────────────┬──────────────────┐
-   ▼                    ▼                  ▼
- Worker  ───────────► Auditor ──────────► QA Tester
- implements           checks alignment    tests behavior
- the scope            (before QA)         (after Auditor OK)
-```
+## 1. Activation
 
-## The loop (one objective, start to finish)
+The Manager:
 
-### Step 1 — Manager creates work
-**When:** the previous objective is `PROCEED` (done) or the Human Reviewer authorizes starting.
-**Does:** picks the next objective from [PLAN.md](../../PLAN.md); confirms its dependencies are satisfied; copies its file to the active [OBJECTIVE.md](../../OBJECTIVE.md) (or points to it); restates the Mission, Scope, and Out-of-Scope to the Worker. If dependencies are unmet, the Manager either reorders (with Human approval) or escalates.
+1. Confirms Daniel approved starting the objective.
+2. Confirms prerequisites in [PLAN.md](../../PLAN.md).
+3. Creates a `VX-NN` objective file.
+4. Updates [OBJECTIVE.md](../../OBJECTIVE.md) to point to it.
+5. Declares risk tier, allowed paths, forbidden paths, private-data permission, preserved behavior, acceptance criteria, and rollback.
+6. Reviews the worktree so unrelated user changes are not absorbed.
 
-### Step 2 — Worker implements
-**When:** immediately after assignment.
-**Does:** implements only the Scope; makes the smallest correct change; runs the baseline + objective Validation Commands.
-**Worker stops when:** (a) the objective is implemented and validated; (b) it hits an escalation trigger ([AGENTS.md §5](../../AGENTS.md)); (c) it cannot validate because the behavior is device-only; or (d) it would have to exceed scope to finish. The Worker never silently expands scope and never claims unvalidated completion.
-**Produces:** a Worker report — files touched, assumptions, tests run + results, objective rows completed, deferred items.
+No Worker begins from a roadmap bullet alone.
 
-### Step 3 — Auditor reviews (before QA)
-**When:** as soon as the Worker reports completion.
-**Does:** compares the diff against PRD/PLAN/OBJECTIVE/AGENTS; checks for architectural drift, scope creep, data-safety regressions, concurrency-setting changes, edits outside the active path, dependency bumps, and reversibility.
-**Produces:** an alignment report with `ALIGNED` / `DRIFT FOUND` and specifics. If drift is found, work returns to the Worker (Manager decides `FIX FIRST`). The Auditor does not edit code.
+## 2. Implementation
 
-### Step 4 — QA runs (after Auditor approval)
-**When:** only after the Auditor returns `ALIGNED`.
-**Does:** executes the objective's QA Checklist + relevant parts of [QA_STRATEGY.md](QA_STRATEGY.md); verifies workflows, UI states, failure injection, regressions, edge cases.
-**Produces:** QA evidence (commands/outputs/notes/screenshots), clearly separating agent-verifiable results from **Human-owned device gates**.
+The Worker:
 
-### Step 5 — Manager gates
-**When:** after QA evidence is in, and only after the Auditor returned `ALIGNED`.
-**Decision (one of — canonical definitions live in [AGENTS.md §6](../../AGENTS.md); the summaries below must stay in sync with it):**
-- **PROCEED** — Acceptance Criteria met, Auditor aligned, QA green (device gates flagged for the Human). Manager updates planning docs and advances to the next objective.
-- **FIX FIRST** — Defects or drift found; return to Worker with a specific list; re-run Auditor + QA.
-- **ASK USER** — A product decision, ambiguity, or a Human-owned device gate is required before proceeding.
-- **BLOCKED** — A dependency, conflict, or external factor prevents progress; record the blocker and escalate.
+- Reads the required governance and active objective.
+- Characterizes current behavior before risky refactoring.
+- Makes the smallest correct change.
+- Does not widen scope to fix adjacent discoveries.
+- Runs baseline and objective-specific tests.
+- Produces a report with files changed, decisions applied, assumptions, migrations, tests, benchmark evidence, and deferred findings.
 
-### Step 6 — Human Reviewer
-**When:** on `ASK USER`/`BLOCKED`, at milestone boundaries, or when device acceptance is required.
-**Does:** resolves ambiguity, makes the product call, runs/accepts on-device tests, and approves the milestone.
+The Worker stops at:
 
-## When each planning document is updated
+- A data-safety conflict.
+- An unresolved product/privacy/architecture decision.
+- A required out-of-scope path.
+- A new dependency/model/runtime not authorized by the objective.
+- A deletion whose ownership is unresolved.
+- A Human-only gate.
 
-| Document | Updated by | When |
-|---|---|---|
-| [OBJECTIVE.md](../../OBJECTIVE.md) (active) | Manager | At Step 1 (set active) and at `PROCEED` (advance to next) |
-| `docs/planning/objectives/OBJECTIVE-NN.md` | Manager | When its Gate is decided — record outcome + completion report link |
-| [PLAN.md](../../PLAN.md) | Manager | On completion (mark done), on discovered dependency, on Human-approved scope/sequence change, when a risk materializes |
-| [DECISIONS.md](../../DECISIONS.md) | Manager | Whenever a non-obvious architectural/product decision is made (with rationale) |
-| [RISK_REGISTER.md](RISK_REGISTER.md) | Manager | When a risk is closed, changes rank, or a new risk appears |
-| [QA.md](../../QA.md) | QA Tester / Manager | After each objective's QA — append evidence summary |
+## 3. Audit
 
-**PLAN.md changes that alter scope or sequence require Human Reviewer approval.** Marking an objective done, linking a report, or noting a discovered dependency do not.
+Required for High and Critical objectives.
 
-**OBJECTIVE advances only when** the current objective is `PROCEED` and its planning-doc updates are written. Never start the next objective while the current one is `FIX FIRST`/`ASK USER`/`BLOCKED`.
+The Auditor checks:
 
-## How architectural drift is detected
+- Diff matches scope and allowed paths.
+- PRD, plan, decisions, and objective agree.
+- Existing core behavior is preserved.
+- Original audio and partial-result invariants hold.
+- Storage changes are additive/versioned and tested.
+- Strict concurrency remains complete.
+- Dependency and model pins changed only when authorized.
+- Private data did not enter source, logs, or reports.
+- Benchmark claims compare with the correct baseline.
+- Removal targets were proven unused/owned elsewhere.
+- Rollback is practical.
 
-1. **Auditor diff review** against the documented architecture ([ARCHITECTURE_REVIEW.md](ARCHITECTURE_REVIEW.md)) — engine protocols intact? state machine intact? persist-then-proceed intact?
-2. **Mechanical checks** every objective: touched paths inside the active tree; `SWIFT_STRICT_CONCURRENCY=complete` unchanged; no dependency revision change in `project.pbxproj`; no `Recording` schema change without a migration entry in [DECISIONS.md](../../DECISIONS.md).
-3. **Build/test gate** — strict-concurrency build failures are the canonical drift alarm.
-4. **Risk-register linkage** — if a change touches a Critical-risk area (R1–R4, R7), the Auditor explicitly confirms the mitigation still holds.
+The Auditor returns:
 
-## How scope creep is prevented
+- `ALIGNED`, or
+- `DRIFT FOUND` with actionable findings.
 
-1. One objective in flight at a time; the Worker implements only its Scope and Out-of-Scope is explicit in every objective file.
-2. The Auditor flags any file touched that the objective didn't call for.
-3. Out-of-scope discoveries are logged to the objective's "Notes for the Manager"; the Manager decides whether to create a new objective — never to widen the current one.
-4. The Human Reviewer is the backstop on scope at every milestone.
+QA does not start on High/Critical work until the audit is aligned.
 
-## A sustainable cadence (months of development)
+## 4. QA
 
-- **Per objective:** Manager assigns → Worker implements + validates → Auditor aligns → QA evidences → Manager gates → docs updated. Keep objectives ≈ one session so the loop stays fast and reversible.
-- **Per phase:** at a phase boundary the Manager summarizes outcomes, re-checks the [RISK_REGISTER.md](RISK_REGISTER.md), and seeks Human milestone approval before the next phase.
-- **Device-gate rhythm:** batch Human-owned device validations (OBJ-04 model persistence, OBJ-08 background/30-min, OBJ-18 Mac, OBJ-20 acceptance) so the Human Reviewer runs them deliberately rather than ad hoc.
-- **Recovery:** any objective can be reverted independently; if a regression surfaces later, revert that objective's commit and re-enter the loop at Step 2.
+QA follows [QA_STRATEGY.md](QA_STRATEGY.md) and the objective checklist.
+
+Evidence separates:
+
+- Automated build/tests.
+- Migration and failure-path tests.
+- Private benchmark results.
+- Manual Mac UI checks.
+- Privacy/license/package review.
+- Human-owned acceptance.
+
+QA appends results to [QA.md](../../QA.md) and returns PASS, FAIL, or PARTIAL.
+
+## 5. Manager gate
+
+After required evidence, the Manager chooses exactly one:
+
+- **PROCEED** — objective complete; update docs and activate the next approved objective.
+- **FIX FIRST** — return a specific defect/drift list to the Worker, then repeat audit and QA as required.
+- **ASK USER** — Daniel must decide or perform a Human-owned validation.
+- **BLOCKED** — dependency, license, platform, prerequisite, or external condition prevents safe completion.
+
+Only `PROCEED` advances the roadmap.
+
+## 6. Workflow by risk
+
+| Tier | Required path |
+|---|---|
+| Critical | Manager → Worker → Auditor → QA → Human when applicable → Manager gate |
+| High | Manager → Worker → Auditor → QA → Manager gate |
+| Normal | Manager/Worker → QA → Manager gate |
+| Docs-only | Manager edit → link/consistency/diff validation → report |
+| Read-only | Evidence report |
+| Git-only | Scoped Git action and verification |
+
+If risk grows, stop and rescope upward.
+
+## 7. Planning updates
+
+On `PROCEED`, the Manager:
+
+- Records completion in the objective file.
+- Appends QA evidence.
+- Updates the objective row in PLAN.
+- Updates risks and decisions when needed.
+- Advances OBJECTIVE only if Daniel already approved the next start; otherwise returns it to “no active objective.”
+
+Completed objectives remain factual history. Do not rewrite them to conceal failures, scope changes, or Human gates.
+
+## 8. Milestone review
+
+At each PLAN phase boundary, the Manager summarizes:
+
+- What now works.
+- What stayed unchanged.
+- Benchmark change from baseline.
+- Material risks opened/closed.
+- Removals proposed or completed.
+- Optional components rejected for lack of benefit.
+- Decisions needed before the next phase.
+
+Daniel approves, redirects, pauses, or stops the next phase.

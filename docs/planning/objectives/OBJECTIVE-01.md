@@ -1,4 +1,5 @@
 # OBJECTIVE-01 — Governance, Green Baseline & Data-Safety Guardrails
+> **Workspace note (2026-07-28):** This checkout is now the Mac-focused Transcriber workspace. Existing Beta 2.0 and iPhone-first material below is retained as historical pre-split context; iOS follow-up belongs in the sibling `../iOS Transcriber/` workspace.
 
 _Phase 0. Prerequisite for everything. **This is the first Codex run.** Read [PRD.md](../../../PRD.md) → [PLAN.md](../../../PLAN.md) → [OBJECTIVE.md](../../../OBJECTIVE.md) → [AGENTS.md](../../../AGENTS.md) before starting._
 

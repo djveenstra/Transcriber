@@ -1,4 +1,5 @@
 # OBJECTIVE-05 — Microphone Abstraction & Selection Backend
+> **Workspace note (2026-07-28):** This checkout is now the Mac-focused Transcriber workspace. Existing Beta 2.0 and iPhone-first material below is retained as historical pre-split context; iOS follow-up belongs in the sibling `../iOS Transcriber/` workspace.
 
 _Phase 2. Depends on OBJ-01. Closes PRD §8 (B7, partial). RISK R11._
 

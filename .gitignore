@@ -31,6 +31,9 @@ XCode App Build/
 *.mlmodelc/
 *.safetensors
 
+# Voiceprint workstream: cloned repos + downloaded model weights (large, not source)
+Voiceprint-downloads/
+
 # Personal and imported recordings
 *.m4a
 *.mp3

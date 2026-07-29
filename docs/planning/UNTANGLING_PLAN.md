@@ -1,6 +1,9 @@
 # Repository / App Untangling Plan
+> **Workspace note (2026-07-28):** This checkout is now the Mac-focused Transcriber workspace. Existing Beta 2.0 and iPhone-first material below is retained as historical pre-split context; iOS follow-up belongs in the sibling `../iOS Transcriber/` workspace.
 
 _Created 2026-06-28 by planning model (Opus 4.6). This plan is staging-only — no implementation happens until the Human Reviewer approves each step._
+
+> **Superseded note (2026-07-29):** The Python Transcriber 1.x app and Python `dist/` artifacts have now been moved out of this repository to the sibling `../Python Transcriber/` folder. This plan remains as historical context for how the repository got untangled.
 
 ---
 

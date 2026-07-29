@@ -1,4 +1,5 @@
 # OBJECTIVE-04 — Default Preload, Status Refresh & Verify-Before-Process
+> **Workspace note (2026-07-28):** This checkout is now the Mac-focused Transcriber workspace. Existing Beta 2.0 and iPhone-first material below is retained as historical pre-split context; iOS follow-up belongs in the sibling `../iOS Transcriber/` workspace.
 
 _Phase 1. Depends on OBJ-02, OBJ-03. Closes PRD §12 (F4, F6, F7) and part of C4. RISK R3, R10._
 

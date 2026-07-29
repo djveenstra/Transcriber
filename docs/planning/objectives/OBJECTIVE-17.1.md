@@ -1,4 +1,5 @@
 # OBJECTIVE-17.1 — FluidAudio Diarization Safety & Timeout Stabilization
+> **Workspace note (2026-07-28):** This checkout is now the Mac-focused Transcriber workspace. Existing Beta 2.0 and iPhone-first material below is retained as historical pre-split context; iOS follow-up belongs in the sibling `../iOS Transcriber/` workspace.
 
 _Phase 6 stabilization checkpoint. Depends on OBJ-17 closeout. Blocks OBJ-18 Mac companion parity until the Human Reviewer re-gates diarization safety._
 

@@ -1,9 +1,12 @@
 # Beta 2.1 Preparation — Repository Inventory Report
+> **Workspace note (2026-07-28):** This checkout is now the Mac-focused Transcriber workspace. Existing Beta 2.0 and iPhone-first material below is retained as historical pre-split context; iOS follow-up belongs in the sibling `../iOS Transcriber/` workspace.
 
 **Date:** 2026-06-28  
 **Branch:** codex/project-cleanup  
 **Commit:** 5f94870 (Beta 2.0 complete)  
 **Tag:** beta-2.0-complete (created and pushed)
+
+> **Superseded note (2026-07-29):** The Python Transcriber 1.x app and Python `dist/` artifacts described in this report were moved out of this repository to the sibling `../Python Transcriber/` folder. This report remains as historical inventory evidence.
 
 ---
 

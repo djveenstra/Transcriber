@@ -1,4 +1,5 @@
 # OBJECTIVE-13 — Consistent Speaker-Label States & Rename/Reassign Parity
+> **Workspace note (2026-07-28):** This checkout is now the Mac-focused Transcriber workspace. Existing Beta 2.0 and iPhone-first material below is retained as historical pre-split context; iOS follow-up belongs in the sibling `../iOS Transcriber/` workspace.
 
 _Phase 4. Depends on OBJ-09 (`RecordingStatus`), OBJ-12 (reassignment). Closes PRD §10 (D7) + §11 editing parity. RISK R8, R15._
 

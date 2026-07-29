@@ -1,35 +1,121 @@
-# QA.md — QA Evidence Log
+# QA.md — Transcriber Mac QA Evidence Log
 
-_QA evidence is appended here after each objective by the QA Tester / Manager. Strategy and test types live in [docs/planning/QA_STRATEGY.md](docs/planning/QA_STRATEGY.md). Device test scripts (Human-owned gates) are recorded in this file as they are written (e.g. OBJ-08)._
+Last updated: 2026-07-29
 
-## Evidence entry format
+This file is append-only evidence. New VX roadmap evidence is recorded at the top of the active section below. The original Beta 2.0 evidence remains in place under “Historical Beta 2.0 evidence” so existing objective links and audit history continue to work.
+
+## VX evidence entry format
 
 ```
-## OBJ-NN — <title> — <date>
-- Tier: agent-verifiable | device (Human)
-- Build: macOS ✅ / iOS-sim ✅
-- Unit/integration tests: <n passed / n total> (new test names)
-- Manual UI: <steps + result>
-- Failure injection: <cases + result>
-- Regression checklist: ✅ / notes
-- Device gates outstanding: <list, for Human Reviewer>
-- Verdict: PASS / FAIL (defects: …)
+## VX-NN — <title> — <date>
+- Risk tier:
+- Commit / working tree:
+- Allowed paths checked:
+- Mac build:
+- Unit/integration tests:
+- Objective-specific benchmark:
+- Migration/legacy-data evidence:
+- Failure and cancellation evidence:
+- Manual Mac UI:
+- Privacy/licensing/package evidence:
+- Human-owned checks:
+- Auditor: ALIGNED / DRIFT FOUND / not required
+- Verdict: PASS / FAIL / PARTIAL
 ```
 
-## Baseline validation commands (run every objective)
+## Active Mac baseline commands
 
 ```sh
 xcodebuild -project "src/native/Transcriber2/Transcriber2.xcodeproj" -scheme Transcriber \
   -destination 'platform=macOS' CODE_SIGNING_ALLOWED=NO build
 
-xcodebuild -project "src/native/Transcriber2/Transcriber2.xcodeproj" -scheme Transcriber \
-  -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
-
 xcodebuild test -project "src/native/Transcriber2/Transcriber2.xcodeproj" -scheme Transcriber \
   -destination 'platform=macOS' CODE_SIGNING_ALLOWED=NO -only-testing:TranscriberTests
 ```
 
-## Standing regression checklist (scope to touched screens)
+## VX-01 — Mac baseline and benchmark charter — 2026-07-29
+
+- Risk tier: docs-only with read-only build, test, and resource inspection.
+- Commit / working tree: starting commit `ae01ecedfe3be891471d9f79a08f097d70fd1dd7`; pre-existing dirty governance rewrite and Python-extraction deletions preserved; no staging or commit.
+- Allowed paths checked: only VX-01 objective/evidence plus active governance and QA documents changed; production/test source, Xcode project, packages, sibling workspaces, legacy tree, assets, private audio, and `Voiceprint-downloads/` unchanged.
+- Mac build: **PASS** — `** BUILD SUCCEEDED **`; 9.28 seconds; command-process peak memory footprint 78,578,600 bytes.
+- Unit/integration tests: **PASS** — 164 passed, 0 failed, 0 skipped; `** TEST SUCCEEDED **`; 16.71 seconds; command-process peak memory footprint 153,076,816 bytes.
+- Objective-specific benchmark: **PASS for charter** — manifest, approval, split, ground-truth, metric, category, and comparison rules documented; no model-quality run and no threshold invented.
+- Migration/legacy-data evidence: not applicable; application data and schema were not accessed or changed. Current storage/read behavior was documented from code and passing persistence tests.
+- Failure and cancellation evidence: existing unit bundle passed applicable persistence, corrupt-data, cancellation, timeout, fallback, retry, and stale-attempt tests; VX-01 introduced no behavior.
+- Manual Mac UI: not run; no UI changed.
+- Privacy/licensing/package evidence: private audio was not accessed; tracked evidence omits private paths/content and sensitive machine identifiers; exact package pins recorded and unchanged.
+- Human-owned checks: future approval of exact private recordings or a bounded collection; supported performance target; post-baseline metric priorities.
+- Auditor: not required by docs-only tier.
+- Verdict: **PASS**.
+
+## VX-02 — Mac-only boundary and removal inventory — 2026-07-29
+
+- Risk tier: docs-only with read-only cross-workspace ownership inspection.
+- Commit / working tree: pre-existing Mac dirty state preserved; iOS sibling inspected read-only and found not to be a Git repository at its root; no staging, commit, or push.
+- Allowed paths checked: only VX-02 objective/evidence plus active governance and QA documents changed. No application, Xcode, sibling, legacy, stale-tree, asset, audio, model, dependency, or user-data content changed.
+- Mac build: not rerun because VX-02 changed no code/project files; green VX-01 build remains applicable.
+- Unit/integration tests: not rerun because VX-02 changed no code/test files; VX-01 passed 164/164.
+- Objective-specific benchmark: not applicable.
+- Migration/legacy-data evidence: no data or migration changes. `src/legacy-ios/` unique reference value and sibling copy were inventoried without modification.
+- Failure and cancellation evidence: not applicable to the read-only inventory.
+- Manual Mac UI: not run; no UI changed.
+- Privacy/licensing/package evidence: root audio was identified only by already-known filename and tracked/ignored state; no content or extended metadata inspected. `Voiceprint-downloads/` remained ignored research material.
+- Ownership evidence: Mac and iOS `src/native/Transcriber2/` trees each contained 71 non-`.DS_Store` files and `diff -qr` returned exit 0. The iOS sibling lacks root Git recovery history, so equality did not become deletion permission.
+- Human-owned checks: nine explicit ownership, archive, removal, shared-inbox, artifact, audio, and visual-reference decisions are listed in the inventory.
+- Auditor: not required by docs-only/read-only tier.
+- Verdict: **PARTIAL** — inventory PASS; Human removal/ownership decisions remain.
+
+## VX-03 — Versioned processing contracts and migration design — 2026-07-29
+
+- Risk tier: docs-only design for future Critical storage and migration work; independent Auditor required before QA.
+- Commit / working tree: pre-existing dirty worktree preserved; no staging, commit, or push.
+- Allowed paths checked: VX-03 objective/evidence and active governance/QA only. `git diff --name-status -- src/native/Transcriber2` was empty.
+- Mac build: not rerun because VX-03 changed no code/project files; VX-01 canonical build passed.
+- Unit/integration tests: not rerun because VX-03 changed no code/test files; VX-01 passed 164/164.
+- Objective-specific benchmark: not applicable; no accuracy claim.
+- Migration/legacy-data evidence: design specifies durable random recording/source IDs, lazy per-recording adoption, exact legacy transcript/speaker/display preservation, dual-write, old-build compatibility, and an implementation test matrix. No live store or user data accessed.
+- Failure and cancellation evidence: design covers interrupted writes, corrupt/unknown versions, stale generations, late/canceled attempts, correction races, SwiftData failure after manifest commit, pointer failure, low disk, missing audio, cleanup, deletion partial failure, and rollback.
+- Manual Mac UI: not run; no UI changed.
+- Privacy/licensing/package evidence: no private audio/application data/models accessed; envelopes/logs omit private paths/content; package revisions unchanged.
+- Auditor: initial **DRIFT FOUND** for identity durability, commit/recovery contradiction, legacy Human-work replacement risk, and missing source-audio identity recovery. Corrections applied; residual compatibility label corrected; final **ALIGNED**.
+- QA: independent **PASS** for all agent-verifiable criteria. `git diff --check` PASS; selected relative links PASS; eight contract families, transcript history, stable IDs/timebase, provenance/uncertainty, placement, migration, atomicity, corruption, cleanup, rollback, privacy, and future tests present.
+- Strict concurrency/dependencies: `SWIFT_STRICT_CONCURRENCY = complete` unchanged; FluidAudio `17081252411e0cf69574ee85ec1cd4675765c458`, WhisperKit `94cf6b120cf9dde32d9dea01acc326e77371302c`, and Swift Argument Parser 1.8.2 / `6a52f3251125d74daf04fcbd5e6f08a75d074382` unchanged.
+- Human-owned checks: approve the nine placement/migration/history/cleanup/corruption principles in VX-03 migration design §12.
+- Verdict: **PARTIAL at roadmap gate** — agent QA PASS; Human approval pending.
+
+## Current governance baseline — 2026-07-28
+
+- Scope: read-only inspection and pre-rewrite validation.
+- Mac build: **PASS** — `** BUILD SUCCEEDED **`.
+- Unit tests: **PASS** — `** TEST SUCCEEDED **`.
+- Packages resolved: pinned WhisperKit, FluidAudio, and Swift Argument Parser dependencies.
+- Production code changed: none.
+- Important limitation: this proves the checked-out Mac target and unit suite are green; it does not prove real microphone, downloaded-model, private benchmark, long-run, packaging, or UI behavior.
+
+## Standing VX regression checklist
+
+Apply the rows relevant to the objective and say when a row is not applicable:
+
+1. Existing recordings and transcript blobs still decode.
+2. Original audio remains untouched on success, failure, retry, cancellation, and migration.
+3. Record and import persist audio before processing.
+4. Draft transcript remains usable if diarization, identity, reconciliation, or adjudication fails.
+5. Retry does not overwrite a newer attempt or Human correction.
+6. Cancel clears activity and preserves the last useful persisted result.
+7. Model readiness comes from actual files/loadability, not a stale flag.
+8. Export and playback still work for existing recordings.
+9. Strict concurrency and dependency pins are unchanged unless explicitly scoped.
+10. Private paths, audio, transcript text, embeddings, and profiles do not leak into logs or Git.
+11. The selected production pipeline is no more complex than benchmark evidence justifies.
+
+---
+
+## Historical Beta 2.0 evidence
+
+The content below is retained verbatim as pre-split evidence. Its iOS commands and device scripts are historical in this Mac workspace.
+
+## Historical standing regression checklist (scope to touched screens)
 
 1. App launches; all tabs reachable; default model state correct.
 2. Record → stop → transcript appears → labels apply (or fail gracefully with retry).

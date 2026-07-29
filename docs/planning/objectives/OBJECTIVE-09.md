@@ -1,4 +1,5 @@
 # OBJECTIVE-09 — Library Status Badges + Canonical `RecordingStatus`
+> **Workspace note (2026-07-28):** This checkout is now the Mac-focused Transcriber workspace. Existing Beta 2.0 and iPhone-first material below is retained as historical pre-split context; iOS follow-up belongs in the sibling `../iOS Transcriber/` workspace.
 
 _Phase 3 (first of three). Depends on OBJ-01 (migration policy). **Foundation for OBJ-10 (Dashboard) and OBJ-11 (Model Lab tab).** Closes PRD §6 Library (A4) and RISK R12._
 

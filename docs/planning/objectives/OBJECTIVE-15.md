@@ -1,4 +1,5 @@
 # OBJECTIVE-15 — Diagnostics on Normal Screens + Diagnostics Data Model
+> **Workspace note (2026-07-28):** This checkout is now the Mac-focused Transcriber workspace. Existing Beta 2.0 and iPhone-first material below is retained as historical pre-split context; iOS follow-up belongs in the sibling `../iOS Transcriber/` workspace.
 
 _Phase 5. Depends on OBJ-14 (Details disclosure), OBJ-03 (registry). Closes PRD §13 Diagnostics (G3). RISK R8, R10._
 

@@ -1,4 +1,5 @@
 # OBJECTIVE-08 — Background/Lock & 30-Minute Reliability Hardening
+> **Workspace note (2026-07-28):** This checkout is now the Mac-focused Transcriber workspace. Existing Beta 2.0 and iPhone-first material below is retained as historical pre-split context; iOS follow-up belongs in the sibling `../iOS Transcriber/` workspace.
 
 _Phase 2. Depends on OBJ-07. Closes PRD §8 (B4, B5), §17 Recording. RISK R4, R5, R9, R17. **Human-owned device gate.**_
 

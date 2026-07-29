@@ -1,129 +1,167 @@
-# Architecture Review — Transcriber 2.0 Beta (current state)
+# Architecture Review — Current Transcriber Mac Baseline
 
-_Companion to [EXECUTIVE_REVIEW.md](EXECUTIVE_REVIEW.md). Describes the code as it exists today in `src/native/Transcriber2/`, not the intended product._
+Last reviewed: 2026-07-28
 
----
+This document describes the checked-out code in `src/native/Transcriber2/`. It is not a future architecture proposal.
 
-## 1. Project structure
+## 1. Product shell
 
-```
-Transcription app/
-├── PRD.md                      # Product requirements (intended product)
-├── AGENTS.md                   # Agent governance (this planning pass)
-├── PLAN.md / OBJECTIVE.md / QA.md / DECISIONS.md
-├── docs/                       # READMEs + docs/planning/ (this system)
-├── assets/                     # Icons, UI preview PNGs
-├── src/
-│   ├── native/Transcriber2/    # ★ THE 2.0 BETA APP (active work)
-│   │   ├── Transcriber/        # App sources (Swift, ~3,660 LOC)
-│   │   ├── ShareToTranscriber/ # Share extension
-│   │   ├── TranscriberTests/   # Unit tests (Swift Testing + XCTest, ~750 LOC)
-│   │   ├── TranscriberUITests/
-│   │   └── Transcriber2.xcodeproj
-│   ├── python/                 # Independent Python Transcriber 1.x — DO NOT TOUCH
-│   └── legacy-ios/             # Older iOS prototype — reference only
-├── dist/                       # Python build artifact (gitignored)
-└── XCode App Build/            # Stale default Xcode template (gitignored, reference)
-```
+- `Transcriber2App` creates a SwiftData container for `Recording`, refreshes model status, and starts Mac launch readiness.
+- `RootView` exposes Dashboard, Library, Model Lab, and Settings tabs.
+- Recording and import open `RecordingView` as a sheet.
+- `LibraryView` provides chronological recordings, playback, transcript review, speaker edits, retry, sharing, and deletion.
+- `ModelLabView` compares supported Mac Whisper choices and exports diagnostic reports.
+- The app uses a shared dark midnight-blue visual system.
 
-**Observation:** Three "iOS-ish" trees coexist (`native/Transcriber2`, `legacy-ios`, `XCode App Build`). Only `native/Transcriber2` is live. This is a navigation hazard for agents — see [GAP_ANALYSIS.md](GAP_ANALYSIS.md) §"Hidden work."
+This shell is useful and should be extended rather than replaced.
 
-## 2. Frameworks & build
+## 2. Data and files
 
-- **UI:** SwiftUI, single shared codebase for iOS + macOS, forced dark mode (`.preferredColorScheme(.dark)`).
-- **Persistence:** SwiftData (`@Model`, `modelContainer(for: Recording.self)`).
-- **Audio:** AVFoundation (`AVAudioEngine`, `AVAudioFile`, `AVAudioConverter`, `AVAudioSession` on iOS).
-- **ML:** WhisperKit + FluidAudio (Parakeet ASR + Sortformer diarization) via SPM, pinned by revision.
-- **Targets:** iOS 26 / macOS 26; Swift 5 language mode with `SWIFT_STRICT_CONCURRENCY = complete`; `UIBackgroundModes = audio`.
-- **Entitlements:** App Sandbox, audio-input, App Group `group.com.daniel.transcriber2.beta`, network client, user-selected read-only files.
+### SwiftData
 
-## 3. Storage
+`Recording` stores:
 
-- **Structured data:** `Recording` `@Model` in SwiftData. Transcript segments, raw (word-timed) transcription, and speaker-name maps are each **JSON-encoded into `Data` properties** with computed accessors (`segments`, `rawTranscription`, `speakerNames`). Encoding/decoding failures are logged and degrade to empty rather than crashing.
-- **Audio files:** `.caf` in `Application Support/Transcriber2Beta/Recordings/`, referenced by filename; `Recording.audioURL` rebuilds the path. Imports are copied in with UUID-prefixed names.
-- **Shared inbox:** Share extension writes `<uuid>__<title>.<ext>` into the App Group container's `SharedAudio/`; `SharedAudioInbox` enumerates and filters by audio extension.
+- Title, date, duration, and audio filename.
+- JSON-backed final transcript segments.
+- JSON-backed raw timed transcription segments.
+- JSON-backed speaker display-name mappings.
+- Transcription and diarization retry flags.
+- Final transcription model ID.
 
-**Strength:** Audio is the source of truth and is decoupled from the DB row. **Weakness:** transcript blobs are opaque to SwiftData queries; no schema/migration strategy is documented; orphaned-file cleanup is best-effort.
+Computed accessors decode failures safely to empty values and avoid overwriting a prior blob when encoding a replacement fails.
 
-## 4. State management
+### Audio
 
-- **`TranscriptionSession`** (`@MainActor ObservableObject`) is the central state machine and orchestrator. It owns `state` (`idle/preparing/recording/processing/completed/failed`), live preview state, model state, progress, the recorder, the engines, diarization-retry flags, and all persistence calls. ~857 lines — the de-facto "god object."
-- Views hold sessions via `@StateObject` (each screen its own session) and read SwiftData via `@Query`.
-- Cross-cutting singletons: `WhisperModelDownloader.shared`, `FinalModelDownloader.shared`, `SharedAudioInbox.shared` (all `@MainActor`).
+Application-owned audio lives under:
 
-**Strength:** Single, observable source of UI truth; deterministic state enum. **Weakness:** size and breadth of `TranscriptionSession` make it the highest-bug-density file; multiple independent sessions per screen complicate reasoning about shared model resources.
+`Application Support/Transcriber2Beta/Recordings/`
 
-## 5. Audio pipeline
+The audio filename links a `Recording` row to the preserved file. Recorded CAF files may receive regenerable M4A playback derivatives; the original remains the source of truth.
 
-`AudioRecorder.prepareForRecording()` configures `AVAudioSession` (iOS, `.record/.measurement/.allowBluetoothHFP`) and returns the input format. `start(at:)` installs a tap that (a) writes each buffer to an `AudioFileWriter`, (b) forwards a copied `CapturedAudioChunk` via `onBuffer`, and (c) computes an RMS level on the main actor. `stop()` returns any write error so the session can mark the recording retryable. Buffers reach the live engine through an `AsyncStream` consumer task.
+### Current limitation
 
-**Strength:** recording is independent of model readiness (record-first); write errors surface instead of silently dropping audio; delivery order preserved. **Weakness:** always uses the default input — **no microphone selection, test, meter, or fallback notice** (PRD §8 gap).
+The model is adequate for the current single-result workflow but not for multiple raw model outputs, prepared-audio versions, transcript versions, identity evidence, calibration, or full provenance. Adding all future material as more opaque SwiftData blobs would create migration and inspection risk. PLAN VX-03/VX-05 therefore introduce a versioned artifact design while keeping existing fields readable.
 
-## 6. Transcription pipeline
+## 3. Processing architecture
 
-- **Protocol `TranscriptionEngine` (Actor):** `prepare`, live methods (`beginLive`/`prepareLive`/`append`/`finishLive`), `transcribeFile`, `currentLoadedModelID`, `unload`.
-- **`WhisperKitTranscriptionEngine`:** rolling live window (retain 30s / max 45s / discard 15s) with absolute-timestamp offset math; an inference semaphore (`acquireInference`/`releaseInference`) serializes overlapping calls; `transcribeFile` uses VAD chunking and word timestamps. Used for live+final on macOS and as a Whisper option on iOS.
-- **`ParakeetEOULiveEngine` (iOS live):** `StreamingEouAsrManager`, queues audio until the model is ready then drains the queue, publishes partial text with token timestamps.
-- **`ParakeetFinalTranscriptionEngine` (iOS final):** downloads/loads an `AsrModels` version, transcribes with token-timing → word segmentation.
-- **Model selection:** `FinalTranscriptionModelChoice` unifies Parakeet (3) + Whisper (5) on iOS; `WhisperModelChoice` on macOS. Selection persisted in UserDefaults; a migration moves users to a lightweight default.
+### `TranscriptionSession`
 
-**Strength:** clean engine abstraction; live/final separation; word-level timing feeds diarization merge. **Weakness:** language hardcoded to English in two places; live/file decoding options are byte-identical (dead abstraction).
+`TranscriptionSession` is a `@MainActor ObservableObject` and the UI-facing state machine. It currently coordinates:
 
-## 7. Speaker-label (diarization) pipeline
+- Recording and import.
+- Live preview.
+- Final-model preflight, load, transcription, and unload.
+- Persist-before-process checkpoints.
+- Diarization, fallback, stage watchdogs, and retry guards.
+- Cancellation and stale-attempt protection.
+- Progress, diagnostics, UI notices, and SwiftData persistence.
 
-`FluidDiarizationEngine` (Actor) streams the audio file in 16 kHz mono chunks through Sortformer (`process` per chunk, then `finalizeSession`), reporting progress and honoring `Task.isCancelled` between chunks. `TranscriptionSession.runDiarizationWithFallback` runs **Balanced V2**, and on failure/timeout retries once with **Fast V2** (marked "approximate"). `diarizeWithWatchdog` races the attempt against a `DiarizationProgressGate` actor (120s before first progress, then 30s between updates) and cancels the loser. Results merge with the transcript in `TranscriptMerger` (overlap-based speaker assignment, unknown-fill, short-flip smoothing, consecutive merge).
+At roughly 1,900 lines, it is the largest concentration of risk. It also contains behavior that has substantial test coverage. The safe path is extraction behind characterization tests, not replacement.
 
-**Strength:** cancellable, time-bounded, degrades to approximate labels, preserves transcript on total failure (`diarizationNeedsRetry`). **Weakness:** merge is purely temporal (no embeddings); fixed `maximumFlipMs`; no confidence surfaced; no segment-level reassignment UI.
+### Transcription
 
-## 8. Model management & persistence
+`TranscriptionEngine` is an actor protocol. `WhisperKitTranscriptionEngine` implements Mac live and file transcription, rolling-window timestamp correction, word-timed results, and an inference semaphore.
 
-- **Whisper:** `WhisperModelDownloader` downloads via `WhisperKit.download`, records confirmed IDs in a UserDefaults `Set`. `isDownloaded` for Whisper consults that in-session set — **not the on-device files** (documented as a known limitation in code). This conflicts with PRD §12.
-- **Parakeet:** readiness is **file-based** (`AsrModels.modelsExist(at:version:)`) — PRD-compliant.
-- **States today:** roughly `idle / downloading / ready / failed`. PRD requires `Not downloaded / Downloading / Downloaded / Verifying / Ready / Missing-corrupt / Failed`, plus Repair/Redownload and launch/Settings refresh.
+FluidAudio Parakeet live/final engines exist, but platform conditionals keep important use paths iOS-specific. Enabling Parakeet on Mac is therefore a feasibility/integration objective, not a settings change.
 
-## 9. Persistence (save discipline)
+### Diarization
 
-`persistChanges(in:failureMessage:)` wraps `context.save()`, logs failures, and surfaces a user-facing `storageErrorMessage` (shown via `.storageErrorAlert`). The session persists at many checkpoints: `preserveRecording` (before transcription), after transcript completes, after diarization, on cancel, and in `updateSavedRecording`. Save failures no longer pass silently.
+`DiarizationEngine` is an actor protocol. `FluidDiarizationEngine` converts input to 16 kHz mono and runs Sortformer with stage reporting. `TranscriptionSession` adds:
 
-**Strength:** matches the "save partial work, explain what's safe" philosophy. **Weakness:** no migration plan; multiple sessions can each insert/update; correctness depends on careful flag bookkeeping spread across one large file.
+- Stage-specific timeouts.
+- Cancellation.
+- Protection against overlapping unsafe retries.
+- Balanced-to-fast fallback only when safe.
+- Transcript preservation if labels fail.
 
-## 10. Diagnostics
+### Merge
 
-Only **Model Lab** (iOS) captures real metrics: elapsed time, audio duration, "× real time" speed, transcript, and error per model, with a shareable text report. Normal screens show only phase text + a single progress bar + the loaded/selected model name. PRD §13 wants more (load time, processing time, RTF, fallback used, speaker-label status) surfaced calmly on normal screens.
+`TranscriptMerger` performs temporal speaker assignment, fills unknown gaps from neighbors, smooths very short flips, and joins consecutive segments. It does not reconcile two transcript engines, retain uncertainty evidence, represent overlap richly, or identify known people.
 
-## 11. Sharing / export
+## 4. Model lifecycle
 
-`TranscriptExporter` produces TXT (`[ts] Name: text`), SRT (indexed cues), and JSON. Speaker display names resolve through `displayName` (custom name → "Speaker N"). Share uses `UIActivityViewController` (iOS) / `ShareLink` (macOS), with a documented scene-phase workaround for a stuck share sheet. **Weakness:** JSON is built with `JSONSerialization`/`[String: Any]` rather than `Codable` (type-safety smell).
+`ModelRegistry`, `TranscriptionModelReadiness`, `WhisperModelDownloader`, and `FinalModelDownloader` provide:
 
-## 12. Navigation & UI architecture
+- File-backed readiness.
+- Download/verify/ready/missing/failed lifecycle states.
+- Repair and redownload.
+- Launch and Settings refresh.
+- Verify-before-process and safe fallback notice.
 
-- **Tabs today:** `Record` (RecordingView), `Library`, `Settings`. **PRD requires four tabs: Dashboard, Library, Model Lab, Settings.** There is **no Dashboard**, and **Model Lab is nested inside Settings (iOS-only)**.
-- `RecordingView` drives record/import/processing/completion and hosts share + transcript list. `LibraryView` lists recordings + shared-inbox items, with detail views for playback, rename, retry, and share. `SettingsView` covers model selection/download, storage toggle, privacy, about, and the Model Lab link.
-- **Theme:** centralized `Theme` enum (midnight-blue palette, speaker colors). Buttons use custom `PrimaryButtonStyle`/`SecondaryButtonStyle`.
+WhisperKit and FluidAudio are pinned by Git revision in the Xcode project. Those pins are part of the reproducible baseline.
 
-**Strength:** consistent theming, clear per-screen responsibilities, graceful empty/failure states (`ContentUnavailableView`). **Weakness:** information architecture diverges from PRD; speaker identity relies partly on color (accessibility concern); no Dynamic Type / VoiceOver work evidenced.
+## 5. State, failure, and diagnostics
 
-## 13. Testing & verification
+The current session state is `idle`, `preparing`, `recording`, `processing(phase)`, `completed`, or `failed`.
 
-- Unit tests (`TranscriberTests`) cover `TranscriptMerger`, transcription-session diarization fallback/watchdog (with fakes), audio file writer, recording persistence, transcript export, model choice, shared inbox, and a WhisperKit engine smoke test. Mix of **Swift Testing** (`import Testing`) and XCTest. ~750 LOC.
-- Verification commands (from `docs/README-native.md`): `xcodebuild ... -destination 'platform=macOS'` and `'generic/platform=iOS Simulator'` with `CODE_SIGNING_ALLOWED=NO`.
-- **Real-device validation** (iPhone 17 Pro) is required for mic capture, model installs, FluidAudio downloads, and realtime performance, and cannot be automated here.
+Key strengths:
 
-## 14. Overall strengths
+- Audio is persisted before final processing.
+- Transcript is persisted before diarization.
+- Cancellation keeps the last useful result.
+- An older processing attempt is blocked from publishing over a newer attempt.
+- Diarization failure remains retryable without retranscription.
+- Storage failures are surfaced to the user.
 
-1. Clean actor-based engine abstractions with protocol seams that tests already exploit (fakes injected).
-2. Strong data-safety posture: record-first, persist-early, transcript-first, degrade-gracefully, surface-save-errors.
-3. Correct, deliberate handling of model-resource contention (semaphore + sequenced loads + documented pauses).
-4. Thoughtful diarization robustness (fallback config + watchdog + cancellation).
-5. Centralized theme and consistent, calm failure/empty states.
+Key limits for the accuracy roadmap:
 
-## 15. Overall weaknesses (feed [GAP_ANALYSIS.md](GAP_ANALYSIS.md))
+- Jobs and detailed diagnostics are mostly in-memory.
+- Relaunch does not resume a versioned multi-stage job graph.
+- One session owns many concerns.
+- Processing states do not yet distinguish draft, reconciled, verified, and needs-review transcript versions.
 
-1. Information architecture diverges from PRD (no Dashboard; Model Lab not a tab).
-2. Microphone selection/test/meter/fallback entirely absent.
-3. Whisper model readiness is in-memory, not file-based; model state set incomplete; no Repair/Redownload.
-4. Segment-level speaker reassignment missing (a beta requirement).
-5. Diagnostics under-surfaced on normal screens; progress is a single bar, not a phase timeline.
-6. Accessibility (Dynamic Type, VoiceOver, contrast, non-color status) not yet addressed.
-7. `TranscriptionSession` is oversized; minor tech debt (hardcoded language, JSON via `JSONSerialization`, fragile speaker-color parsing).
-8. Mac is behind iOS on Model Lab and some flows.
+## 6. Review and export
+
+The app already supports:
+
+- Speaker cards and grouped turns.
+- Speaker renaming.
+- Individual and grouped-turn reassignment to existing speakers.
+- Playback.
+- TXT, SRT, and Codable JSON export with display names.
+- Shared status presentation and accessibility cues.
+
+Transcript text editing, candidate comparison, cluster split/merge, known-speaker confirmation, and historical verified transcript versions are not present.
+
+## 7. Tests
+
+The Mac unit bundle covers, among other areas:
+
+- Recording persistence and corrupt blob behavior.
+- Audio file writer ordering and errors.
+- Model registry/readiness/repair.
+- Launch readiness.
+- Microphone selection and Test Mic logic.
+- Transcript merging, grouping, reassignment, accessibility, playback caching, and export.
+- Processing phases and diagnostics.
+- Cancellation, failure injection, stale-attempt protection, diarization fallback, timeout, and retry guards.
+- Dashboard and Model Lab presentation logic.
+
+On 2026-07-28 the Mac build and `TranscriberTests` baseline both passed.
+
+## 8. Stable core to retain
+
+- SwiftUI app shell and Library-centered workflow.
+- Original-audio file ownership.
+- SwiftData compatibility for existing recordings.
+- Actor protocols for engines.
+- UI-facing state machine behavior.
+- Persist-then-proceed.
+- Attempt identity and stale-result protection.
+- Cancellation, retry, fallback, and safe partial success.
+- Playback, speaker edits, exports, model lifecycle, diagnostics, and Model Lab.
+
+## 9. Primary expansion seams
+
+1. Versioned result contracts.
+2. Processing artifact store.
+3. Persistent job/relaunch recovery.
+4. Audio preparation and quality metadata.
+5. Benchmark and ground-truth tooling.
+6. Additional transcription candidates and deterministic consensus.
+7. Rich diarization evidence and optional alternative engine.
+8. Speaker profiles and open-set identity.
+9. Uncertainty-focused review and transcript versioning.
+10. Targeted reprocessing and optional constrained adjudication.
+
+These seams align the VoxBot direction with the application that already exists.

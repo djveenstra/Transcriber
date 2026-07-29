@@ -1,31 +1,43 @@
-# Planning & Governance System — Transcriber 2.0 Beta
+# Planning and Governance — Transcriber Mac
 
-This folder is the engineering planning and governance system for the native app (`src/native/Transcriber2/`). It was produced from a full review of [PRD.md](../../PRD.md) and the current codebase. **No implementation code was changed to create it.**
+Last updated: 2026-07-28
 
-## Read order for a new agent
-1. [../../PRD.md](../../PRD.md) — the product target.
-2. [../../PLAN.md](../../PLAN.md) — phases & sequencing.
-3. [../../OBJECTIVE.md](../../OBJECTIVE.md) — the active objective.
-4. [../../AGENTS.md](../../AGENTS.md) — the rules + roles.
+## Required read order
 
-## Documents
+1. [PRD.md](../../PRD.md)
+2. [PLAN.md](../../PLAN.md)
+3. [OBJECTIVE.md](../../OBJECTIVE.md)
+4. [AGENTS.md](../../AGENTS.md)
+5. [CLAUDE.md](../../CLAUDE.md)
+6. [DECISIONS.md](../../DECISIONS.md)
+
+## Active supporting documents
+
 | Document | Purpose |
 |---|---|
-| [EXECUTIVE_REVIEW.md](EXECUTIVE_REVIEW.md) | What the app is, users, systems, top risks, strategy |
-| [ARCHITECTURE_REVIEW.md](ARCHITECTURE_REVIEW.md) | Current architecture, strengths & weaknesses |
-| [GAP_ANALYSIS.md](GAP_ANALYSIS.md) | PRD-vs-code, every feature rated + hidden work |
-| [RISK_REGISTER.md](RISK_REGISTER.md) | Ranked risks (R1–R22) + mitigations + owning objectives |
-| [MULTI_AGENT_WORKFLOW.md](MULTI_AGENT_WORKFLOW.md) | Manager→Worker→Auditor→QA→Human operating loop |
-| [QA_STRATEGY.md](QA_STRATEGY.md) | Test types, cadence, acceptance mapping |
-| [SELF_CRITIQUE.md](SELF_CRITIQUE.md) | Honest critique of this plan + revisions |
-| [objectives/](objectives/) | 20 sequential, one-session objectives (OBJ-01…20) |
+| [ARCHITECTURE_REVIEW.md](ARCHITECTURE_REVIEW.md) | Current Mac code and stable core |
+| [GAP_ANALYSIS.md](GAP_ANALYSIS.md) | Current code versus the accuracy-expansion PRD |
+| [RISK_REGISTER.md](RISK_REGISTER.md) | Active ranked risks and roadmap ownership |
+| [QA_STRATEGY.md](QA_STRATEGY.md) | Automated, benchmark, manual, migration, and Human QA |
+| [MULTI_AGENT_WORKFLOW.md](MULTI_AGENT_WORKFLOW.md) | Risk-tiered objective lifecycle |
+| [OBJECTIVE_TEMPLATE_APP_SCOPED.md](OBJECTIVE_TEMPLATE_APP_SCOPED.md) | Starting template; update its fields from current governance before use |
 
-## Governance docs at repo root
-- [PLAN.md](../../PLAN.md), [OBJECTIVE.md](../../OBJECTIVE.md), [AGENTS.md](../../AGENTS.md), [QA.md](../../QA.md), [DECISIONS.md](../../DECISIONS.md)
+## Historical material
 
-## Key invariants (see AGENTS.md for the full list)
-- Never lose audio or transcripts; persist-then-proceed; surface save failures.
-- Active path is `src/native/Transcriber2/` only; never touch the Python app.
-- Keep `SWIFT_STRICT_CONCURRENCY = complete`; both builds green every objective.
-- Refactor over rewrite; many small reversible changes; ask before deleting files/assets.
-- Real-device behaviors are Human-Reviewer-owned gates.
+The following files describe Beta 2.0, pre-split repository cleanup, or earlier planning. They may explain current code, but they are not active product authority:
+
+- `EXECUTIVE_REVIEW.md`
+- `SELF_CRITIQUE.md`
+- `INVENTORY_REPORT.md`
+- `UNTANGLING_PLAN.md`
+- `objectives/OBJECTIVE-01.md` through `OBJECTIVE-20.md`, including `OBJECTIVE-17.1.md`
+
+Do not edit completed objective reports to make the VX roadmap appear complete. New VX objective files should be added alongside them with `VX-` identifiers.
+
+## Reference plans
+
+[VoxBot Expanded PLN.md](../../VoxBot%20Expanded%20PLN.md) and [Voiceprint PLN.md](../../Voiceprint%20PLN.md) are design inputs. The current PRD, plan, decisions, code, and active objective decide what is actually built.
+
+## Current status
+
+No VX implementation objective is active. [OBJECTIVE.md](../../OBJECTIVE.md) proposes VX-01 and records the activation gate.
