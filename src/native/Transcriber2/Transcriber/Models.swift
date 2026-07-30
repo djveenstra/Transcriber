@@ -310,6 +310,8 @@ final class Recording {
     var transcriptionNeedsRetry: Bool = false
     var diarizationNeedsRetry: Bool = false
     var finalTranscriptionModelID: String = ""
+    var processingRecordID: String?
+    var sourceAudioID: String?
 
     init(
         title: String,
@@ -320,7 +322,9 @@ final class Recording {
         rawTranscription: [TranscriptionSegment] = [],
         transcriptionNeedsRetry: Bool = false,
         diarizationNeedsRetry: Bool = false,
-        finalTranscriptionModelID: String = ""
+        finalTranscriptionModelID: String = "",
+        processingRecordID: String? = nil,
+        sourceAudioID: String? = nil
     ) {
         self.title = title
         self.createdAt = createdAt
@@ -342,6 +346,8 @@ final class Recording {
         self.transcriptionNeedsRetry = transcriptionNeedsRetry
         self.diarizationNeedsRetry = diarizationNeedsRetry
         self.finalTranscriptionModelID = finalTranscriptionModelID
+        self.processingRecordID = processingRecordID
+        self.sourceAudioID = sourceAudioID
     }
 
     var segments: [TranscriptSegment] {

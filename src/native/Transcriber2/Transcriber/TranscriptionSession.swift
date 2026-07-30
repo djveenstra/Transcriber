@@ -94,7 +94,11 @@ final class TranscriptionSession: ObservableObject {
 
     private let transcriber: any TranscriptionEngine
     private let finalModelVerification: FinalModelVerification?
-    private let persistenceSave: PersistenceSave
+    private let finalTranscriptionRunner: any FinalTranscriptionRunning
+    private let persistenceCoordinator: any PersistenceCoordinating
+    private let processingJobStore: ProcessingJobStore
+    private var activeProcessingJob: ProcessingJobRecordV1?
+    private var processingJobErrorMessage: String?
 #if os(iOS)
     private let liveParakeet = ParakeetEOULiveEngine()
     private var finalParakeet: ParakeetFinalTranscriptionEngine?
@@ -115,8 +119,7 @@ final class TranscriptionSession: ObservableObject {
     private var dismissalNeedsPersistenceRetry = false
     private let statusActivityStore = RecordingStatusActivityStore.shared
     private let diagnosticsStore = ProcessingDiagnosticsStore.shared
-    private let diarizationAttemptGuard: DiarizationAttemptGuard
-    private var activeDiarizationWorkTask: Task<Void, Never>?
+    private let diarizationAttemptCoordinator: any DiarizationAttemptCoordinating
     private var activeDiarizationAttemptID: UUID?
     private var activeProcessingAttemptID: UUID?
     var diarizationInitialTimeout: TimeInterval = 120
@@ -128,12 +131,19 @@ final class TranscriptionSession: ObservableObject {
         transcriber: any TranscriptionEngine = WhisperKitTranscriptionEngine(),
         finalModelVerification: FinalModelVerification? = nil,
         persistenceSave: @escaping PersistenceSave = { try $0.save() },
-        diarizationAttemptGuard: DiarizationAttemptGuard = .shared
+        diarizationAttemptGuard: DiarizationAttemptGuard = .shared,
+        finalTranscriptionRunner: any FinalTranscriptionRunning = FinalTranscriptionRunner(),
+        diarizationAttemptCoordinator: (any DiarizationAttemptCoordinating)? = nil,
+        processingJobStore: ProcessingJobStore? = nil
     ) {
         self.transcriber = transcriber
         self.finalModelVerification = finalModelVerification
-        self.persistenceSave = persistenceSave
-        self.diarizationAttemptGuard = diarizationAttemptGuard
+        self.finalTranscriptionRunner = finalTranscriptionRunner
+        self.persistenceCoordinator = ClosurePersistenceCoordinator(saveContext: persistenceSave)
+        self.processingJobStore = processingJobStore
+            ?? ProcessingJobStore(applicationSupportRoot: AppStoragePaths.rootDirectory)
+        self.diarizationAttemptCoordinator = diarizationAttemptCoordinator
+            ?? DiarizationAttemptCoordinator(attemptGuard: diarizationAttemptGuard)
     }
 
     var liveSegments: [TranscriptSegment] {
@@ -310,6 +320,13 @@ final class TranscriptionSession: ObservableObject {
         await stopLiveCaptureTasks()
         setProcessingPhase(.savingRecording, progress: 0.01)
         preserveRecording(in: context)
+        if let savedRecording {
+            await beginProcessingJob(
+                for: savedRecording,
+                operation: .fullProcessing,
+                attemptID: attemptID
+            )
+        }
 
         if let writeError {
             savedRecording?.transcriptionNeedsRetry = true
@@ -338,6 +355,7 @@ final class TranscriptionSession: ObservableObject {
             try await processFile(audioURL, attemptID: attemptID)
             guard isCurrentProcessingAttempt(attemptID) else { return }
             updateSavedRecording()
+            await finishProcessingJob(state: .partial)
         } catch is CancellationError {
             await handleProcessingCancellation(
                 savedMessage: "Transcription was canceled. Your recording is saved and can be retried from the library.",
@@ -353,6 +371,7 @@ final class TranscriptionSession: ObservableObject {
             )
             clearProcessingPhase()
             state = .failed(error.localizedDescription)
+            await finishProcessingJob(state: .failed)
         }
     }
 
@@ -391,9 +410,17 @@ final class TranscriptionSession: ObservableObject {
                 in: context,
                 failureMessage: "Your imported audio was copied, but its Library entry could not be saved yet. Retry saving before closing."
             )
+            if let savedRecording {
+                await beginProcessingJob(
+                    for: savedRecording,
+                    operation: .fullProcessing,
+                    attemptID: attemptID
+                )
+            }
             try await processFile(destination, attemptID: attemptID)
             guard isCurrentProcessingAttempt(attemptID) else { return }
             updateSavedRecording()
+            await finishProcessingJob(state: .partial)
         } catch is CancellationError {
             await handleProcessingCancellation(
                 savedMessage: "Transcription was canceled. The imported audio remains available for retry.",
@@ -409,6 +436,7 @@ final class TranscriptionSession: ObservableObject {
             )
             clearProcessingPhase()
             state = .failed(error.localizedDescription)
+            await finishProcessingJob(state: .failed)
         }
     }
 
@@ -455,10 +483,16 @@ final class TranscriptionSession: ObservableObject {
         modelFallbackNote = nil
         latestDiagnostics = nil
         clearProcessingPhase()
+        await beginProcessingJob(
+            for: recording,
+            operation: .transcription,
+            attemptID: attemptID
+        )
         do {
             try await processFile(recording.audioURL, attemptID: attemptID)
             guard isCurrentProcessingAttempt(attemptID) else { return }
             updateSavedRecording()
+            await finishProcessingJob(state: .partial)
         } catch is CancellationError {
             await handleProcessingCancellation(
                 savedMessage: "Transcription was canceled. Your recording is saved and can be retried from the library.",
@@ -474,6 +508,7 @@ final class TranscriptionSession: ObservableObject {
             )
             clearProcessingPhase()
             state = .failed(error.localizedDescription)
+            await finishProcessingJob(state: .failed)
         }
     }
 
@@ -497,6 +532,7 @@ final class TranscriptionSession: ObservableObject {
         savedRecording = nil
         persistenceContext = nil
         storageErrorMessage = nil
+        processingJobErrorMessage = nil
         processingWasCancelled = false
         processingFinalModelChoice = nil
         modelFallbackNote = nil
@@ -509,10 +545,10 @@ final class TranscriptionSession: ObservableObject {
         livePreparationTask?.cancel()
         livePreparationTask = nil
         liveAudioFormat = nil
-        activeDiarizationWorkTask?.cancel()
-        activeDiarizationWorkTask = nil
+        diarizationAttemptCoordinator.cancelActiveAttempt()
         activeDiarizationAttemptID = nil
         activeProcessingAttemptID = nil
+        activeProcessingJob = nil
         recorder.onSystemEvent = nil
     }
 
@@ -601,6 +637,11 @@ final class TranscriptionSession: ObservableObject {
         audioURL = recording.audioURL
         rawTranscription = recording.rawTranscription
         finalSegments = recording.segments
+        await beginProcessingJob(
+            for: recording,
+            operation: .speakerLabels,
+            attemptID: attemptID
+        )
         beginDiagnostics(
             for: recording.audioURL,
             model: recording.finalTranscriptionModelID.isEmpty
@@ -646,6 +687,7 @@ final class TranscriptionSession: ObservableObject {
                 in: context,
                 failureMessage: "The updated speaker labels could not be saved. They remain visible here, but it will be lost if you leave this screen."
             )
+            await finishProcessingJob(state: .partial)
         } else {
             guard isCurrentProcessingAttempt(attemptID), !Task.isCancelled else {
                 await handleProcessingCancellation(
@@ -673,6 +715,7 @@ final class TranscriptionSession: ObservableObject {
                 in: context,
                 failureMessage: "Speaker labels still need retry, but that status could not be saved."
             )
+            await finishProcessingJob(state: .partial)
         }
     }
 
@@ -750,12 +793,16 @@ final class TranscriptionSession: ObservableObject {
     func cancelProcessing() async {
         guard canCancelProcessing else { return }
         diarizationSessionLogger.info("diarization.cancel_requested")
+        await checkpointProcessingJob(
+            stage: activeProcessingJob?.stage ?? .queued,
+            state: .cancelRequested
+        )
         activeProcessingAttemptID = nil
         processingWasCancelled = true
         if let audioURL {
             statusActivityStore.clear(audioFileName: audioURL.lastPathComponent)
         }
-        activeDiarizationWorkTask?.cancel()
+        diarizationAttemptCoordinator.cancelActiveAttempt()
         livePreparationTask?.cancel()
         liveAudioContinuation?.finish()
         liveAudioContinuation = nil
@@ -902,6 +949,7 @@ final class TranscriptionSession: ObservableObject {
             try requireCurrentProcessingAttempt(attemptID)
             try Task.checkCancellation()
             setProcessingPhase(.preparingModel, progress: 0.02)
+            await checkpointProcessingJob(stage: .preparingModel, state: .running)
             modelState = .loading
             let modelLoadStarted = Date()
             try await verifySelectedFinalModelBeforeProcessing()
@@ -912,6 +960,7 @@ final class TranscriptionSession: ObservableObject {
                 transcriptionFallbackUsed: modelFallbackNote != nil
             )
             let transcriptionStarted = Date()
+            await checkpointProcessingJob(stage: .transcribing, state: .running)
             let transcription = try await transcribeSelectedFinalModel(url) { [weak self] value in
                 Task { @MainActor in
                     guard self?.isCurrentProcessingAttempt(attemptID) == true else { return }
@@ -937,6 +986,7 @@ final class TranscriptionSession: ObservableObject {
 
             // Preserve the finished text before speaker labeling begins.
             setProcessingPhase(.savingTranscript, progress: 0.58)
+            await checkpointProcessingJob(stage: .savingTranscript, state: .running)
             finalSegments = TranscriptMerger.merge(transcription: transcription, diarization: [])
             savedRecording?.segments = finalSegments
             if let persistenceContext {
@@ -953,6 +1003,7 @@ final class TranscriptionSession: ObservableObject {
 #else
             setProcessingPhase(.identifyingSpeakers, progress: 0.6)
 #endif
+            await checkpointProcessingJob(stage: .identifyingSpeakers, state: .running)
             updateDiagnostics(speakerLabelStatus: .identifying)
             statusActivityStore.set(.speakerLabeling, forAudioFileName: url.lastPathComponent)
 #if os(macOS)
@@ -1010,6 +1061,7 @@ final class TranscriptionSession: ObservableObject {
 #else
 #endif
             setProcessingPhase(.savingSpeakerLabels, progress: 0.98, updateState: !isIdentifyingSpeakers)
+            await checkpointProcessingJob(stage: .savingSpeakerLabels, state: .running)
             progress = 1
             clearProcessingPhase()
             diarizationSessionLogger.info("diarization.state_cleared reason=finished")
@@ -1033,7 +1085,6 @@ final class TranscriptionSession: ObservableObject {
         isIdentifyingSpeakers = false
         progress = 0
         activeDiarizationAttemptID = nil
-        activeDiarizationWorkTask = nil
         clearProcessingPhase()
         if let audioURL {
             statusActivityStore.clear(audioFileName: audioURL.lastPathComponent)
@@ -1064,6 +1115,7 @@ final class TranscriptionSession: ObservableObject {
                     failureMessage: "Your transcript is visible here, but the cancellation status could not be saved."
                 )
             }
+            await finishProcessingJob(state: .partial)
         } else if saved {
             updateDiagnostics(
                 speakerLabelStatus: .notAvailable,
@@ -1077,12 +1129,14 @@ final class TranscriptionSession: ObservableObject {
                     failureMessage: "Your recording is saved, but the retry status could not be updated."
                 )
             }
+            await finishProcessingJob(state: .failed)
         } else {
             updateDiagnostics(
                 speakerLabelStatus: .notAvailable,
                 failureMessage: unsavedMessage
             )
             state = .failed(unsavedMessage)
+            await finishProcessingJob(state: .failed)
         }
     }
 
@@ -1189,6 +1243,7 @@ final class TranscriptionSession: ObservableObject {
 
     func dismissStorageError() {
         storageErrorMessage = nil
+        processingJobErrorMessage = nil
     }
 
     /// Saves the context, surfacing failures via `storageErrorMessage` instead of
@@ -1197,14 +1252,123 @@ final class TranscriptionSession: ObservableObject {
     @discardableResult
     private func persistChanges(in context: ModelContext, failureMessage: String) -> Bool {
         do {
-            try persistenceSave(context)
-            storageErrorMessage = nil
+            try persistenceCoordinator.save(context)
+            storageErrorMessage = processingJobErrorMessage
             return true
         } catch {
             persistenceLogger.error("Failed to save model context: \(error.localizedDescription, privacy: .public)")
             storageErrorMessage = failureMessage
             return false
         }
+    }
+
+    private func beginProcessingJob(
+        for recording: Recording,
+        operation: ProcessingJobOperation,
+        attemptID: UUID
+    ) async {
+        guard let context = persistenceContext,
+              let durableAttemptID = try? ArtifactStoreID(
+                rawValue: attemptID.uuidString.lowercased()
+              ) else {
+            activeProcessingJob = nil
+            return
+        }
+        do {
+            let identity = try RecordingProcessingIdentityAdoption.ensureSaved(for: recording) {
+                try persistenceCoordinator.save(context)
+            } reload: {
+                let freshContext = ModelContext(context.container)
+                guard let reloaded = freshContext.model(
+                    for: recording.persistentModelID
+                ) as? Recording else {
+                    return (nil, nil)
+                }
+                return (reloaded.processingRecordID, reloaded.sourceAudioID)
+            }
+            let now = Date.now
+            let job = ProcessingJobRecordV1(
+                jobSchemaVersion: ProcessingJobRecordV1.schemaVersion,
+                jobID: ArtifactStoreID(),
+                pipelineRunID: ArtifactStoreID(),
+                attemptID: durableAttemptID,
+                recordingID: identity.recordingID,
+                sourceAudioID: identity.sourceAudioID,
+                requestedOperation: operation,
+                inputManifestGeneration: nil,
+                inputCorrectionVersion: nil,
+                stage: .queued,
+                state: .queued,
+                createdAt: now,
+                updatedAt: now,
+                startedAt: nil,
+                finishedAt: nil,
+                publishedOutputReferences: []
+            )
+            activeProcessingJob = try await processingJobStore.start(
+                job,
+                stage: .savingRecording
+            )
+        } catch {
+            activeProcessingJob = nil
+            recordProcessingJobFailure(error)
+            persistenceLogger.error(
+                "Processing job was not started: \(error.localizedDescription, privacy: .public)"
+            )
+        }
+    }
+
+    @discardableResult
+    private func checkpointProcessingJob(
+        stage: ProcessingJobStage,
+        state: ProcessingJobState
+    ) async -> Bool {
+        guard let activeProcessingJob else { return false }
+        do {
+            self.activeProcessingJob = try await processingJobStore.checkpoint(
+                jobID: activeProcessingJob.jobID,
+                recordingID: activeProcessingJob.recordingID,
+                expectedAttemptID: activeProcessingJob.attemptID,
+                expectedInputManifestGeneration: activeProcessingJob.inputManifestGeneration,
+                expectedCorrectionVersion: activeProcessingJob.inputCorrectionVersion,
+                stage: stage,
+                state: state
+            )
+            return true
+        } catch {
+            recordProcessingJobFailure(error)
+            persistenceLogger.error(
+                "Processing job checkpoint failed: \(error.localizedDescription, privacy: .public)"
+            )
+            return false
+        }
+    }
+
+    private func finishProcessingJob(state: ProcessingJobState) async {
+        guard activeProcessingJob != nil else { return }
+        if await checkpointProcessingJob(stage: .finished, state: state) {
+            self.activeProcessingJob = nil
+            return
+        }
+        if await checkpointProcessingJob(
+            stage: activeProcessingJob?.stage ?? .finished,
+            state: .interrupted
+        ) {
+            if let activeProcessingJob, let savedRecording {
+                ProcessingJobCompatibilityProjection.apply(
+                    activeProcessingJob,
+                    to: savedRecording
+                )
+            }
+            self.activeProcessingJob = nil
+        }
+    }
+
+    private func recordProcessingJobFailure(_: Error) {
+        let message =
+            "Processing status could not be saved. Your audio and last transcript remain safe; reopen the app before retrying processing."
+        processingJobErrorMessage = message
+        storageErrorMessage = message
     }
 
     private func updateSavedRecording() {
@@ -1339,7 +1503,11 @@ final class TranscriptionSession: ObservableObject {
         switch choice.provider {
         case .whisper:
             UserDefaults.standard.set(choice.id, forKey: "whisperModel")
-            return try await transcriber.transcribeFile(url, progress: progress)
+            return try await finalTranscriptionRunner.transcribe(
+                using: transcriber,
+                audioURL: url,
+                progress: progress
+            )
         case .parakeet:
             let engine = finalParakeet ?? ParakeetFinalTranscriptionEngine(model: choice)
             finalParakeet = engine
@@ -1347,7 +1515,11 @@ final class TranscriptionSession: ObservableObject {
         }
 #else
         UserDefaults.standard.set(activeFinalModelChoice.id, forKey: "whisperModel")
-        return try await transcriber.transcribeFile(url, progress: progress)
+        return try await finalTranscriptionRunner.transcribe(
+            using: transcriber,
+            audioURL: url,
+            progress: progress
+        )
 #endif
     }
 
@@ -1480,136 +1652,61 @@ final class TranscriptionSession: ObservableObject {
         stageTimeouts: DiarizationStageTimeouts? = nil,
         pollInterval: Duration = .seconds(5)
     ) async -> DiarizationRaceOutcome {
-        let beginResult = await diarizationAttemptGuard.begin(audioFileName: url.lastPathComponent)
-        guard case let .started(attemptID) = beginResult else {
-            let message = beginResult.blockedMessage ?? "Speaker labeling cannot start safely yet."
-            diarizationFailureDetail = message
-            diarizationSessionLogger.error("diarization.result.blocked reason=\(message, privacy: .public)")
-            return .blocked(message)
-        }
-
-        let progressGate = DiarizationProgressGate(
-            timeouts: stageTimeouts ?? DiarizationStageTimeouts.legacy(
-                initialTimeout: initialTimeout,
-                progressTimeout: progressTimeout
-            )
-        )
-        let resultBox = DiarizationAttemptResultBox()
-        activeDiarizationAttemptID = attemptID
-        diarizationSessionLogger.info("diarization.attempt.start id=\(attemptID.uuidString, privacy: .public) file=\(url.lastPathComponent, privacy: .private)")
-
-        let workTask = Task {
-            do {
-                let result = try await diarizer.diarizeFile(
-                    url,
-                    progress: { [weak self] value in
-                        Task { await progressGate.reportProgress() }
-                        Task { @MainActor in
-                            guard self?.activeDiarizationAttemptID == attemptID,
-                                  self?.processingWasCancelled == false else {
-                                return
-                            }
-                            self?.progress = 0.6 + min(max(value, 0), 1) * 0.35
-                        }
-                    },
-                    stage: { [weak self] event in
-                        Task {
-                            let snapshot = await progressGate.reportStage(event)
-                            await MainActor.run {
-                                guard self?.activeDiarizationAttemptID == attemptID,
-                                      self?.processingWasCancelled == false else {
-                                    return
-                                }
-                                self?.recordDiarizationStage(snapshot)
-                            }
-                        }
+        let execution = await diarizationAttemptCoordinator.run(
+            using: diarizer,
+            url: url,
+            initialTimeout: initialTimeout,
+            progressTimeout: progressTimeout,
+            stageTimeouts: stageTimeouts,
+            pollInterval: pollInterval,
+            onAttemptStarted: { [weak self] attemptID in
+                await MainActor.run {
+                    self?.activeDiarizationAttemptID = attemptID
+                }
+            },
+            onProgress: { [weak self] attemptID, value in
+                Task { @MainActor in
+                    guard self?.activeDiarizationAttemptID == attemptID,
+                          self?.processingWasCancelled == false else {
+                        return
                     }
-                )
-                await resultBox.complete(.finished(result))
-                await diarizationAttemptGuard.finish(attemptID)
-                diarizationSessionLogger.info("diarization.result.success id=\(attemptID.uuidString, privacy: .public) segments=\(result.count, privacy: .public)")
-            } catch is CancellationError {
-                await resultBox.complete(.canceled("Speaker labeling was canceled."))
-                await diarizationAttemptGuard.finish(attemptID)
-                diarizationSessionLogger.info("diarization.result.canceled id=\(attemptID.uuidString, privacy: .public)")
-            } catch {
-                let message = error.localizedDescription
-                await resultBox.complete(.failed(message))
-                await diarizationAttemptGuard.finish(attemptID)
-                diarizationSessionLogger.error("diarization.result.failure id=\(attemptID.uuidString, privacy: .public) error=\(message, privacy: .public)")
+                    self?.progress = 0.6 + min(max(value, 0), 1) * 0.35
+                }
+            },
+            onStage: { [weak self] attemptID, snapshot in
+                Task { @MainActor in
+                    guard self?.activeDiarizationAttemptID == attemptID,
+                          self?.processingWasCancelled == false else {
+                        return
+                    }
+                    self?.recordDiarizationStage(snapshot)
+                }
             }
+        )
+        activeDiarizationAttemptID = nil
+        diarizationFailureDetail = execution.outcome.failureDescription
+        if let timeout = execution.timeout {
+            let message = execution.outcome.failureDescription
+                ?? "Speaker labeling timed out."
+            updateDiagnostics(
+                speakerLabelStatus: .retryNeeded,
+                failureMessage: message,
+                diarizationCurrentStage: timeout.stage,
+                diarizationCurrentStageElapsed: timeout.elapsed,
+                diarizationTimedOutStage: timeout.stage,
+                diarizationTimedOutAfter: timeout.elapsed,
+                diarizationStageTimings: timeout.completedTimings
+            )
         }
-        activeDiarizationWorkTask = workTask
-
-        while true {
-            if let outcome = await resultBox.result {
-                activeDiarizationWorkTask = nil
-                activeDiarizationAttemptID = nil
-                return applyDiarizationOutcome(outcome)
-            }
-
-            try? await Task.sleep(for: pollInterval)
-
-            if let outcome = await resultBox.result {
-                activeDiarizationWorkTask = nil
-                activeDiarizationAttemptID = nil
-                return applyDiarizationOutcome(outcome)
-            }
-
-            if Task.isCancelled || processingWasCancelled {
-                let message = "Speaker labeling was canceled. Your transcript is available and speaker labels can be retried later."
-                workTask.cancel()
-                activeDiarizationWorkTask = nil
-                activeDiarizationAttemptID = nil
-                await diarizationAttemptGuard.markAbandoned(attemptID, reason: .canceled)
-                diarizationFailureDetail = message
-                diarizationSessionLogger.info("diarization.cancel_requested id=\(attemptID.uuidString, privacy: .public)")
-                diarizationSessionLogger.info("diarization.state_cleared reason=cancel")
-                return .canceled(message)
-            }
-
-            if let timeout = await progressGate.timeoutInfo() {
-                let message = Self.diarizationTimeoutMessage(timeout)
-                workTask.cancel()
-                activeDiarizationWorkTask = nil
-                activeDiarizationAttemptID = nil
-                await diarizationAttemptGuard.markAbandoned(attemptID, reason: .timedOut)
-                diarizationFailureDetail = message
-                updateDiagnostics(
-                    speakerLabelStatus: .retryNeeded,
-                    failureMessage: message,
-                    diarizationCurrentStage: timeout.stage,
-                    diarizationCurrentStageElapsed: timeout.elapsed,
-                    diarizationTimedOutStage: timeout.stage,
-                    diarizationTimedOutAfter: timeout.elapsed,
-                    diarizationStageTimings: timeout.completedTimings
-                )
-                diarizationSessionLogger.error(
-                    "diarization.timeout_fired id=\(attemptID.uuidString, privacy: .public) stage=\(timeout.stage.displayText, privacy: .public) elapsed=\(timeout.elapsed, privacy: .public) limit=\(timeout.limit, privacy: .public)"
-                )
-                diarizationSessionLogger.info("diarization.state_cleared reason=timeout")
-                diarizationSessionLogger.info("diarization.retry_state_set reason=timeout guarded=true")
-                return .timedOut(message)
-            }
-        }
-    }
-
-    private func applyDiarizationOutcome(_ outcome: DiarizationRaceOutcome) -> DiarizationRaceOutcome {
-        switch outcome {
-        case .finished:
-            diarizationFailureDetail = nil
-        case .failed(let description), .timedOut(let description), .canceled(let description), .blocked(let description):
-            diarizationFailureDetail = description
-        }
-        return outcome
+        return execution.outcome
     }
 
     func hasUnsafeDiarizationAttemptForTesting() async -> Bool {
-        await diarizationAttemptGuard.hasUnsafeAttempt
+        await diarizationAttemptCoordinator.hasUnsafeAttempt
     }
 
     func clearUnsafeDiarizationAttemptForTesting() async {
-        await diarizationAttemptGuard.clearForTesting()
+        await diarizationAttemptCoordinator.clearForTesting()
     }
 
     private func approximateSpeakerLabelNote() -> String {
@@ -1622,12 +1719,6 @@ final class TranscriptionSession: ObservableObject {
             : "The transcript finished, but speaker labeling could not finish. You can retry speaker labels later."
         guard let diarizationFailureDetail, !diarizationFailureDetail.isEmpty else { return base }
         return "\(base) \(diarizationFailureDetail)"
-    }
-
-    private static func diarizationTimeoutMessage(_ timeout: DiarizationTimeoutInfo) -> String {
-        let elapsed = DiagnosticsMetricFormatter.formatSeconds(timeout.elapsed)
-        let limit = DiagnosticsMetricFormatter.formatSeconds(timeout.limit)
-        return "Speaker labeling timed out during \(timeout.stage.displayText.lowercased()) after \(elapsed) (limit \(limit)). The transcript is available, and Transcriber is guarding against an unsafe overlapping retry while the previous speaker-labeling call finishes."
     }
 
     private func combinedCompletionNote(_ note: String?) -> String? {
@@ -1684,6 +1775,18 @@ nonisolated enum DiarizationRaceOutcome: Equatable, Sendable {
             true
         case .finished, .failed:
             false
+        }
+    }
+
+    var failureDescription: String? {
+        switch self {
+        case .finished:
+            nil
+        case let .failed(description),
+             let .timedOut(description),
+             let .canceled(description),
+             let .blocked(description):
+            description
         }
     }
 }
@@ -1827,7 +1930,7 @@ actor DiarizationAttemptGuard {
 /// Tracks elapsed time for the diarization watchdog by stage. The model-load
 /// stage intentionally has a longer production limit because first-run Core ML
 /// compilation can take much longer than steady-state processing.
-private actor DiarizationProgressGate {
+actor DiarizationProgressGate {
     private let startedAt = Date.now
     private var lastProgressAt: Date?
     private var currentStage = DiarizationDiagnosticStage.starting

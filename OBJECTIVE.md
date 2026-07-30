@@ -2,45 +2,33 @@
 
 Last updated: 2026-07-29
 
-## Status: VX-03 is awaiting Human approval; Phase 0 milestone is pending
+## Status: Phase 1 is complete; no implementation objective is active
 
-Daniel authorized activation and sequential execution of all Phase 0 objectives on 2026-07-29. This authorization satisfies approval-to-start and between-objective activation requirements for VX-01, VX-02, and VX-03, but it does not pre-approve private-audio use, deletion choices, or the VX-03 Human data-model gate.
+Daniel approved the conservative VX-02 disposition and all nine VX-03 principles, passed the Phase 0 milestone, and authorized sequential activation and execution of VX-04 through VX-07 on 2026-07-29. All four Phase 1 objectives are now complete at `PROCEED`.
 
-Only one objective is active at a time. Phase 1 remains unauthorized.
+Only one objective is active at a time.
 
 ## Active objective
 
-**[VX-03 — Versioned processing contracts and migration design](docs/planning/objectives/VX-03.md)**
+None.
 
-Risk tier: docs-only design for future Critical storage and migration work; independent audit required.
+Phase 2 and VX-08 have not been activated.
 
-Agent-verifiable result: final Auditor `ALIGNED`; QA PASS.
+## Completed Phase 1 result
 
-Manager gate: `ASK USER`.
+- [VX-04](docs/planning/objectives/VX-04.md): orchestration seams — `PROCEED`.
+- [VX-05](docs/planning/objectives/VX-05.md): dormant processing artifact store — `PROCEED`.
+- [VX-06](docs/planning/objectives/VX-06.md): persistent jobs and relaunch recovery — `PROCEED`.
+- [VX-07](docs/planning/objectives/VX-07.md): dormant versioned audio preparation and quality analysis — `PROCEED`.
 
-Authorized result:
+The consolidated result is recorded in [PHASE-1-CONSOLIDATED-REPORT.md](docs/planning/evidence/PHASE-1-CONSOLIDATED-REPORT.md). Current production audio/transcription behavior remains unchanged; the new artifact store and audio-preparation service are dormant.
 
-- Versioned normalized processing contracts.
-- Explicit stable IDs, timebase, provenance, uncertainty, and state semantics.
-- SwiftData/artifact/cache placement and old-record compatibility.
-- Atomic-write, corruption, cleanup, transcript-history, and rollback design.
-- No production, schema, user-data, dependency, or behavior change.
+## Next authorization boundary
 
-## Human decisions before Phase 1
-
-1. Resolve VX-02 disposition choices, either individually or by choosing the conservative default to retain every candidate in place and defer all cleanup.
-2. Approve the nine VX-03 principles in [VX-03-MIGRATION-DESIGN.md §12](docs/planning/evidence/VX-03-MIGRATION-DESIGN.md#12-decisions-requiring-human-approval).
-3. Explicitly authorize activation of VX-04 after the Phase 0 milestone passes.
-
-No Phase 1 objective is active.
-
-## Phase 0 authorization boundary
-
-- VX-01, VX-02, and VX-03 may be activated sequentially without another start request.
-- Private audio must not be used unless Daniel separately approves an exact source or bounded collection.
-- VX-02 inventories and proposes removals; it does not remove application files.
-- VX-03 designs contracts and migration only; no production schema or behavior changes are authorized.
-- The Phase 0 milestone cannot pass until all Human-owned gates are explicitly resolved.
+- Phase 2 requires an explicit Human instruction to activate VX-08.
+- Private benchmark audio remains separately approval-gated under D-027 and Q-03.
+- VX-02 cleanup remains deferred.
+- No iOS/Python workspace, dependency/model, downloaded research model, or production-pipeline adoption is authorized.
 
 ## Historical roadmap
 

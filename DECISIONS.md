@@ -196,6 +196,26 @@ Each entry states: decision, reason, implications, and reversibility.
 
 **Reversibility:** The manifest tooling and private overlay can be replaced behind a versioned import/export boundary; source audio is never modified.
 
+### D-028 · 2026-07-29 · Phase 0 Human gates resolved conservatively
+
+**Decision:** Retain every VX-02 candidate in place and defer all cleanup, movement, archival, audio use, and Mac/iOS project narrowing. Approve all nine VX-03 principles in `VX-03-MIGRATION-DESIGN.md §12`.
+
+**Reason:** Daniel explicitly chose the conservative VX-02 disposition and approved the complete audited VX-03 design on 2026-07-29.
+
+**Implications:** Q-08 and Q-09 are resolved. No VX-02 cleanup is authorized. Phase 0 passes, and the approved storage principles govern VX-05 and later compatible work. Daniel separately authorized sequential activation and execution of VX-04 through VX-07 without another between-objective start request.
+
+**Reversibility:** Cleanup remains deferred and can be reconsidered only through a future exact objective. A change to the VX-03 principles requires a new Human-approved design decision and compatibility analysis.
+
+### D-029 · 2026-07-29 · Phase 1 closes without activating Phase 2
+
+**Decision:** VX-04, VX-05, VX-06, and VX-07 each close at `PROCEED` after their prescribed audit, QA, validation, and Manager gates. Phase 2 and VX-08 remain inactive.
+
+**Reason:** The four objectives met their acceptance criteria while preserving current production behavior and the repository invariants. Daniel explicitly authorized the continuous Phase 1 run but explicitly prohibited beginning Phase 2.
+
+**Implications:** The new artifact store and audio-preparation service remain dormant. No benchmark dataset, private-audio use, new model, dependency, or production-pipeline adoption begins until a new Human authorization activates VX-08 and any private-data permission is separately resolved.
+
+**Reversibility:** Each Phase 1 objective has an independent rollback. The roadmap may proceed only through a future explicit VX-08 activation.
+
 ## Historical decisions
 
 The completed Beta 2.0 objective files and the `beta-2.0-complete` Git tag preserve the detailed pre-split record. Earlier decisions about iOS primary tabs, iPhone preload, device validation, and the original OBJ-01…20 sequence are historical in this Mac workspace; they do not override D-019 or the new PRD.
@@ -213,13 +233,7 @@ These questions are intentionally deferred to the objective that can provide evi
 | Q-05 | May an alternative diarizer use a signed helper process or Python-derived runtime? | VX-15 |
 | Q-06 | What protection and retention policy should speaker profiles and enrollment audio use? | VX-17 |
 | Q-07 | May disputed audio or transcript text ever be sent to an optional network adjudicator? | VX-24 |
-| Q-08 | Which VX-02 removal candidates should actually be removed, moved, or archived? | After VX-02 |
-| Q-09 | Approve the nine VX-03 artifact placement, durable identity, migration, compatibility, transcript-history, cleanup, and corruption principles? | Before VX-04/VX-05 implementation |
 
 ### VX-02 decision detail — 2026-07-29
 
-Q-08 is now evidence-ready but unanswered. [VX-02-BOUNDARY-INVENTORY.md](docs/planning/evidence/VX-02-BOUNDARY-INVENTORY.md) records nine separate choices covering durable iOS ownership, the iOS share target, Mac project narrowing, shared-inbox behavior, the legacy tree, the nested-Git template, the built app artifact, each root audio file, and visual-reference PNGs. None is approved for removal, movement, or archival.
-
-Q-09 is evidence-ready but unanswered. [VX-03-PROCESSING-CONTRACTS.md](docs/planning/evidence/VX-03-PROCESSING-CONTRACTS.md) and [VX-03-MIGRATION-DESIGN.md](docs/planning/evidence/VX-03-MIGRATION-DESIGN.md) are final-audit `ALIGNED` and agent-QA PASS, but they remain proposed designs until Daniel approves the nine principles in migration design §12.
-
-The Manager converts an answered question into a new dated decision entry.
+Q-08 and Q-09 were resolved by D-028. The retained detail remains in [VX-02-BOUNDARY-INVENTORY.md](docs/planning/evidence/VX-02-BOUNDARY-INVENTORY.md), [VX-03-PROCESSING-CONTRACTS.md](docs/planning/evidence/VX-03-PROCESSING-CONTRACTS.md), and [VX-03-MIGRATION-DESIGN.md](docs/planning/evidence/VX-03-MIGRATION-DESIGN.md). No cleanup, movement, archival, audio use, or project narrowing was authorized.

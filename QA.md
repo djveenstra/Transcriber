@@ -33,6 +33,79 @@ xcodebuild test -project "src/native/Transcriber2/Transcriber2.xcodeproj" -schem
   -destination 'platform=macOS' CODE_SIGNING_ALLOWED=NO -only-testing:TranscriberTests
 ```
 
+## Phase 0 Human gate resolution — 2026-07-29
+
+- VX-02: **PASS / PROCEED** — Daniel approved retaining every candidate in place and deferring all cleanup, movement, archival, audio use, and Mac/iOS project narrowing.
+- VX-03: **PASS / PROCEED** — Daniel approved all nine principles in `VX-03-MIGRATION-DESIGN.md §12`; prior final Auditor result remains `ALIGNED` and agent QA remains PASS.
+- Phase 0 milestone: **PROCEED**.
+- Phase 1 authorization: Daniel authorized sequential activation and execution of VX-04, VX-05, VX-06, and VX-07 without separate between-objective authorization.
+- Scope boundary: no cleanup, private-audio use, dependency/model change, sibling-workspace change, or Phase 2 work is authorized.
+
+## VX-07 — Versioned audio preparation and quality analysis — 2026-07-29
+
+- Risk tier: High.
+- Allowed paths checked: new dormant audio-preparation service, focused programmatic-audio tests, and planning/evidence only.
+- Mac build: **PASS**.
+- Unit/integration tests: **PASS** — final governed `TranscriberTests` 225/225, 0 failed/skipped.
+- Objective-specific tests: **PASS** — independent audio-preparation QA 17/17.
+- Source/data evidence: source bytes and SHA-256 remain unchanged across success, failure, reuse, invalidation, collision, ownership failure, corruption, and crash-orphan paths.
+- Conversion/quality evidence: mono/stereo and non-16 kHz inputs produce actual mono 16 kHz Float32 derivatives with frame/duration/time mapping; peak, RMS/dBFS, clipping, silence, and conservative speech regions passed.
+- Failure/containment evidence: exact and symlink source collisions, generated-root symlink escape, unowned occupants, corrupt/missing sidecars, forged/stale/half-populated markers, replacement content, and injected publication interruption fail safely.
+- Reuse/recovery evidence: deterministic naming/reuse, source/recipe invalidation, corrupt owned-derivative regeneration, forced reproducibility, and new-instance crash-orphan recovery passed.
+- Manual Mac UI: not run; service is dormant and no UI/current pipeline changed.
+- Privacy/licensing/package evidence: programmatically generated temporary PCM only; no private/repository audio; project, pins, dependencies, schema, UI, and sibling workspaces unchanged.
+- Auditor: three `DRIFT FOUND` correction cycles; final **ALIGNED**.
+- Verdict: **PASS / PROCEED**.
+
+## Phase 1 milestone — 2026-07-29
+
+- VX-04: **PROCEED** — Auditor `ALIGNED`; focused QA 25/25; full tests 167/167.
+- VX-05: **PROCEED** — Auditor `ALIGNED`; focused QA 20/20; full tests 187/187.
+- VX-06: **PROCEED** — Auditor `ALIGNED`; focused QA 37/37; full tests 208/208.
+- VX-07: **PROCEED** — Auditor `ALIGNED`; focused QA 17/17; full tests 225/225.
+- Final Mac build: **PASS**.
+- Final `git diff --check`: **PASS**.
+- Phase 2: not authorized; VX-08 remains inactive.
+
+## VX-04 — Extract orchestration seams from TranscriptionSession — 2026-07-29
+
+- Risk tier: High.
+- Allowed paths checked: three new orchestration collaborators, `TranscriptionSession.swift`, focused session tests, and planning/evidence only.
+- Mac build: **PASS** — `** BUILD SUCCEEDED **`.
+- Unit/integration tests: **PASS** — full `TranscriberTests` 167/167, 0 failed/skipped.
+- Objective-specific tests: **PASS** — independent focused orchestration, diarization fallback/watchdog, and failure-injection suites 25/25.
+- Migration/legacy-data evidence: no schema/format/migration change; legacy `Recording` reads and writes remain the same.
+- Failure and cancellation evidence: cancellation, persistence failure/retry, stale attempt, timeout, unsafe overlap, fallback, and transcript-before-diarization tests passed.
+- Manual Mac UI: not run; no UI changed.
+- Privacy/licensing/package evidence: no private audio/models/application data; pins and project unchanged.
+- Auditor: **ALIGNED**.
+- Verdict: **PASS / PROCEED**.
+
+## VX-05 — Processing artifact store — 2026-07-29
+
+- Risk tier: Critical.
+- Allowed paths checked: dormant artifact-store source, focused tests, and planning/evidence only.
+- Mac build: **PASS**.
+- Unit/integration tests: **PASS** — post-fix full `TranscriberTests` 187/187.
+- Objective-specific tests: **PASS** — independent artifact-store QA 20/20.
+- Migration/legacy-data evidence: legacy-only read creates no store; no `Recording` schema/current-flow migration; unpointed manifests never become authoritative.
+- Failure evidence: corrupt/unknown payload/envelope/manifest/pointer, stale generation, symlink escape, graph mismatch/cycle, cleanup blocking, and generation-2/3 pointer interruption tests passed.
+- Privacy/licensing/package evidence: invented temp payloads only; no private audio/application data/model; dependencies unchanged.
+- Auditor: initial and residual **DRIFT FOUND** corrected; final **ALIGNED**.
+- Verdict: **PASS / PROCEED**.
+
+## VX-06 — Persistent processing jobs and relaunch recovery — 2026-07-29
+
+- Risk tier: Critical.
+- Mac build: **PASS**.
+- Unit/integration tests: **PASS** — final full `TranscriberTests` 208/208.
+- Objective-specific tests: **PASS** — independent job/persistence/session failure QA 37/37.
+- Migration/legacy evidence: genuine synthetic pre-VX-06 SQLite store opens with legacy blobs/audio metadata intact and optional IDs nil; file-backed fresh-context ID adoption/reuse passed.
+- Failure/cancellation evidence: atomic create/initial/final/cancel failures, corruption/unknown jobs, relaunch interruption, save retry, stale attempt/input/correction, cancellation, and supersession passed.
+- Path/security evidence: per-recording layout; application-root and nested symlink escapes rejected; both recording/source IDs required.
+- Auditor: initial and residual **DRIFT FOUND** corrected; final **ALIGNED**.
+- Verdict: **PASS / PROCEED**.
+
 ## VX-01 — Mac baseline and benchmark charter — 2026-07-29
 
 - Risk tier: docs-only with read-only build, test, and resource inspection.

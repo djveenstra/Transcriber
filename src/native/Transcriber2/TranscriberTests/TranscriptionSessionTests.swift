@@ -194,6 +194,100 @@ private actor ChunkedFakeDiarizationEngine: DiarizationEngine {
     }
 }
 
+private actor DiarizationAttemptObservation {
+    private(set) var startedAttemptID: UUID?
+
+    func recordStart(_ attemptID: UUID) {
+        startedAttemptID = attemptID
+    }
+}
+
+private final class ProgressRecorder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var values: [Double] = []
+
+    func record(_ value: Double) {
+        lock.withLock {
+            values.append(value)
+        }
+    }
+
+    var snapshot: [Double] {
+        lock.withLock { values }
+    }
+}
+
+@MainActor
+struct OrchestrationSeamTests {
+    @Test func finalTranscriptionRunnerDelegatesToSelectedEngineAndPreservesProgress() async throws {
+        let expected = [
+            TranscriptionSegment(startMs: 0, endMs: 900, text: "Extracted seam")
+        ]
+        let engine = ScriptedTranscriptionEngine([.succeed(expected)])
+        let runner = FinalTranscriptionRunner()
+        let progress = ProgressRecorder()
+
+        let result = try await runner.transcribe(
+            using: engine,
+            audioURL: URL(fileURLWithPath: "/tmp/seam.caf")
+        ) { value in
+            progress.record(value)
+        }
+
+        #expect(result == expected)
+        #expect(progress.snapshot == [0.25, 1])
+        #expect(await engine.observedCallCount() == 1)
+    }
+
+    @Test func persistenceCoordinatorPerformsTheExistingModelContextSave() throws {
+        let container = try ModelContainer(
+            for: Recording.self,
+            configurations: ModelConfiguration(isStoredInMemoryOnly: true)
+        )
+        let context = ModelContext(container)
+        let recording = Recording(
+            title: "Persistence seam",
+            durationSeconds: 1,
+            audioFileName: "persistence-seam.caf",
+            segments: []
+        )
+        context.insert(recording)
+
+        try ModelContextPersistenceCoordinator().save(context)
+
+        let verificationContext = ModelContext(container)
+        let saved = try verificationContext.fetch(FetchDescriptor<Recording>())
+        #expect(saved.map(\.title) == ["Persistence seam"])
+    }
+
+    @Test func diarizationCoordinatorReturnsEngineResultThroughWatchdogBoundary() async {
+        let observation = DiarizationAttemptObservation()
+        let coordinator = DiarizationAttemptCoordinator(attemptGuard: DiarizationAttemptGuard())
+        let expected = [
+            DiarizationSegment(startMs: 0, endMs: 1_000, speaker: "SPEAKER_00")
+        ]
+
+        let execution = await coordinator.run(
+            using: FakeDiarizationEngine(.succeed(expected)),
+            url: URL(fileURLWithPath: "/tmp/diarization-seam.caf"),
+            initialTimeout: 1,
+            progressTimeout: 1,
+            stageTimeouts: .legacy(initialTimeout: 1, progressTimeout: 1),
+            pollInterval: .milliseconds(10),
+            onAttemptStarted: { attemptID in
+                await observation.recordStart(attemptID)
+            },
+            onProgress: { _, _ in },
+            onStage: { _, _ in }
+        )
+
+        #expect(await observation.startedAttemptID != nil)
+        #expect(execution.outcome == .finished(expected))
+        #expect(execution.timeout == nil)
+        #expect(!(await coordinator.hasUnsafeAttempt))
+    }
+}
+
 @MainActor
 struct DiarizationFallbackTests {
     private let url = URL(fileURLWithPath: "/tmp/test.caf")

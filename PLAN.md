@@ -105,7 +105,7 @@ The canonical gates are `PROCEED`, `FIX FIRST`, `ASK USER`, and `BLOCKED` as def
 
 ### VX-02 — Mac-only boundary and removal inventory
 
-**Status (2026-07-29):** `ASK USER`. Read-only inventory is complete in `docs/planning/evidence/VX-02-BOUNDARY-INVENTORY.md`; no removal occurred. Sibling ownership, project narrowing, shared-inbox behavior, legacy/stale-tree preservation, build artifact, root audio, and visual-reference dispositions remain Human decisions.
+**Status (2026-07-29):** `PROCEED`. Read-only inventory is complete; Daniel approved the conservative disposition to retain every candidate in place and defer all cleanup. No removal, movement, archival, audio use, or project narrowing occurred.
 
 **Purpose:** Remove ambiguity before removing code.
 
@@ -128,7 +128,7 @@ The canonical gates are `PROCEED`, `FIX FIRST`, `ASK USER`, and `BLOCKED` as def
 
 ### VX-03 — Versioned processing contracts and migration design
 
-**Status (2026-07-29):** `ASK USER`. Contracts and migration design are complete, final Auditor result is `ALIGNED`, and agent QA is PASS. Human approval of the nine data/model migration principles remains required; no schema or production change occurred.
+**Status (2026-07-29):** `PROCEED`. Contracts and migration design are complete, final Auditor result is `ALIGNED`, agent QA is PASS, and Daniel approved all nine principles in migration design §12. No schema or production change occurred.
 
 **Purpose:** Define how future engines connect without changing production behavior yet.
 
@@ -144,13 +144,15 @@ The canonical gates are `PROCEED`, `FIX FIRST`, `ASK USER`, and `BLOCKED` as def
 
 **Phase 0 milestone:** The current app is reproducible, data ownership is clear, and future processing has approved contracts. No model integration begins before this milestone passes.
 
-**Milestone status (2026-07-29):** `ASK USER`. VX-01 is `PROCEED`; VX-02 inventory is complete at `ASK USER`; VX-03 is aligned and QA-green at `ASK USER`. Phase 1 is not active.
+**Milestone status (2026-07-29):** `PROCEED`. VX-01, VX-02, and VX-03 are complete; the conservative VX-02 disposition and all nine VX-03 principles are Human-approved. Daniel authorized sequential activation and execution of VX-04 through VX-07.
 
 ---
 
 ## Phase 1 — Strengthen the existing core
 
 ### VX-04 — Extract orchestration seams from `TranscriptionSession`
+
+**Status (2026-07-29):** `PROCEED`. Three narrow seams were extracted; Auditor `ALIGNED`; Mac build, 167/167 full tests, and 25/25 independent focused QA passed.
 
 **Purpose:** Reduce risk in the current 1,900-line session coordinator without changing user behavior.
 
@@ -165,6 +167,8 @@ The canonical gates are `PROCEED`, `FIX FIRST`, `ASK USER`, and `BLOCKED` as def
 
 ### VX-05 — Processing artifact store
 
+**Status (2026-07-29):** `PROCEED`. Dormant store-v1 infrastructure is implemented; final Auditor `ALIGNED`; independent 20/20 focused QA and 187/187 post-fix full tests passed.
+
 **Purpose:** Add versioned, inspectable processing artifacts without bloating or destructively rewriting `Recording`.
 
 **Work:**
@@ -175,6 +179,8 @@ The canonical gates are `PROCEED`, `FIX FIRST`, `ASK USER`, and `BLOCKED` as def
 - Add round-trip, legacy-read, corrupt-data, interrupted-write, and rollback tests.
 
 ### VX-06 — Persistent processing jobs and relaunch recovery
+
+**Status (2026-07-29):** `PROCEED`. Optional IDs, per-recording jobs, current checkpoints, and idempotent relaunch recovery are implemented; final Auditor `ALIGNED`; 37/37 independent focused QA and 208/208 full tests passed.
 
 **Purpose:** Let the Mac resume or safely retry work after relaunch while keeping partial results honest.
 
@@ -188,6 +194,8 @@ The canonical gates are `PROCEED`, `FIX FIRST`, `ASK USER`, and `BLOCKED` as def
 
 ### VX-07 — Versioned audio preparation and quality analysis
 
+**Status (2026-07-29):** `PROCEED`. Dormant versioned audio preparation and quality analysis are implemented; final Auditor `ALIGNED`; independent 17/17 focused QA and 225/225 full tests passed.
+
 **Purpose:** Create consistent model input while preserving the source.
 
 **Work:**
@@ -199,6 +207,8 @@ The canonical gates are `PROCEED`, `FIX FIRST`, `ASK USER`, and `BLOCKED` as def
 - Add deterministic derivative naming, invalidation, cleanup, and reproducibility tests.
 
 **Phase 1 milestone:** The existing app behaves the same, but processing is modular, recoverable, and able to store comparable versioned results.
+
+**Milestone status (2026-07-29):** `PROCEED`. VX-04, VX-05, VX-06, and VX-07 each passed their prescribed implementation, audit, QA, validation, rollback, and Manager gates. Phase 2 remains inactive pending explicit Human authorization to activate VX-08.
 
 ---
 

@@ -11,12 +11,12 @@ Authorization: Daniel explicitly authorized activation and continuous sequential
 | Objective | Risk/workflow | Agent-verifiable result | Manager gate |
 |---|---|---|---|
 | VX-01 — Mac baseline and benchmark charter | Docs-only plus read-only build/test/resource inspection | Build PASS; 164/164 tests PASS; baseline and privacy charter complete | `PROCEED` |
-| VX-02 — Mac-only boundary and removal inventory | Docs-only plus read-only cross-workspace inspection | Inventory PASS; no removal; nine Human disposition choices explicit | `ASK USER` |
-| VX-03 — Versioned processing contracts and migration design | Docs-only design for future Critical storage work; independent Auditor then QA | Final Auditor `ALIGNED`; independent QA PASS; no implementation | `ASK USER` |
+| VX-02 — Mac-only boundary and removal inventory | Docs-only plus read-only cross-workspace inspection | Inventory PASS; conservative retain/defer disposition approved; no removal | `PROCEED` |
+| VX-03 — Versioned processing contracts and migration design | Docs-only design for future Critical storage work; independent Auditor then QA | Final Auditor `ALIGNED`; independent QA PASS; nine principles approved; no implementation | `PROCEED` |
 
-Phase 0 milestone: **`ASK USER`**.
+Phase 0 milestone: **`PROCEED`**.
 
-Phase 1: **not active and not authorized**.
+Phase 1: **authorized for sequential VX-04 through VX-07 execution**.
 
 ## Worktree preservation
 
@@ -80,7 +80,7 @@ Findings:
 
 No removal objective was executed. Proposed future mechanical objectives are evidence only and do not change the approved roadmap.
 
-Human choices are listed in the inventory. The conservative resolution is to retain every candidate in place and defer all cleanup; this resolves the Phase 0 deletion gate without adding structural work before Phase 1.
+Daniel approved the conservative resolution: retain every candidate in place and defer all cleanup. This resolves the Phase 0 deletion gate without adding structural work before Phase 1.
 
 ## VX-03 completed work
 
@@ -122,7 +122,7 @@ Independent QA:
 
 Human gate:
 
-Daniel must approve the nine principles in [VX-03 migration design §12](VX-03-MIGRATION-DESIGN.md#12-decisions-requiring-human-approval). This approval authorizes the design direction only; VX-04/VX-05 still require their own active objectives and risk workflows.
+Daniel approved all nine principles in [VX-03 migration design §12](VX-03-MIGRATION-DESIGN.md#12-decisions-requiring-human-approval). This approval authorizes the design direction only; VX-04 through VX-07 retain their own objective, risk, audit, QA, validation, rollback, and gate workflows.
 
 ## Files added during Phase 0
 
@@ -145,13 +145,11 @@ Daniel must approve the nine principles in [VX-03 migration design §12](VX-03-M
 
 No other pre-existing dirty file was edited during this Phase 0 run.
 
-## Unresolved questions
+## Resolved Phase 0 questions
 
-Blocking the Phase 0 milestone:
-
-1. Q-08: VX-02 disposition choices. Recommended safe answer: retain all candidates in place and defer cleanup.
-2. Q-09: approve the nine VX-03 storage/migration principles.
-3. Explicitly authorize VX-04 before Phase 1 begins.
+1. Q-08: retain all candidates in place and defer cleanup.
+2. Q-09: all nine VX-03 storage/migration principles approved.
+3. Daniel authorized sequential activation and execution of VX-04 through VX-07.
 
 Not blocking Phase 1 under the documented no-private-data/default behavior:
 
@@ -159,10 +157,6 @@ Not blocking Phase 1 under the documented no-private-data/default behavior:
 - Q-03: exact private recordings, needed before VX-08 uses any.
 - Q-04: benchmark error priorities, needed for VX-09.
 
-## Exact approval needed before Phase 1
+## Phase 0 closeout
 
-Daniel may resolve the current gates conservatively with:
-
-> I approve the nine VX-03 design principles. For VX-02, retain every candidate in place and defer all cleanup, movement, archival, audio use, and Mac/iOS project narrowing. I accept the Phase 0 milestone and authorize activation of VX-04 only.
-
-Any different VX-02 disposition should name the exact candidate and action. Approval of Phase 0 does not authorize private-audio use, deletion, schema implementation, VX-05, model integration, or any later objective.
+Closed `PROCEED` on 2026-07-29. Phase 1 may execute VX-04 through VX-07 sequentially under their individual gates. This does not authorize private-audio use, VX-02 cleanup, model integration, dependency changes, sibling-workspace changes, or Phase 2.
